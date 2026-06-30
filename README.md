@@ -1,179 +1,200 @@
-# SmartApp UI Kit
+# Job Search Command Center
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **ALPHA NOTICE:**  
-> This project is in ALPHA. It is under active development and may change at any time.  
-> Breaking changes, new features, and bug fixes will be added frequently as I build out real apps using this template.  
-> Feedback and contributions are welcome!
+An open-source **TypeScript + React** app for managing your job search pipeline — track applications, communications, pipeline stages, and daily follow-up actions. Phase 1 adds **SQLite persistence** via a lightweight Express API (Drizzle ORM), with optional browser-only demo mode.
 
-**SmartApp UI Kit** is a reusable AI-first **React + TypeScript + Tailwind CSS** dashboard template with Framer Motion animations.
+## Features
 
-> **All new application code must be TypeScript.** Do not add new `.js` or `.jsx` source files unless explicitly approved.
+- **Application tracking** — company, role, URL, location/remote/hybrid, salary range, date applied, status, notes, interview dates
+- **Pipeline dashboard** — kanban-style board with stages: Saved, Applied, Recruiter screen, Interviewing, Final round, Offer, Rejected, Ghosted/archived
+- **Communication tracker** — recruiter/contact name, email, LinkedIn, last contact date, message notes, next action (linked to applications)
+- **Follow-up reminders** (client-side rules):
+  - Applied 7+ days with no contact → follow up
+  - Recruiter screen, no reply in 3 business days → ping
+  - Interview within 3 days → prep reminder
+  - Stale saved/applied roles → review/archive
+- **Daily action view** — "What should I do today?" with due reminders, upcoming interviews, and contact next actions
+- **Settings** — export/import JSON backup, clear data, persistence mode info
+- **SQLite backend** — applications, contacts, communications, follow-up tasks, interviews, documents (REST CRUD)
+- **AI assist** — placeholder only (fit score, resume tailoring, etc. deferred)
 
-## 🚀 Features
-- Modern dashboard layout…
-- ✅ Responsive: Works great on desktop and mobile devices
+## Tech stack
 
-## 🛠️ Built With
+- [React 18](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
+- [Vite](https://vitejs.dev/) for dev/build
+- [Tailwind CSS](https://tailwindcss.com/) for styling
+- [Zustand](https://github.com/pmndrs/zustand) for client state
+- [Express](https://expressjs.com/) + [Drizzle ORM](https://orm.drizzle.team/) + [better-sqlite3](https://github.com/WiseLibs/better-sqlite3)
+- [React Router](https://reactrouter.com/) for navigation
 
-- [VS Code](https://code.visualstudio.com/)
-- [Cursor](https://www.cursor.so/)
-- [ChatGPT (OpenAI)](https://chat.openai.com/)
-- [React](https://react.dev/)
-- [TypeScript](https://www.typescriptlang.org/)
-- [Tailwind CSS](https://tailwindcss.com/)
-- [Cypress](https://www.cypress.io/)
-- [Jest](https://jestjs.io/)
+## Getting started
 
----
+### Prerequisites
 
-## 🙏 Credits & Inspiration
+- Node.js 20+
+- [pnpm](https://pnpm.io/) (recommended)
 
-- This project's design was inspired by [jobhire.ai](https://jobhire.ai).
+### Install
 
----
-
-## 🏁 Getting Started
-
-Follow these steps to set up the project locally:
-
-1. **Clone the repository:**
-   ```bash
-   git clone <your-repo-url>
-   cd <your-repo-folder>
-   ```
-
-2. **Install all dependencies (including testing tools):**
-   ```bash
-   npm install
-   ```
-
-3. **Start the development server:**
-   ```bash
-   npm run dev
-   ```
-   The app will be available at [http://localhost:5173](http://localhost:5173) by default.
-
-4. **Run TypeScript checks:**
-   ```bash
-   npm run typecheck
-   ```
-
-5. **Run unit tests:**
-   ```bash
-   npm test
-   ```
-
-6. **Run E2E tests (with dev server running):**
-   ```bash
-   npm run cypress:open
-   # or
-   npm run cypress:run
-   ```
-
----
-
-## 🚀 Using This Template to Build Your Own App
-
-To use this project as a starting point for your own application:
-
-1. **Clone the repository:**
-   ```bash
-   git clone <your-repo-url> my-new-app
-   cd my-new-app
-   ```
-
-2. **Remove the existing git history (optional, but recommended):**
-   ```bash
-   rm -rf .git
-   git init
-   git add .
-   git commit -m "Initial commit from SmartApp UI Kit template"
-   ```
-
-3. **Update the project metadata:**
-   - Edit `package.json` to change the `name`, `description`, and other fields.
-   - Update the `README.md` to reflect your new project's purpose.
-
-4. **Install dependencies:**
-   ```bash
-   npm install
-   ```
-
-5. **Start building your app:**
-   - Run the dev server:
-     ```bash
-     npm run dev
-     ```
-   - Begin customizing components, pages, and styles to fit your needs.
-
-6. **(Optional) Remove or update example tests and E2E flows as you build your own features.**
-
-**Tip:**
-You can keep the testing setup and structure as a foundation for your own app's tests!
-
----
-
-## 🧪 Testing
-
-### Unit & Integration Tests
-
-- **Framework:** Jest + React Testing Library
-- **Location:** Test files are placed next to their implementation files (e.g., `MyComponent.tsx` and `MyComponent.test.tsx`).
-- **Coverage:** The suite covers components, store logic, and API clients.
-
-**To run all unit tests with coverage:**
 ```bash
-npm test
-```
-or
-```bash
-npm run test
-```
-- A coverage summary will be shown in the terminal.
-- Detailed HTML coverage reports are generated in the `coverage/` directory.
-
----
-
-### End-to-End (E2E) Tests
-
-- **Framework:** Cypress
-- **Location:** E2E tests are in `cypress/e2e/`.
-- **What's covered:** Key user flows, navigation, and responsive layout.
-
-**To run E2E tests interactively:**
-```bash
-npm run cypress:open
-```
-- This opens the Cypress UI for running and debugging tests.
-
-**To run E2E tests headlessly:**
-```bash
-npm run cypress:run
+git clone <your-repo-url>
+cd job-search-command-center
+pnpm install
 ```
 
-**Before running E2E tests, make sure your dev server is running:**
+### Run locally (API + frontend)
+
+Start both the SQLite API server and Vite dev server:
+
 ```bash
-npm run dev
+pnpm dev:all
 ```
-> **Note:** You must keep the app running in a separate terminal window while running Cypress tests (including headless mode). Cypress does not start the app server for you.
 
----
+- Frontend: [http://localhost:5173/smartapp-ui-kit/](http://localhost:5173/smartapp-ui-kit/)
+- API: [http://localhost:3001/api/health](http://localhost:3001/api/health)
+- SQLite file: `./data/jobsearch.sqlite` (created automatically on first request)
 
-### Notes
+Or run separately:
 
-- Some E2E tests are skipped if the corresponding feature is not yet implemented.
-- Unit tests are colocated with source files for easy maintenance.
-- Cypress baseUrl is set to `http://localhost:5173` (update in `cypress.config.js` if needed).
+```bash
+pnpm dev:server   # API on :3001
+pnpm dev          # Vite on :5173 (proxies /api → :3001)
+```
 
-## Contributing
+### Database migrations
 
-We welcome contributions! To help maintain code quality and reliability, please follow these rules:
+Migrations run automatically when the server starts. To regenerate schema migrations after changing `server/db/schema.ts`:
 
-- **Tests Required:** All new features and bug fixes must include appropriate unit and/or E2E tests.
-- **Code Coverage:** Code coverage must not decrease. If possible, aim to increase coverage with your changes.
-- **Run Tests:** Run `npm test -- --coverage` and `npx cypress run` before submitting a pull request.
-- **Passing Checks:** All tests must pass locally and in CI before your PR will be reviewed or merged.
+```bash
+pnpm db:generate
+pnpm db:push      # optional: push schema directly in dev
+```
 
-If you have questions or need help with testing, feel free to open an issue or ask in your pull request!
+### Demo mode (localStorage only)
+
+No backend required — useful for quick demos or offline use:
+
+```bash
+# .env
+VITE_PERSISTENCE_MODE=demo
+pnpm dev
+```
+
+Data is stored under the localStorage key `job-search-command-center`.
+
+### Other commands
+
+```bash
+pnpm typecheck   # Frontend + server TypeScript
+pnpm build       # Production frontend build
+pnpm start       # Production server (serves dist/ + API)
+pnpm lint        # ESLint
+pnpm test        # Jest unit tests
+```
+
+With the safe-run wrapper:
+
+```bash
+scripts/safe-run.sh "pnpm typecheck"
+scripts/safe-run.sh "pnpm lint"
+scripts/safe-run.sh "pnpm test"
+```
+
+## Project structure
+
+```
+server/
+  db/             # Drizzle schema, migrations, SQLite connection
+  routes/         # CRUD route factories per entity
+  lib/            # Shared server helpers
+  index.ts        # Express entry (API + static SPA)
+src/
+  api/            # REST client + persistence mode helpers
+  types/          # Domain types
+  lib/            # dates, reminders logic, id helper
+  store/          # useJobSearchStore (API or localStorage)
+  components/     # Forms, pipeline board, modal, AI placeholder
+  pages/          # Today, Pipeline, Applications, Contacts, Settings
+```
+
+## Persistence modes
+
+| Mode | Env var | Storage |
+|------|---------|---------|
+| **API** (default) | `VITE_PERSISTENCE_MODE=api` | SQLite via Express REST API |
+| **Demo** | `VITE_PERSISTENCE_MODE=demo` | Browser localStorage (Zustand persist) |
+
+In API mode the frontend loads data on startup and syncs mutations optimistically. If the API is unreachable, a banner suggests switching to demo mode.
+
+## REST API
+
+Base path: `/api`
+
+| Resource | Endpoints |
+|----------|-----------|
+| Health | `GET /api/health` |
+| Applications | `GET/POST /api/applications`, `GET/PUT/DELETE /api/applications/:id` |
+| Contacts | `GET/POST /api/contacts`, `GET/PUT/DELETE /api/contacts/:id` |
+| Communications | `GET/POST /api/communications`, `GET/PUT/DELETE /api/communications/:id` |
+| Follow-up tasks | `GET/POST /api/follow-up-tasks`, `GET/PUT/DELETE /api/follow-up-tasks/:id` |
+| Interviews | `GET/POST /api/interviews`, `GET/PUT/DELETE /api/interviews/:id` |
+| Documents | `GET/POST /api/documents`, `GET/PUT/DELETE /api/documents/:id` |
+
+## SQLite on Fly.io (cost-conscious deployment)
+
+This project uses **embedded SQLite** instead of a managed Postgres instance to keep hosting costs low for a single-user / small-team job search tool.
+
+### Why SQLite on Fly?
+
+- **No separate database bill** — one Fly machine + one persistent volume
+- **Simple ops** — single file at `/data/jobsearch.sqlite`, WAL mode enabled
+- **Enough for this workload** — low write volume, one app instance
+
+### Trade-offs
+
+- Single-machine writes (no horizontal scaling without replication)
+- You manage backups (export JSON from Settings, or snapshot the volume)
+- Not ideal for high-concurrency multi-tenant SaaS
+
+### Deploy
+
+```bash
+# One-time: create persistent volume (1 GB is plenty)
+fly volumes create jobsearch_data --region sjc --size 1
+
+fly launch   # or fly deploy after configuring fly.toml
+fly deploy
+```
+
+`fly.toml` mounts volume `jobsearch_data` at `/data`. Production DB path: `/data/jobsearch.sqlite`.
+
+**Estimated cost:** shared-cpu-1x (~$2–5/mo) + 1 GB volume (~$0.15/mo) — far less than managed Postgres.
+
+### Production env
+
+```
+NODE_ENV=production
+DATABASE_PATH=/data/jobsearch.sqlite
+PORT=8080
+```
+
+Build locally, then `pnpm build && pnpm start` — the server serves the Vite build and API on one port.
+
+## Data & privacy
+
+- **API mode:** data lives in your SQLite file on the server/volume you control
+- **Demo mode:** data stays in the browser only
+- Use **Settings → Export backup** for portable JSON backups in either mode
+
+## Roadmap (not yet implemented)
+
+- UI for communications, follow-up tasks, interviews, documents entities
+- AI fit scoring and resume/cover letter assistance
+- Drag-and-drop pipeline board
+- Persistent reminder dismissals
+- Updated E2E tests for new persistence layer
+
+## License
+
+MIT — see [LICENSE](LICENSE).

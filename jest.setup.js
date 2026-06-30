@@ -18,4 +18,5 @@ jest.mock('@supabase/supabase-js', () => ({
 
 // Set dummy env vars for Supabase
 process.env.VITE_SUPABASE_URL = 'http://localhost:54321';
-process.env.VITE_SUPABASE_KEY = 'dummy-key'; 
+process.env.VITE_SUPABASE_KEY = 'dummy-key';
+process.env.VITE_PERSISTENCE_MODE = 'demo';

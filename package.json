@@ -1,31 +1,52 @@
 {
-  "name": "smartapp-ui-kit",
+  "name": "job-search-command-center",
+  "description": "Open-source AI-assisted job search pipeline command center",
   "version": "0.1.0",
   "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild"
+    ]
+  },
   "scripts": {
     "dev": "vite",
-    "typecheck": "tsc --noEmit",
+    "dev:server": "tsx watch server/index.ts",
+    "dev:all": "concurrently -n server,web -c blue,green \"pnpm dev:server\" \"pnpm dev\"",
+    "start": "tsx server/index.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json",
     "build": "pnpm typecheck && vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext .ts --ext .tsx",
     "lint:fix": "eslint src --ext .ts --ext .tsx --fix",
     "test": "jest --coverage",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
     "cypress:open": "cypress open",
     "cypress:run": "cypress run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.50.0",
+    "better-sqlite3": "^11.9.1",
+    "cors": "^2.8.5",
+    "drizzle-orm": "^0.44.2",
+    "express": "^5.1.0",
     "framer-motion": "^10.18.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-icons": "^5.5.0",
     "react-router-dom": "^7.6.2",
     "supabase": "^2.0.0",
+    "tsx": "^4.20.3",
     "zustand": "^5.0.5"
   },
   "devDependencies": {
     "@babel/preset-env": "^7.27.2",
     "@babel/preset-react": "^7.27.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/cors": "^2.8.18",
+    "@types/express": "^5.0.2",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.15.21",
     "@types/react": "^18.3.20",
@@ -39,6 +60,8 @@
     "autoprefixer": "^10.4.0",
     "babel-jest": "^30.0.2",
     "cypress": "^14.5.0",
+    "concurrently": "^9.1.2",
+    "drizzle-kit": "^0.31.1",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-react": "^7.37.5",
