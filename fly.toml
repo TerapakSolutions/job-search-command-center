@@ -1,26 +1,33 @@
-app = "job-search-command-center"
-primary_region = "sjc"
+# fly.toml app configuration file generated for job-search-command-center on 2026-06-30T09:44:57-07:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'job-search-command-center'
+primary_region = 'sjc'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [env]
-  NODE_ENV = "production"
-  DATABASE_PATH = "/data/jobsearch.sqlite"
-  PORT = "8080"
+  DATABASE_PATH = '/data/jobsearch.sqlite'
+  NODE_ENV = 'production'
+  PORT = '8080'
+
+[[mounts]]
+  source = 'jobsearch_data'
+  destination = '/data'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
-  processes = ["app"]
-
-[[mounts]]
-  source = "jobsearch_data"
-  destination = "/data"
+  processes = ['app']
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "256mb"
+  size = 'shared-cpu-1x'
+  memory = '256mb'
+  cpus = 1
+  memory_mb = 256

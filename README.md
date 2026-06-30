@@ -51,7 +51,7 @@ Start both the SQLite API server and Vite dev server:
 pnpm dev:all
 ```
 
-- Frontend: [http://localhost:5173/smartapp-ui-kit/](http://localhost:5173/smartapp-ui-kit/)
+- Frontend: [http://localhost:5173/](http://localhost:5173/)
 - API: [http://localhost:3001/api/health](http://localhost:3001/api/health)
 - SQLite file: `./data/jobsearch.sqlite` (created automatically on first request)
 

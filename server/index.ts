@@ -31,19 +31,19 @@ app.use('/api/interviews', interviewsRouter(db));
 app.use('/api/documents', documentsRouter(db));
 
 const distPath = path.join(process.cwd(), 'dist');
-const APP_BASE = '/smartapp-ui-kit';
 
-app.use(APP_BASE, express.static(distPath));
-app.get('/', (_req, res) => {
-  res.redirect(APP_BASE);
-});
+app.use(express.static(distPath, { index: false }));
 app.use((req, res, next) => {
   if (req.path.startsWith('/api') || req.method !== 'GET') {
     next();
     return;
   }
-  if (!req.path.startsWith(APP_BASE)) {
-    next();
+  if (req.path.startsWith('/assets/')) {
+    res.status(404).end();
+    return;
+  }
+  if (/\.[a-zA-Z0-9]+$/.test(req.path)) {
+    res.status(404).end();
     return;
   }
   res.sendFile(path.join(distPath, 'index.html'), (err) => {
