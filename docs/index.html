@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Project Dashboard</title>
+  <link href="/dist/output.css" rel="stylesheet" />
+  <script type="module" crossorigin src="/smartapp-ui-kit/assets/index-CwJrdjiS.js"></script>
+  <link rel="stylesheet" crossorigin href="/smartapp-ui-kit/assets/index-vCgBhgur.css">
+</head>
+<body>
+  <div id="root"></div>
+  <!-- Renamed entry file to use .jsx extension -->
+</body>
+</html>
+
+// src/index.jsx
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App.jsx";
+import "./index.css";
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
