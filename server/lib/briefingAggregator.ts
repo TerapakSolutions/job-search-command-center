@@ -11,6 +11,8 @@ import {
 } from '../db/schema.js';
 import type { BriefingData, BriefingPipelineStats } from './briefingTypes.js';
 import { toBriefingDate } from './briefingTypes.js';
+import { getActivityMetrics } from './activityMetrics.js';
+import { buildGoalBriefingMessages } from './activityMetricsCore.js';
 
 const ACTIVE_STATUSES = new Set([
   'saved',
@@ -330,6 +332,25 @@ export function aggregateBriefingData(
     applicationsSubmitted,
   });
 
+  const activityMetrics = getActivityMetrics(db, userId, now);
+  const goalMessages = buildGoalBriefingMessages(activityMetrics);
+  const goalProgress = {
+    applicationsToday: activityMetrics.applicationsToday,
+    applicationsThisWeek: activityMetrics.applicationsThisWeek,
+    applicationsThisMonth: activityMetrics.applicationsThisMonth,
+    currentStreak: activityMetrics.currentStreak,
+    longestStreak: activityMetrics.longestStreak,
+    dailyGoal: activityMetrics.goals.dailyGoal,
+    weeklyGoal: activityMetrics.goals.weeklyGoal,
+    monthlyGoal: activityMetrics.goals.monthlyGoal,
+    dailyMet: activityMetrics.progress.daily.met,
+    weeklyMet: activityMetrics.progress.weekly.met,
+    monthlyMet: activityMetrics.progress.monthly.met,
+    goalMessages,
+  };
+
+  const allRecommendations = [...goalMessages.slice(0, 2), ...recommendations];
+
   return {
     windowStart: start.toISOString(),
     windowEnd: end.toISOString(),
@@ -343,8 +364,9 @@ export function aggregateBriefingData(
     inactiveApplications,
     recruiterResponsesOvernight,
     newOpportunities,
-    recommendations,
+    recommendations: allRecommendations,
     changesSincePrevious,
+    goalProgress,
   };
 }
 

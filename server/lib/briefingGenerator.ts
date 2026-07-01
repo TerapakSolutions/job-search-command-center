@@ -16,7 +16,7 @@ import {
 } from './llmClient.js';
 import { createId, nowIso } from './id.js';
 
-const SYSTEM_PROMPT = `You are an executive assistant for a job seeker. Write a concise daily executive briefing (3-5 short paragraphs max) based on the structured data provided. Cover: pipeline health, new recruiter activity, applications submitted, upcoming interviews, follow-ups needed, and top recommended actions. Be direct, actionable, and encouraging. Do not invent facts not present in the data.`;
+const SYSTEM_PROMPT = `You are an executive assistant for a job seeker. Write a concise daily executive briefing (3-5 short paragraphs max) based on the structured data provided. Cover: job search goal progress (daily/weekly/monthly targets and streaks), pipeline health, new recruiter activity, applications submitted, upcoming interviews, follow-ups needed, and top recommended actions. Include congratulatory messages for streaks and highlight when falling behind on goals. Be direct, actionable, and encouraging. Do not invent facts not present in the data.`;
 
 function rowToRecord(row: typeof dailyBriefings.$inferSelect): DailyBriefingRecord {
   return {

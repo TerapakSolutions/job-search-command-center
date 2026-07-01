@@ -9,6 +9,7 @@ import {
   FiSettings,
   FiLogOut,
   FiInbox,
+  FiActivity,
 } from 'react-icons/fi';
 import { isDemoMode } from '../api/persistence';
 import { computeReminders } from '../lib/reminders';
@@ -25,6 +26,7 @@ const navItems = [
   { to: '/applications', label: 'Applications', icon: FiBriefcase },
   { to: '/contacts', label: 'Contacts', icon: FiMessageCircle },
   { to: '/inbound-emails', label: 'Inbound Emails', icon: FiInbox },
+  { to: '/activity', label: 'Activity', icon: FiActivity },
   { to: '/settings', label: 'Settings', icon: FiSettings },
 ];
 
@@ -34,6 +36,7 @@ const pageTitles: Record<string, string> = {
   '/applications': 'Applications',
   '/contacts': 'Communications',
   '/inbound-emails': 'Inbound Emails',
+  '/activity': 'Activity History',
   '/settings': 'Settings',
 };
 

@@ -43,6 +43,13 @@
       "when": 1790000000000,
       "tag": "0005_email_automation",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1800000000000,
+      "tag": "0006_job_search_goals",
+      "breakpoints": true
     }
   ]
 }

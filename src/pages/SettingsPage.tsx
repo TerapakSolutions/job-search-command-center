@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useJobSearchStore } from '../store/useJobSearchStore';
 import AiAssistPlaceholder from '../components/AiAssistPlaceholder';
+import JobSearchGoalsSettings from '../components/JobSearchGoalsSettings';
 
 export default function SettingsPage() {
   const exportData = useJobSearchStore((s) => s.exportData);
@@ -51,6 +52,8 @@ export default function SettingsPage() {
           Export, import, or reset your job search data.
         </p>
       </div>
+
+      <JobSearchGoalsSettings />
 
       <section className="bg-white border rounded-lg p-6 space-y-4">
         <h3 className="font-medium text-gray-900">Persistence</h3>

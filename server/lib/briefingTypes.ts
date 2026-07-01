@@ -40,6 +40,21 @@ export interface BriefingPipelineStats {
   ghosted: number;
 }
 
+export interface BriefingGoalProgress {
+  applicationsToday: number;
+  applicationsThisWeek: number;
+  applicationsThisMonth: number;
+  currentStreak: number;
+  longestStreak: number;
+  dailyGoal: number;
+  weeklyGoal: number;
+  monthlyGoal: number;
+  dailyMet: boolean;
+  weeklyMet: boolean;
+  monthlyMet: boolean;
+  goalMessages: string[];
+}
+
 export interface BriefingData {
   windowStart: string;
   windowEnd: string;
@@ -55,6 +70,7 @@ export interface BriefingData {
   newOpportunities: BriefingApplicationRef[];
   recommendations: string[];
   changesSincePrevious: string[];
+  goalProgress?: BriefingGoalProgress;
 }
 
 export interface DailyBriefingRecord {
@@ -95,6 +111,7 @@ export function parseBriefingData(json: string): BriefingData {
       newOpportunities: [],
       recommendations: [],
       changesSincePrevious: [],
+      goalProgress: undefined,
     };
   }
 }

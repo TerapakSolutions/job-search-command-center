@@ -63,10 +63,32 @@ export function buildFallbackSummary(data: {
   upcomingInterviews: unknown[];
   followUpNeeded: unknown[];
   recommendations: string[];
+  goalProgress?: {
+    applicationsToday: number;
+    dailyGoal: number;
+    currentStreak: number;
+    goalMessages: string[];
+  };
 }): string {
-  const parts: string[] = [
+  const parts: string[] = [];
+
+  if (data.goalProgress) {
+    parts.push(
+      `You applied to ${data.goalProgress.applicationsToday} job${data.goalProgress.applicationsToday === 1 ? '' : 's'} today. Your goal is ${data.goalProgress.dailyGoal}.`,
+    );
+    if (data.goalProgress.currentStreak >= 3) {
+      parts.push(
+        `You're on a ${data.goalProgress.currentStreak}-day application streak.`,
+      );
+    }
+    if (data.goalProgress.goalMessages[1]) {
+      parts.push(data.goalProgress.goalMessages[1]);
+    }
+  }
+
+  parts.push(
     `Your pipeline has ${data.pipelineStats.total} applications (${data.pipelineStats.active} active, ${data.pipelineStats.offers} offers).`,
-  ];
+  );
 
   if (data.newRecruiterEmails.length > 0) {
     parts.push(

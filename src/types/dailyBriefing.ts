@@ -55,6 +55,22 @@ export interface BriefingData {
   newOpportunities: BriefingApplicationRef[];
   recommendations: string[];
   changesSincePrevious: string[];
+  goalProgress?: BriefingGoalProgress;
+}
+
+export interface BriefingGoalProgress {
+  applicationsToday: number;
+  applicationsThisWeek: number;
+  applicationsThisMonth: number;
+  currentStreak: number;
+  longestStreak: number;
+  dailyGoal: number;
+  weeklyGoal: number;
+  monthlyGoal: number;
+  dailyMet: boolean;
+  weeklyMet: boolean;
+  monthlyMet: boolean;
+  goalMessages: string[];
 }
 
 export interface DailyBriefing {

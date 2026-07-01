@@ -129,6 +129,24 @@ export default function DailyBriefingPanel() {
 
       {briefing && (
         <>
+          {briefing.data.goalProgress && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-900">
+              <p className="font-medium mb-1">Goal progress</p>
+              <p>
+                Today: {briefing.data.goalProgress.applicationsToday}/
+                {briefing.data.goalProgress.dailyGoal} · Week:{' '}
+                {briefing.data.goalProgress.applicationsThisWeek}/
+                {briefing.data.goalProgress.weeklyGoal} · Streak:{' '}
+                {briefing.data.goalProgress.currentStreak} days
+              </p>
+              {briefing.data.goalProgress.goalMessages.slice(0, 2).map((msg) => (
+                <p key={msg} className="mt-1 text-emerald-800">
+                  {msg}
+                </p>
+              ))}
+            </div>
+          )}
+
           <div className="bg-white/80 rounded-lg p-4 text-sm text-gray-800 whitespace-pre-wrap">
             {briefing.aiSummary}
           </div>

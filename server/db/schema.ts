@@ -206,3 +206,57 @@ export const dailyBriefings = sqliteTable(
     ),
   ],
 );
+
+export const jobSearchGoals = sqliteTable(
+  'job_search_goals',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    dailyGoal: integer('daily_goal').notNull().default(5),
+    weeklyGoal: integer('weekly_goal').notNull().default(25),
+    monthlyGoal: integer('monthly_goal').notNull().default(100),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [uniqueIndex('job_search_goals_user_unique').on(table.userId)],
+);
+
+export const applicationOutcomeMetrics = sqliteTable(
+  'application_outcome_metrics',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    applicationId: text('application_id')
+      .notNull()
+      .references(() => applications.id, { onDelete: 'cascade' }),
+    firstRecruiterResponseAt: text('first_recruiter_response_at'),
+    firstInterviewAt: text('first_interview_at'),
+    offerReceivedAt: text('offer_received_at'),
+    daysToFirstResponse: integer('days_to_first_response'),
+    daysApplicationToInterview: integer('days_application_to_interview'),
+    daysInterviewToOffer: integer('days_interview_to_offer'),
+    hadRecruiterResponse: integer('had_recruiter_response', {
+      mode: 'boolean',
+    })
+      .notNull()
+      .default(false),
+    hadInterview: integer('had_interview', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    receivedOffer: integer('received_offer', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    lastComputedAt: text('last_computed_at').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('application_outcome_metrics_app_unique').on(
+      table.applicationId,
+    ),
+  ],
+);

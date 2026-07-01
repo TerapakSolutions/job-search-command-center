@@ -1,12 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FiAlertCircle, FiCalendar, FiClock } from 'react-icons/fi';
 import { computeReminders } from '../lib/reminders';
+import { computeGoalReminders } from '../lib/goalReminders';
+import { computeLocalActivityMetrics } from '../lib/activityMetrics';
+import { fetchActivityMetrics } from '../api/activityClient';
+import { isDemoMode } from '../api/persistence';
 import { useJobSearchStore } from '../store/useJobSearchStore';
 import { REMINDER_TYPE_LABELS, type Reminder } from '../types/reminder';
+import { DEFAULT_JOB_SEARCH_GOALS } from '../types/activity';
+import type { ActivityMetrics } from '../types/activity';
 import { formatDate } from '../lib/dates';
 import DailyBriefingPanel from '../components/DailyBriefingPanel';
 import AutomationDashboardPanel from '../components/AutomationDashboardPanel';
+import GoalsProgressPanel from '../components/GoalsProgressPanel';
 
 const priorityStyles = {
   high: 'border-red-200 bg-red-50',
@@ -17,11 +24,39 @@ const priorityStyles = {
 export default function TodayPage() {
   const applications = useJobSearchStore((s) => s.applications);
   const contacts = useJobSearchStore((s) => s.contacts);
-
-  const reminders = useMemo(
-    () => computeReminders(applications, contacts),
-    [applications, contacts],
+  const demoMode = isDemoMode();
+  const [activityMetrics, setActivityMetrics] = useState<ActivityMetrics | null>(
+    null,
   );
+
+  const loadMetrics = useCallback(async () => {
+    if (demoMode) {
+      const stored = localStorage.getItem('job-search-goals');
+      const goals = stored
+        ? (JSON.parse(stored) as typeof DEFAULT_JOB_SEARCH_GOALS)
+        : DEFAULT_JOB_SEARCH_GOALS;
+      setActivityMetrics(computeLocalActivityMetrics(applications, goals));
+      return;
+    }
+    try {
+      const data = await fetchActivityMetrics();
+      setActivityMetrics(data);
+    } catch {
+      setActivityMetrics(null);
+    }
+  }, [applications, demoMode]);
+
+  useEffect(() => {
+    void loadMetrics();
+  }, [loadMetrics]);
+
+  const reminders = useMemo(() => {
+    const pipelineReminders = computeReminders(applications, contacts);
+    const goalReminders = activityMetrics
+      ? computeGoalReminders(activityMetrics)
+      : [];
+    return [...goalReminders, ...pipelineReminders];
+  }, [applications, contacts, activityMetrics]);
 
   const upcomingInterviews = useMemo(() => {
     const today = new Date();
@@ -56,6 +91,8 @@ export default function TodayPage() {
           Follow-ups, interview prep, and applications needing your attention.
         </p>
       </div>
+
+      <GoalsProgressPanel />
 
       <section>
         <h3 className="flex items-center gap-2 text-lg font-medium text-gray-800 mb-3">
@@ -167,7 +204,7 @@ function ReminderItem({ reminder }: { reminder: Reminder }) {
           <p className="text-sm text-gray-600 mt-1">{reminder.description}</p>
         </div>
         <div className="flex gap-2 shrink-0">
-          {reminder.type === 'stale_review' && (
+          {reminder.type === 'stale_review' && reminder.applicationId && (
             <button
               type="button"
               onClick={() => {
