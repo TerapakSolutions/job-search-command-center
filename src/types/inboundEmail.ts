@@ -5,12 +5,39 @@ export interface InboundEmailListItem {
   toEmail: string;
   receivedAt: string;
   processed: boolean;
+  classification: string | null;
+  classificationConfidence: number | null;
+  suggestedAction: string | null;
+  requiresResponse: boolean | null;
+  processedAt: string | null;
 }
 
 export interface InboundEmailDetail extends InboundEmailListItem {
   provider: string;
   textBody: string;
   htmlBody: string | null;
+  companyName: string | null;
+  positionTitle: string | null;
+  recruiterName: string | null;
+  actionDueAt: string | null;
+  interviewDetected: boolean | null;
+  interviewDatetime: string | null;
+  aiSummary: string | null;
+}
+
+export interface InboundEmailClassification {
+  classification: string | null;
+  classificationConfidence: number | null;
+  companyName: string | null;
+  positionTitle: string | null;
+  recruiterName: string | null;
+  requiresResponse: boolean | null;
+  suggestedAction: string | null;
+  actionDueAt: string | null;
+  interviewDetected: boolean | null;
+  interviewDatetime: string | null;
+  aiSummary: string | null;
+  processedAt: string | null;
 }
 
 export interface InboundEmailListResponse {
@@ -28,4 +55,15 @@ export interface InboundEmailFilters {
   subject?: string;
   fromDate?: string;
   toDate?: string;
+}
+
+export interface ClassifyInboundEmailResponse {
+  classification: InboundEmailClassification;
+  email: InboundEmailDetail;
+}
+
+export interface ClassifyUnprocessedResponse {
+  classified: number;
+  failed: number;
+  skipped: number;
 }

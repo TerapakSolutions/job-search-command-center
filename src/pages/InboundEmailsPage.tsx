@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FiCheck, FiInbox, FiMail } from 'react-icons/fi';
+import { FiCheck, FiInbox, FiMail, FiRefreshCw, FiZap } from 'react-icons/fi';
 import {
+  classifyInboundEmail,
+  classifyUnprocessedInboundEmails,
   fetchInboundEmailById,
   fetchInboundEmails,
   markInboundEmailProcessed,
 } from '../api/inboundEmailsClient';
 import { isDemoMode } from '../api/persistence';
 import { formatDate } from '../lib/dates';
+import {
+  classificationBadgeClass,
+  classificationPriorityLabel,
+} from '../lib/inboundEmailClassification';
 import type {
   InboundEmailDetail,
   InboundEmailListItem,
@@ -36,6 +42,8 @@ export default function InboundEmailsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [marking, setMarking] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [batchAnalyzing, setBatchAnalyzing] = useState(false);
   const [showHtml, setShowHtml] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -112,6 +120,54 @@ export default function InboundEmailsPage() {
       setError(err instanceof Error ? err.message : 'Failed to update email');
     } finally {
       setMarking(false);
+    }
+  };
+
+  const syncEmailInList = (email: InboundEmailDetail) => {
+    setEmails((prev) =>
+      prev.map((item) =>
+        item.id === email.id
+          ? {
+              ...item,
+              classification: email.classification,
+              classificationConfidence: email.classificationConfidence,
+              suggestedAction: email.suggestedAction,
+              requiresResponse: email.requiresResponse,
+              processedAt: email.processedAt,
+            }
+          : item,
+      ),
+    );
+  };
+
+  const handleAnalyze = async (force = false) => {
+    if (!detail) return;
+    setAnalyzing(true);
+    setError(null);
+    try {
+      const result = await classifyInboundEmail(detail.id, { force });
+      setDetail(result.email);
+      syncEmailInList(result.email);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to analyze email');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const handleAnalyzeUnprocessed = async () => {
+    setBatchAnalyzing(true);
+    setError(null);
+    try {
+      await classifyUnprocessedInboundEmails();
+      await loadList();
+      if (selectedId) {
+        await loadDetail(selectedId);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to analyze emails');
+    } finally {
+      setBatchAnalyzing(false);
     }
   };
 
@@ -208,11 +264,20 @@ export default function InboundEmailsPage() {
 
       <div className="grid lg:grid-cols-5 gap-4 min-h-[480px]">
         <section className="lg:col-span-2 bg-white border rounded-lg overflow-hidden flex flex-col">
-          <div className="px-4 py-3 border-b text-sm text-gray-600 flex items-center justify-between">
+          <div className="px-4 py-3 border-b text-sm text-gray-600 flex items-center justify-between gap-2">
             <span className="inline-flex items-center gap-2">
               <FiMail size={14} />
               {total} email{total === 1 ? '' : 's'}
             </span>
+            <button
+              type="button"
+              onClick={() => void handleAnalyzeUnprocessed()}
+              disabled={batchAnalyzing || loading}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs border rounded-lg hover:bg-gray-50 disabled:opacity-60"
+            >
+              <FiZap size={12} />
+              {batchAnalyzing ? 'Analyzing…' : 'Analyze new'}
+            </button>
           </div>
 
           {loading ? (
@@ -260,6 +325,13 @@ export default function InboundEmailsPage() {
                         {formatReceivedAt(email.receivedAt)}
                         {email.processed && ' · Reviewed'}
                       </p>
+                      {email.classification && (
+                        <span
+                          className={`inline-block mt-2 text-xs px-2 py-0.5 rounded-full border ${classificationBadgeClass(email.classification)}`}
+                        >
+                          {email.classification}
+                        </span>
+                      )}
                     </button>
                   </li>
                 );
@@ -291,24 +363,106 @@ export default function InboundEmailsPage() {
                       {formatReceivedAt(detail.receivedAt)})
                     </p>
                   </div>
-                  {!detail.processed && (
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-end gap-2 shrink-0">
                     <button
                       type="button"
-                      onClick={() => void handleMarkReviewed()}
-                      disabled={marking}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-60 shrink-0"
+                      onClick={() => void handleAnalyze(Boolean(detail.processedAt))}
+                      disabled={analyzing}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50 disabled:opacity-60"
                     >
-                      <FiCheck />
-                      Mark reviewed
+                      {analyzing ? (
+                        <FiRefreshCw className="animate-spin" size={14} />
+                      ) : (
+                        <FiZap size={14} />
+                      )}
+                      {detail.processedAt ? 'Re-analyze' : 'Analyze'}
                     </button>
-                  )}
-                  {detail.processed && (
-                    <span className="inline-flex items-center gap-1 text-sm text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg shrink-0">
-                      <FiCheck size={14} />
-                      Reviewed
-                    </span>
-                  )}
+                    {!detail.processed && (
+                      <button
+                        type="button"
+                        onClick={() => void handleMarkReviewed()}
+                        disabled={marking}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-60"
+                      >
+                        <FiCheck />
+                        Mark reviewed
+                      </button>
+                    )}
+                    {detail.processed && (
+                      <span className="inline-flex items-center gap-1 text-sm text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg">
+                        <FiCheck size={14} />
+                        Reviewed
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                {(detail.classification || detail.aiSummary || detail.suggestedAction) && (
+                  <div className="rounded-lg border bg-gray-50 p-4 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {detail.classification && (
+                        <span
+                          className={`text-xs font-medium px-2.5 py-1 rounded-full border ${classificationBadgeClass(detail.classification)}`}
+                        >
+                          {detail.classification}
+                          {detail.classificationConfidence != null &&
+                            ` · ${detail.classificationConfidence}%`}
+                        </span>
+                      )}
+                      {classificationPriorityLabel(
+                        detail.classification,
+                        detail.requiresResponse,
+                      ) && (
+                        <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                          {classificationPriorityLabel(
+                            detail.classification,
+                            detail.requiresResponse,
+                          )}
+                        </span>
+                      )}
+                    </div>
+                    {detail.aiSummary && (
+                      <p className="text-sm text-gray-700">{detail.aiSummary}</p>
+                    )}
+                    {detail.suggestedAction && (
+                      <p className="text-sm">
+                        <span className="font-medium text-gray-800">Suggested action: </span>
+                        <span className="text-gray-700">{detail.suggestedAction}</span>
+                      </p>
+                    )}
+                    {(detail.companyName ||
+                      detail.positionTitle ||
+                      detail.recruiterName ||
+                      detail.interviewDatetime) && (
+                      <dl className="grid sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
+                        {detail.companyName && (
+                          <>
+                            <dt className="font-medium">Company</dt>
+                            <dd>{detail.companyName}</dd>
+                          </>
+                        )}
+                        {detail.positionTitle && (
+                          <>
+                            <dt className="font-medium">Role</dt>
+                            <dd>{detail.positionTitle}</dd>
+                          </>
+                        )}
+                        {detail.recruiterName && (
+                          <>
+                            <dt className="font-medium">Recruiter</dt>
+                            <dd>{detail.recruiterName}</dd>
+                          </>
+                        )}
+                        {detail.interviewDatetime && (
+                          <>
+                            <dt className="font-medium">Interview</dt>
+                            <dd>{formatReceivedAt(detail.interviewDatetime)}</dd>
+                          </>
+                        )}
+                      </dl>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="px-5 py-4 border-b flex items-center gap-3 text-sm">

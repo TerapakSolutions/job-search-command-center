@@ -10,12 +10,24 @@ export interface InboundEmailListItem {
   toEmail: string;
   receivedAt: string;
   processed: boolean;
+  classification: string | null;
+  classificationConfidence: number | null;
+  suggestedAction: string | null;
+  requiresResponse: boolean | null;
+  processedAt: string | null;
 }
 
 export interface InboundEmailDetail extends InboundEmailListItem {
   provider: string;
   textBody: string;
   htmlBody: string | null;
+  companyName: string | null;
+  positionTitle: string | null;
+  recruiterName: string | null;
+  actionDueAt: string | null;
+  interviewDetected: boolean | null;
+  interviewDatetime: string | null;
+  aiSummary: string | null;
 }
 
 export interface ListInboundEmailsOptions {
@@ -35,7 +47,7 @@ export interface ListInboundEmailsResult {
   offset: number;
 }
 
-function getUserEmailContext(db: Db, userId: string) {
+export function getUserEmailContext(db: Db, userId: string) {
   const userRows = db.select().from(users).where(eq(users.id, userId)).all();
   const userEmail = userRows[0]?.email?.trim().toLowerCase() ?? '';
 
@@ -74,6 +86,11 @@ function toListItem(row: typeof inboundEmails.$inferSelect): InboundEmailListIte
     toEmail: row.toEmail,
     receivedAt: row.receivedAt,
     processed: row.processed,
+    classification: row.classification,
+    classificationConfidence: row.classificationConfidence,
+    suggestedAction: row.suggestedAction,
+    requiresResponse: row.requiresResponse,
+    processedAt: row.processedAt,
   };
 }
 
@@ -174,6 +191,13 @@ export function getInboundEmailDetailForUser(
     provider: row.provider,
     textBody,
     htmlBody,
+    companyName: row.companyName,
+    positionTitle: row.positionTitle,
+    recruiterName: row.recruiterName,
+    actionDueAt: row.actionDueAt,
+    interviewDetected: row.interviewDetected,
+    interviewDatetime: row.interviewDatetime,
+    aiSummary: row.aiSummary,
   };
 }
 

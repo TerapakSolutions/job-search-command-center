@@ -16,7 +16,7 @@ An open-source **TypeScript + React** app for managing your job search pipeline 
   - Stale saved/applied roles → review/archive
 - **Daily action view** — "What should I do today?" with due reminders, upcoming interviews, and contact next actions
 - **AI Daily Executive Brief** — personalized daily pipeline summary with AI recommendations, recruiter email activity, follow-ups, and historical briefings (API mode)
-- **Inbound email viewer** — browse Postmark inbound recruiter emails, filter, and mark as reviewed (API mode)
+- **Inbound email viewer** — browse Postmark inbound recruiter emails, AI classification, suggested actions, filter, and mark as reviewed (API mode)
 - **Settings** — export/import JSON backup, clear data, persistence mode info
 - **SQLite backend** — applications, contacts, communications, follow-up tasks, interviews, documents (REST CRUD)
 - **AI assist** — daily executive brief implemented; fit score, resume tailoring, etc. still deferred
@@ -182,19 +182,25 @@ Base path: `/api`
 | Interviews | `GET/POST /api/interviews`, `GET/PUT/DELETE /api/interviews/:id` |
 | Documents | `GET/POST /api/documents`, `GET/PUT/DELETE /api/documents/:id` |
 | Daily briefings | `GET /api/daily-briefings/latest`, `GET /api/daily-briefings`, `GET /api/daily-briefings/:id`, `POST /api/daily-briefings/generate` |
-| Inbound emails | `GET /api/inbound-emails`, `GET /api/inbound-emails/:id`, `PATCH /api/inbound-emails/:id` |
+| Inbound emails | `GET /api/inbound-emails`, `GET /api/inbound-emails/:id`, `PATCH /api/inbound-emails/:id`, `POST /api/inbound-emails/:id/classify`, `POST /api/inbound-emails/classify-unprocessed` |
 
 ### Inbound emails (Postmark)
 
-Postmark inbound webhooks store emails in SQLite (`POST /webhooks/postmark/inbound`). The **Inbound Emails** page (`/inbound-emails`) lets authenticated users browse emails matched to their account — by their sign-in email address or sender addresses that match their contacts.
+Postmark inbound webhooks store emails in SQLite (`POST /webhooks/postmark/inbound`). The webhook path only persists the raw payload and returns quickly — **no AI runs on ingest**. Classification happens later via the API or the **Analyze** buttons in the UI.
+
+The **Inbound Emails** page (`/inbound-emails`) lets authenticated users browse emails matched to their account — by their sign-in email address or sender addresses that match their contacts. Each email can be classified into types such as **Interview Request**, **Application Confirmation**, **Rejection**, and more, with extracted fields (company, role, recruiter), an AI summary, and a suggested next action.
 
 | Endpoint | Auth | Description |
 |----------|------|-------------|
 | `GET /api/inbound-emails` | Session | Paginated list (newest first). Query: `limit`, `offset`, `processed`, `sender`, `subject`, `fromDate`, `toDate` |
-| `GET /api/inbound-emails/:id` | Session | Full detail including plain text and HTML body |
+| `GET /api/inbound-emails/:id` | Session | Full detail including plain text, HTML body, and classification fields |
 | `PATCH /api/inbound-emails/:id` | Session | Mark reviewed/processed: `{ "processed": true }` |
+| `POST /api/inbound-emails/:id/classify` | Session | Run AI/rule-based classification. Body: `{ "force": true }` to re-analyze |
+| `POST /api/inbound-emails/classify-unprocessed` | Session | Classify up to `limit` (default 20, max 50) emails without `processed_at` |
 
-List responses return safe fields only (`id`, `subject`, `fromEmail`, `toEmail`, `receivedAt`, `processed`). Detail responses add `textBody`, `htmlBody`, and `provider`. Emails belonging to other users return `404`.
+List responses include classification summary fields (`classification`, `classificationConfidence`, `suggestedAction`, `requiresResponse`, `processedAt`). Detail responses add full extraction (`companyName`, `positionTitle`, `recruiterName`, `actionDueAt`, `interviewDetected`, `interviewDatetime`, `aiSummary`). Emails belonging to other users return `404`.
+
+**Classification behavior:** When `OPENAI_API_KEY` is set, the app calls an OpenAI-compatible chat API with structured JSON output. If the LLM is unavailable or fails, a deterministic keyword-based fallback classifies common patterns (e.g. “thank you for applying” → Application Confirmation). Classification failures never block email ingestion.
 
 Optional webhook auth env vars: `POSTMARK_WEBHOOK_USER`, `POSTMARK_WEBHOOK_PASSWORD`.
 

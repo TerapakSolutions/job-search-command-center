@@ -1,4 +1,6 @@
 import type {
+  ClassifyInboundEmailResponse,
+  ClassifyUnprocessedResponse,
   InboundEmailDetail,
   InboundEmailFilters,
   InboundEmailListItem,
@@ -60,4 +62,26 @@ export async function markInboundEmailProcessed(
     method: 'PATCH',
     body: JSON.stringify({ processed }),
   });
+}
+
+export async function classifyInboundEmail(
+  id: string,
+  options: { force?: boolean } = {},
+): Promise<ClassifyInboundEmailResponse> {
+  return request<ClassifyInboundEmailResponse>(`/inbound-emails/${id}/classify`, {
+    method: 'POST',
+    body: JSON.stringify({ force: options.force ?? false }),
+  });
+}
+
+export async function classifyUnprocessedInboundEmails(
+  limit = 20,
+): Promise<ClassifyUnprocessedResponse> {
+  return request<ClassifyUnprocessedResponse>(
+    '/inbound-emails/classify-unprocessed',
+    {
+      method: 'POST',
+      body: JSON.stringify({ limit }),
+    },
+  );
 }

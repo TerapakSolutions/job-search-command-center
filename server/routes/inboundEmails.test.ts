@@ -225,4 +225,96 @@ describe('inbound emails API', () => {
 
     await close();
   });
+
+  it('classifies a single email and returns updated detail', async () => {
+    const db = createTestDb();
+    const userId = seedTestUser(db, { email: 'seeker@example.com' });
+
+    const emailId = seedInboundEmail(db, {
+      id: 'email-classify-api',
+      toEmail: 'seeker@example.com',
+      subject: 'Interview next steps',
+      payload: JSON.stringify({
+        TextBody:
+          'We reviewed your resume and want to schedule an interview with you.',
+      }),
+    });
+
+    const { baseUrl, close } = await startServer(db);
+    const cookie = `session=${encodeURIComponent(createSessionToken(userId))}`;
+
+    const classifyRes = await fetch(
+      `${baseUrl}/api/inbound-emails/${emailId}/classify`,
+      {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: false }),
+      },
+    );
+    expect(classifyRes.status).toBe(200);
+    const classified = (await classifyRes.json()) as {
+      classification: { classification: string; suggestedAction: string };
+      email: { classification: string; aiSummary: string | null };
+    };
+    expect(classified.classification.classification).toBe('Interview Request');
+    expect(classified.email.classification).toBe('Interview Request');
+    expect(classified.email.aiSummary).toBeTruthy();
+
+    const reClassifyRes = await fetch(
+      `${baseUrl}/api/inbound-emails/${emailId}/classify`,
+      {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: true }),
+      },
+    );
+    expect(reClassifyRes.status).toBe(200);
+
+    const blockedRes = await fetch(
+      `${baseUrl}/api/inbound-emails/email-secret/classify`,
+      {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      },
+    );
+    expect(blockedRes.status).toBe(404);
+
+    await close();
+  });
+
+  it('classifies unprocessed emails in batch', async () => {
+    const db = createTestDb();
+    const userId = seedTestUser(db, { email: 'seeker@example.com' });
+
+    seedInboundEmail(db, {
+      id: 'batch-1',
+      toEmail: 'seeker@example.com',
+      payload: JSON.stringify({ TextBody: 'Thank you for applying.' }),
+    });
+    seedInboundEmail(db, {
+      id: 'batch-2',
+      toEmail: 'seeker@example.com',
+      payload: JSON.stringify({
+        TextBody: 'We decided to move forward with other candidates.',
+      }),
+    });
+
+    const { baseUrl, close } = await startServer(db);
+    const cookie = `session=${encodeURIComponent(createSessionToken(userId))}`;
+
+    const batchRes = await fetch(
+      `${baseUrl}/api/inbound-emails/classify-unprocessed`,
+      {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 10 }),
+      },
+    );
+    expect(batchRes.status).toBe(200);
+    const batch = (await batchRes.json()) as { classified: number };
+    expect(batch.classified).toBe(2);
+
+    await close();
+  });
 });

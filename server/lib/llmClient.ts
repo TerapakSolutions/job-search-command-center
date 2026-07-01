@@ -1,6 +1,7 @@
 export interface LlmCompletionOptions {
   systemPrompt: string;
   userPrompt: string;
+  responseFormat?: 'text' | 'json_object';
 }
 
 export function isLlmConfigured(): boolean {
@@ -20,21 +21,27 @@ export async function generateLlmCompletion(
   ).replace(/\/$/, '');
   const model = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
 
+  const body: Record<string, unknown> = {
+    model,
+    temperature: 0.4,
+    max_tokens: 800,
+    messages: [
+      { role: 'system', content: options.systemPrompt },
+      { role: 'user', content: options.userPrompt },
+    ],
+  };
+
+  if (options.responseFormat === 'json_object') {
+    body.response_format = { type: 'json_object' };
+  }
+
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model,
-      temperature: 0.4,
-      max_tokens: 800,
-      messages: [
-        { role: 'system', content: options.systemPrompt },
-        { role: 'user', content: options.userPrompt },
-      ],
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {

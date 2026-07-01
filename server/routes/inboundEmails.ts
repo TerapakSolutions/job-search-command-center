@@ -1,6 +1,10 @@
 import { Router, type Request, type Response } from 'express';
 import type { Db } from '../db/index.js';
 import {
+  classifyInboundEmailForUser,
+  classifyUnprocessedInboundEmailsForUser,
+} from '../lib/emailClassificationService.js';
+import {
   getInboundEmailDetailForUser,
   listInboundEmailsForUser,
   markInboundEmailProcessedForUser,
@@ -24,6 +28,12 @@ function parseProcessed(value: unknown): boolean | undefined {
   return undefined;
 }
 
+function parseBatchLimit(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1) return 20;
+  return Math.min(n, 50);
+}
+
 export function inboundEmailsRouter(db: Db): Router {
   const router = Router();
 
@@ -41,6 +51,19 @@ export function inboundEmailsRouter(db: Db): Router {
     res.json(result);
   });
 
+  router.post('/classify-unprocessed', async (req: Request, res: Response) => {
+    const userId = req.userId!;
+    try {
+      const result = await classifyUnprocessedInboundEmailsForUser(db, userId, {
+        limit: parseBatchLimit(req.body?.limit),
+      });
+      res.json(result);
+    } catch (err) {
+      console.error('[inbound-emails] batch classification failed', err);
+      res.status(500).json({ error: 'Classification batch failed' });
+    }
+  });
+
   router.get('/:id', (req: Request, res: Response) => {
     const userId = req.userId!;
     const id = String(req.params.id);
@@ -50,6 +73,28 @@ export function inboundEmailsRouter(db: Db): Router {
       return;
     }
     res.json(email);
+  });
+
+  router.post('/:id/classify', async (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const id = String(req.params.id);
+    const force = req.body?.force === true;
+
+    try {
+      const classification = await classifyInboundEmailForUser(db, userId, id, {
+        force,
+      });
+      if (!classification) {
+        res.status(404).json({ error: 'Not found' });
+        return;
+      }
+
+      const email = getInboundEmailDetailForUser(db, userId, id);
+      res.json({ classification, email });
+    } catch (err) {
+      console.error('[inbound-emails] classification failed', err);
+      res.status(500).json({ error: 'Classification failed' });
+    }
   });
 
   router.patch('/:id', (req: Request, res: Response) => {
