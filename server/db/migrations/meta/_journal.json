@@ -15,6 +15,13 @@
       "when": 1750000000000,
       "tag": "0001_auth_users",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1760000000000,
+      "tag": "0002_inbound_emails",
+      "breakpoints": true
     }
   ]
 }

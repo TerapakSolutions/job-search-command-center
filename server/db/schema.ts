@@ -118,3 +118,16 @@ export const documents = sqliteTable('documents', {
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });
+
+export const inboundEmails = sqliteTable('inbound_emails', {
+  id: text('id').primaryKey(),
+  provider: text('provider').notNull(),
+  subject: text('subject').notNull().default(''),
+  fromEmail: text('from_email').notNull().default(''),
+  toEmail: text('to_email').notNull().default(''),
+  receivedAt: text('received_at').notNull(),
+  payload: text('payload').notNull(),
+  processed: integer('processed', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});

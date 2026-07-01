@@ -4,6 +4,7 @@ module.exports = {
   testEnvironment: 'jsdom',
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
   moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js$': '$1',
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
     '\\.(png|jpg|jpeg|gif|svg)$': '<rootDir>/__mocks__/fileMock.js',
     '^(.+/lib/env)$': '<rootDir>/src/lib/env.jest.ts',
@@ -27,4 +28,5 @@ module.exports = {
       },
     ],
   },
+  testMatch: ['**/*.(test|spec).(ts|tsx)'],
 };
