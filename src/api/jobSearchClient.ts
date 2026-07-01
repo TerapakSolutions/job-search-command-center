@@ -11,6 +11,7 @@ async function request<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const res = await fetch(`${getApiBaseUrl()}${path}`, {
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...options.headers },
     ...options,
   });
@@ -56,7 +57,7 @@ export const documentsApi = crud<Document, DocumentInput>('documents');
 
 export async function checkApiHealth(): Promise<boolean> {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/health`);
+    const res = await fetch(`${getApiBaseUrl()}/health`, { credentials: 'include' });
     return res.ok;
   } catch {
     return false;

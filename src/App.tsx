@@ -6,6 +6,9 @@ import PipelinePage from './pages/PipelinePage';
 import ApplicationsPage from './pages/ApplicationsPage';
 import ContactsPage from './pages/ContactsPage';
 import SettingsPage from './pages/SettingsPage';
+import LoginPage from './pages/LoginPage';
+import { isDemoMode } from './api/persistence';
+import { useAuthStore } from './store/useAuthStore';
 import { useJobSearchStore } from './store/useJobSearchStore';
 
 function AppBootstrap({ children }: { children: React.ReactNode }) {
@@ -42,22 +45,62 @@ function AppBootstrap({ children }: { children: React.ReactNode }) {
   );
 }
 
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const demoMode = isDemoMode();
+  const user = useAuthStore((s) => s.user);
+  const loading = useAuthStore((s) => s.loading);
+  const checked = useAuthStore((s) => s.checked);
+  const checkAuth = useAuthStore((s) => s.checkAuth);
+
+  useEffect(() => {
+    if (!demoMode) {
+      void checkAuth();
+    }
+  }, [checkAuth, demoMode]);
+
+  if (demoMode) {
+    return <>{children}</>;
+  }
+
+  if (!checked || loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-gray-600">
+        Checking authentication…
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    );
+  }
+
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <AppBootstrap>
-        <AppShell>
-          <Routes>
-            <Route path="/" element={<Navigate to="/today" replace />} />
-            <Route path="/today" element={<TodayPage />} />
-            <Route path="/pipeline" element={<PipelinePage />} />
-            <Route path="/applications" element={<ApplicationsPage />} />
-            <Route path="/contacts" element={<ContactsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/dashboard" element={<Navigate to="/today" replace />} />
-          </Routes>
-        </AppShell>
-      </AppBootstrap>
+      <AuthGate>
+        <AppBootstrap>
+          <AppShell>
+            <Routes>
+              <Route path="/" element={<Navigate to="/today" replace />} />
+              <Route path="/today" element={<TodayPage />} />
+              <Route path="/pipeline" element={<PipelinePage />} />
+              <Route path="/applications" element={<ApplicationsPage />} />
+              <Route path="/contacts" element={<ContactsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/login" element={<Navigate to="/today" replace />} />
+              <Route path="/dashboard" element={<Navigate to="/today" replace />} />
+            </Routes>
+          </AppShell>
+        </AppBootstrap>
+      </AuthGate>
     </BrowserRouter>
   );
 }

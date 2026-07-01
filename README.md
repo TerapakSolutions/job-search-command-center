@@ -45,7 +45,7 @@ pnpm install
 
 ### Run locally (API + frontend)
 
-Start both the SQLite API server and Vite dev server:
+Create a `.env` file in the project root (see [Authentication](#authentication) below), then start both the SQLite API server and Vite dev server:
 
 ```bash
 pnpm dev:all
@@ -127,6 +127,45 @@ src/
 
 In API mode the frontend loads data on startup and syncs mutations optimistically. If the API is unreachable, a banner suggests switching to demo mode.
 
+## Authentication
+
+API mode requires **Google sign-in**. On first login a user row is created in SQLite; all applications, contacts, communications, follow-up tasks, interviews, and documents are scoped to that user.
+
+### Required env vars (API mode)
+
+```bash
+# Server
+GOOGLE_CLIENT_ID=your-google-oauth-client-id
+GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
+SESSION_SECRET=long-random-string-for-signing-session-cookies
+
+# OAuth redirect (dev defaults shown)
+APP_URL=http://localhost:3001
+FRONTEND_URL=http://localhost:5173
+CORS_ORIGIN=http://localhost:5173
+```
+
+Register this redirect URI in Google Cloud Console:
+
+`http://localhost:3001/auth/google/callback`
+
+In production (single server serving API + SPA), set `APP_URL` and `FRONTEND_URL` to your public origin (e.g. `https://your-app.fly.dev`).
+
+### Auth endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /auth/google` | Redirect to Google OAuth |
+| `GET /auth/google/callback` | OAuth callback; sets HttpOnly session cookie |
+| `GET /auth/me` | Current signed-in user (401 if not authenticated) |
+| `POST /auth/logout` | Clears session cookie |
+
+All `/api/*` routes (except `GET /api/health`) require a valid session cookie.
+
+### Migrating existing SQLite data
+
+Migration `0001_auth_users` adds a `users` table and `user_id` columns to all entity tables. **Existing rows without a `user_id` are orphaned** and will not appear after sign-in. Export JSON from Settings before upgrading, then re-import after logging in, or delete `./data/jobsearch.sqlite` for a fresh start.
+
 ## REST API
 
 Base path: `/api`
@@ -177,6 +216,12 @@ fly deploy
 NODE_ENV=production
 DATABASE_PATH=/data/jobsearch.sqlite
 PORT=8080
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+SESSION_SECRET=...
+APP_URL=https://your-app.fly.dev
+FRONTEND_URL=https://your-app.fly.dev
+CORS_ORIGIN=https://your-app.fly.dev
 ```
 
 Build locally, then `pnpm build && pnpm start` — the server serves the Vite build and API on one port.

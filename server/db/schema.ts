@@ -1,7 +1,20 @@
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 
+export const users = sqliteTable('users', {
+  id: text('id').primaryKey(),
+  googleId: text('google_id').notNull().unique(),
+  email: text('email').notNull().unique(),
+  name: text('name').notNull(),
+  avatarUrl: text('avatar_url'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
 export const applications = sqliteTable('applications', {
   id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
   company: text('company').notNull(),
   roleTitle: text('role_title').notNull(),
   jobUrl: text('job_url').notNull().default(''),
@@ -19,6 +32,9 @@ export const applications = sqliteTable('applications', {
 
 export const contacts = sqliteTable('contacts', {
   id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
   applicationId: text('application_id')
     .notNull()
     .references(() => applications.id, { onDelete: 'cascade' }),
@@ -34,6 +50,9 @@ export const contacts = sqliteTable('contacts', {
 
 export const communications = sqliteTable('communications', {
   id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
   applicationId: text('application_id')
     .notNull()
     .references(() => applications.id, { onDelete: 'cascade' }),
@@ -51,6 +70,9 @@ export const communications = sqliteTable('communications', {
 
 export const followUpTasks = sqliteTable('follow_up_tasks', {
   id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
   applicationId: text('application_id')
     .notNull()
     .references(() => applications.id, { onDelete: 'cascade' }),
@@ -68,6 +90,9 @@ export const followUpTasks = sqliteTable('follow_up_tasks', {
 
 export const interviews = sqliteTable('interviews', {
   id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
   applicationId: text('application_id')
     .notNull()
     .references(() => applications.id, { onDelete: 'cascade' }),
@@ -81,6 +106,9 @@ export const interviews = sqliteTable('interviews', {
 
 export const documents = sqliteTable('documents', {
   id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
   applicationId: text('application_id').references(() => applications.id, {
     onDelete: 'set null',
   }),

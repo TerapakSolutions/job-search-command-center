@@ -14,6 +14,7 @@ export function applicationsRouter(db: Db) {
     db,
     table: applications,
     idCol: applications.id,
+    userIdCol: applications.userId,
     buildCreate: (body, id, timestamp) => ({
       id,
       company: String(body.company ?? ''),
@@ -62,6 +63,7 @@ export function contactsRouter(db: Db) {
     db,
     table: contacts,
     idCol: contacts.id,
+    userIdCol: contacts.userId,
     buildCreate: (body, id, timestamp) => ({
       id,
       applicationId: String(body.applicationId ?? ''),
@@ -104,6 +106,7 @@ export function communicationsRouter(db: Db) {
     db,
     table: communications,
     idCol: communications.id,
+    userIdCol: communications.userId,
     buildCreate: (body, id, timestamp) => ({
       id,
       applicationId: String(body.applicationId ?? ''),
@@ -140,6 +143,7 @@ export function followUpTasksRouter(db: Db) {
     db,
     table: followUpTasks,
     idCol: followUpTasks.id,
+    userIdCol: followUpTasks.userId,
     buildCreate: (body, id, timestamp) => ({
       id,
       applicationId: String(body.applicationId ?? ''),
@@ -178,6 +182,7 @@ export function interviewsRouter(db: Db) {
     db,
     table: interviews,
     idCol: interviews.id,
+    userIdCol: interviews.userId,
     buildCreate: (body, id, timestamp) => ({
       id,
       applicationId: String(body.applicationId ?? ''),
@@ -208,6 +213,7 @@ export function documentsRouter(db: Db) {
     db,
     table: documents,
     idCol: documents.id,
+    userIdCol: documents.userId,
     buildCreate: (body, id, timestamp) => ({
       id,
       applicationId: body.applicationId ? String(body.applicationId) : null,

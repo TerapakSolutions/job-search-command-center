@@ -7,8 +7,11 @@ import {
   FiBriefcase,
   FiMessageCircle,
   FiSettings,
+  FiLogOut,
 } from 'react-icons/fi';
+import { isDemoMode } from '../api/persistence';
 import { computeReminders } from '../lib/reminders';
+import { useAuthStore } from '../store/useAuthStore';
 import { useJobSearchStore } from '../store/useJobSearchStore';
 
 interface AppShellProps {
@@ -35,6 +38,9 @@ export default function AppShell({ children }: AppShellProps) {
   const location = useLocation();
   const applications = useJobSearchStore((s) => s.applications);
   const contacts = useJobSearchStore((s) => s.contacts);
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
+  const demoMode = isDemoMode();
   const reminderCount = useMemo(
     () => computeReminders(applications, contacts).length,
     [applications, contacts],
@@ -76,8 +82,40 @@ export default function AppShell({ children }: AppShellProps) {
           ))}
         </nav>
 
-        <div className="px-4 py-4 text-xs text-gray-500 border-t border-gray-800">
-          Data stored locally in your browser
+        <div className="px-4 py-4 border-t border-gray-800">
+          {user && !demoMode ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                {user.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt=""
+                    className="h-9 w-9 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="h-9 w-9 rounded-full bg-gray-700 flex items-center justify-center text-sm font-medium">
+                    {user.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-white truncate">{user.name}</div>
+                  <div className="text-xs text-gray-400 truncate">{user.email}</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void logout()}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-gray-800 hover:text-white"
+              >
+                <FiLogOut size={16} />
+                Sign out
+              </button>
+            </div>
+          ) : (
+            <div className="text-xs text-gray-500">
+              {demoMode ? 'Demo mode — data stored in your browser' : 'Signed in'}
+            </div>
+          )}
         </div>
       </aside>
 
