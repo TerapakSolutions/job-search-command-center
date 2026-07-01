@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
@@ -131,3 +131,26 @@ export const inboundEmails = sqliteTable('inbound_emails', {
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });
+
+export const dailyBriefings = sqliteTable(
+  'daily_briefings',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    briefingDate: text('briefing_date').notNull(),
+    aiSummary: text('ai_summary').notNull().default(''),
+    dataJson: text('data_json').notNull().default('{}'),
+    status: text('status').notNull().default('completed'),
+    emailSentAt: text('email_sent_at'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('daily_briefings_user_date_unique').on(
+      table.userId,
+      table.briefingDate,
+    ),
+  ],
+);

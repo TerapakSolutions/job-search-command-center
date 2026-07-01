@@ -14,6 +14,11 @@ import {
   interviewsRouter,
   documentsRouter,
 } from './routes/index.js';
+import {
+  dailyBriefingsCronRouter,
+  dailyBriefingsRouter,
+} from './routes/dailyBriefings.js';
+import { inboundEmailsRouter } from './routes/inboundEmails.js';
 
 export function createApp(db: Db) {
   const app = express();
@@ -34,6 +39,7 @@ export function createApp(db: Db) {
 
   app.use('/auth', authRouter(db));
   app.use('/webhooks/postmark', postmarkInboundRouter(db));
+  app.use('/api/cron', dailyBriefingsCronRouter(db));
 
   app.use('/api', requireAuth);
   app.use('/api/applications', applicationsRouter(db));
@@ -42,6 +48,8 @@ export function createApp(db: Db) {
   app.use('/api/follow-up-tasks', followUpTasksRouter(db));
   app.use('/api/interviews', interviewsRouter(db));
   app.use('/api/documents', documentsRouter(db));
+  app.use('/api/daily-briefings', dailyBriefingsRouter(db));
+  app.use('/api/inbound-emails', inboundEmailsRouter(db));
 
   const distPath = path.join(process.cwd(), 'dist');
 

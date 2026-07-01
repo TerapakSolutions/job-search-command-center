@@ -5,6 +5,7 @@ import TodayPage from './pages/TodayPage';
 import PipelinePage from './pages/PipelinePage';
 import ApplicationsPage from './pages/ApplicationsPage';
 import ContactsPage from './pages/ContactsPage';
+import InboundEmailsPage from './pages/InboundEmailsPage';
 import SettingsPage from './pages/SettingsPage';
 import LoginPage from './pages/LoginPage';
 import { isDemoMode } from './api/persistence';
@@ -94,6 +95,7 @@ export default function App() {
               <Route path="/pipeline" element={<PipelinePage />} />
               <Route path="/applications" element={<ApplicationsPage />} />
               <Route path="/contacts" element={<ContactsPage />} />
+              <Route path="/inbound-emails" element={<InboundEmailsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/login" element={<Navigate to="/today" replace />} />
               <Route path="/dashboard" element={<Navigate to="/today" replace />} />

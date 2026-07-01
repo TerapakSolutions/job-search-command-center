@@ -8,6 +8,7 @@ import {
   FiMessageCircle,
   FiSettings,
   FiLogOut,
+  FiInbox,
 } from 'react-icons/fi';
 import { isDemoMode } from '../api/persistence';
 import { computeReminders } from '../lib/reminders';
@@ -23,6 +24,7 @@ const navItems = [
   { to: '/pipeline', label: 'Pipeline', icon: FiColumns },
   { to: '/applications', label: 'Applications', icon: FiBriefcase },
   { to: '/contacts', label: 'Contacts', icon: FiMessageCircle },
+  { to: '/inbound-emails', label: 'Inbound Emails', icon: FiInbox },
   { to: '/settings', label: 'Settings', icon: FiSettings },
 ];
 
@@ -31,6 +33,7 @@ const pageTitles: Record<string, string> = {
   '/pipeline': 'Pipeline Board',
   '/applications': 'Applications',
   '/contacts': 'Communications',
+  '/inbound-emails': 'Inbound Emails',
   '/settings': 'Settings',
 };
 

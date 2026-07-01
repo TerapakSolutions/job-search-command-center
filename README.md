@@ -15,9 +15,11 @@ An open-source **TypeScript + React** app for managing your job search pipeline 
   - Interview within 3 days → prep reminder
   - Stale saved/applied roles → review/archive
 - **Daily action view** — "What should I do today?" with due reminders, upcoming interviews, and contact next actions
+- **AI Daily Executive Brief** — personalized daily pipeline summary with AI recommendations, recruiter email activity, follow-ups, and historical briefings (API mode)
+- **Inbound email viewer** — browse Postmark inbound recruiter emails, filter, and mark as reviewed (API mode)
 - **Settings** — export/import JSON backup, clear data, persistence mode info
 - **SQLite backend** — applications, contacts, communications, follow-up tasks, interviews, documents (REST CRUD)
-- **AI assist** — placeholder only (fit score, resume tailoring, etc. deferred)
+- **AI assist** — daily executive brief implemented; fit score, resume tailoring, etc. still deferred
 
 ## Tech stack
 
@@ -115,7 +117,7 @@ src/
   lib/            # dates, reminders logic, id helper
   store/          # useJobSearchStore (API or localStorage)
   components/     # Forms, pipeline board, modal, AI placeholder
-  pages/          # Today, Pipeline, Applications, Contacts, Settings
+  pages/          # Today, Pipeline, Applications, Contacts, Inbound Emails, Settings
 ```
 
 ## Persistence modes
@@ -179,6 +181,57 @@ Base path: `/api`
 | Follow-up tasks | `GET/POST /api/follow-up-tasks`, `GET/PUT/DELETE /api/follow-up-tasks/:id` |
 | Interviews | `GET/POST /api/interviews`, `GET/PUT/DELETE /api/interviews/:id` |
 | Documents | `GET/POST /api/documents`, `GET/PUT/DELETE /api/documents/:id` |
+| Daily briefings | `GET /api/daily-briefings/latest`, `GET /api/daily-briefings`, `GET /api/daily-briefings/:id`, `POST /api/daily-briefings/generate` |
+| Inbound emails | `GET /api/inbound-emails`, `GET /api/inbound-emails/:id`, `PATCH /api/inbound-emails/:id` |
+
+### Inbound emails (Postmark)
+
+Postmark inbound webhooks store emails in SQLite (`POST /webhooks/postmark/inbound`). The **Inbound Emails** page (`/inbound-emails`) lets authenticated users browse emails matched to their account — by their sign-in email address or sender addresses that match their contacts.
+
+| Endpoint | Auth | Description |
+|----------|------|-------------|
+| `GET /api/inbound-emails` | Session | Paginated list (newest first). Query: `limit`, `offset`, `processed`, `sender`, `subject`, `fromDate`, `toDate` |
+| `GET /api/inbound-emails/:id` | Session | Full detail including plain text and HTML body |
+| `PATCH /api/inbound-emails/:id` | Session | Mark reviewed/processed: `{ "processed": true }` |
+
+List responses return safe fields only (`id`, `subject`, `fromEmail`, `toEmail`, `receivedAt`, `processed`). Detail responses add `textBody`, `htmlBody`, and `provider`. Emails belonging to other users return `404`.
+
+Optional webhook auth env vars: `POSTMARK_WEBHOOK_USER`, `POSTMARK_WEBHOOK_PASSWORD`.
+
+### Daily executive brief
+
+Each authenticated user receives at most **one briefing per calendar day (UTC)**. Briefings aggregate pipeline stats, recruiter emails (communications + Postmark inbound), applications submitted, upcoming interviews, follow-ups, inactive applications, and rule-based + AI recommendations.
+
+| Endpoint | Auth | Description |
+|----------|------|-------------|
+| `GET /api/daily-briefings/latest` | Session | Latest briefing for current user |
+| `GET /api/daily-briefings?limit=30` | Session | Historical briefings (newest first) |
+| `GET /api/daily-briefings/:id` | Session | Single briefing by ID (user-scoped) |
+| `POST /api/daily-briefings/generate` | Session | Generate today's briefing (`{ "force": true }` to regenerate) |
+| `POST /api/cron/daily-briefings` | `CRON_SECRET` | Batch-generate for all users (external cron) |
+
+**Automated generation:** On server start, an hourly scheduler runs once per day after `DAILY_BRIEFING_HOUR_UTC` (default `6`). Set `DAILY_BRIEFING_AUTO_SCHEDULE=false` to disable. For production, prefer an external cron hitting `POST /api/cron/daily-briefings` with `Authorization: Bearer $CRON_SECRET`.
+
+**Optional env vars:**
+
+```bash
+# AI summary (OpenAI-compatible API)
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini          # optional
+OPENAI_BASE_URL=https://api.openai.com/v1  # optional
+
+# Scheduling
+DAILY_BRIEFING_AUTO_SCHEDULE=true  # set false to disable in-process scheduler
+DAILY_BRIEFING_HOUR_UTC=6
+CRON_SECRET=long-random-string     # for POST /api/cron/daily-briefings
+
+# Optional email delivery via Postmark
+DAILY_BRIEFING_EMAIL_ENABLED=true
+POSTMARK_SERVER_TOKEN=...
+POSTMARK_FROM_EMAIL=briefings@yourdomain.com
+```
+
+Without `OPENAI_API_KEY`, briefings use a deterministic rule-based summary fallback. The Today page displays the latest briefing in API mode.
 
 ## SQLite on Fly.io (cost-conscious deployment)
 
@@ -235,7 +288,7 @@ Build locally, then `pnpm build && pnpm start` — the server serves the Vite bu
 ## Roadmap (not yet implemented)
 
 - UI for communications, follow-up tasks, interviews, documents entities
-- AI fit scoring and resume/cover letter assistance
+- AI fit scoring and resume/cover letter assistance (beyond daily brief)
 - Drag-and-drop pipeline board
 - Persistent reminder dismissals
 - Updated E2E tests for new persistence layer
