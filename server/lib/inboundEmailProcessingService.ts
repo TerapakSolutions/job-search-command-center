@@ -6,6 +6,7 @@ import { classifyEmailContent } from './emailClassificationService.js';
 import { applySafeAutomationRules } from './emailProcessingAutomation.js';
 import { nowIso } from './id.js';
 import { resolveUserIdForInboundEmail } from './inboundEmailUserResolver.js';
+import { isInboundEmailDeleted } from './inboundEmailService.js';
 import type {
   InboundEmailProcessingResult,
   ProcessingStatus,
@@ -121,6 +122,19 @@ export async function processInboundEmail(
       pendingApprovals: 0,
       skipped: true,
       reason: 'not_found',
+    };
+  }
+
+  if (isInboundEmailDeleted(row)) {
+    return {
+      emailId,
+      processingStatus: row.processingStatus as ProcessingStatus,
+      processingError: null,
+      classificationRan: false,
+      automationActions: 0,
+      pendingApprovals: 0,
+      skipped: true,
+      reason: 'deleted',
     };
   }
 

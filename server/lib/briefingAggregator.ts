@@ -13,6 +13,7 @@ import type { BriefingData, BriefingPipelineStats } from './briefingTypes.js';
 import { toBriefingDate } from './briefingTypes.js';
 import { getActivityMetrics } from './activityMetrics.js';
 import { buildGoalBriefingMessages } from './activityMetricsCore.js';
+import { isInboundEmailDeleted } from './inboundEmailService.js';
 
 const ACTIVE_STATUSES = new Set([
   'saved',
@@ -147,6 +148,7 @@ export function aggregateBriefingData(
 
   const inboundEmailRows = db.select().from(inboundEmails).all();
   const matchedInboundEmails = inboundEmailRows.filter((email) => {
+    if (isInboundEmailDeleted(email)) return false;
     if (!isInWindow(email.receivedAt, start, end)) return false;
     const to = email.toEmail.toLowerCase();
     const from = email.fromEmail.toLowerCase();

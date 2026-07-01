@@ -17,6 +17,7 @@ import {
   getInboundEmailDetailForUser,
   listInboundEmailsForUser,
   markInboundEmailProcessedForUser,
+  softDeleteInboundEmailForUser,
 } from '../lib/inboundEmailService.js';
 import { processInboundEmail } from '../lib/inboundEmailProcessingService.js';
 
@@ -181,6 +182,17 @@ export function inboundEmailsRouter(db: Db): Router {
       return;
     }
     res.json(updated);
+  });
+
+  router.delete('/:id', (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const id = String(req.params.id);
+    const deleted = softDeleteInboundEmailForUser(db, userId, id);
+    if (!deleted) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    res.status(204).send();
   });
 
   router.get('/:id/automation', (req: Request, res: Response) => {

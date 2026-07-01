@@ -106,6 +106,12 @@ export async function fetchInboundEmailAuditLog(
   );
 }
 
+export async function deleteInboundEmail(id: string): Promise<void> {
+  return request<void>(`/inbound-emails/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function classifyUnprocessedInboundEmails(
   limit = 20,
 ): Promise<ClassifyUnprocessedResponse> {

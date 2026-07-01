@@ -58,6 +58,7 @@ const mockRetryInboundEmailProcessing = jest.mocked(
 const mockFetchInboundEmailAuditLog = jest.mocked(
   inboundEmailsClient.fetchInboundEmailAuditLog,
 );
+const mockDeleteInboundEmail = jest.mocked(inboundEmailsClient.deleteInboundEmail);
 
 const sampleList = {
   items: [
@@ -176,6 +177,7 @@ describe('InboundEmailsPage', () => {
         },
       ],
     });
+    mockDeleteInboundEmail.mockResolvedValue(undefined);
   });
 
   it('renders list and detail after selecting an email', async () => {
@@ -309,5 +311,28 @@ describe('InboundEmailsPage', () => {
     expect(
       await screen.findByText('No inbound emails match your filters.'),
     ).toBeTruthy();
+  });
+
+  it('deletes email after confirmation', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(
+      <MemoryRouter>
+        <InboundEmailsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('Interview invite');
+    await userEvent.click(screen.getByRole('button', { name: /recruiter@acme.com/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^Delete$/i }));
+
+    await waitFor(() => {
+      expect(mockDeleteInboundEmail).toHaveBeenCalledWith('email-1');
+    });
+    expect(confirmSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Delete this email only'),
+    );
+
+    confirmSpy.mockRestore();
   });
 });

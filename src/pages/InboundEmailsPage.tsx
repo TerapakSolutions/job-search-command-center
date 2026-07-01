@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FiCheck, FiInbox, FiMail, FiRefreshCw, FiPlay, FiUserPlus, FiBriefcase, FiTrendingUp, FiEdit3, FiList } from 'react-icons/fi';
+import { FiCheck, FiInbox, FiMail, FiRefreshCw, FiPlay, FiUserPlus, FiBriefcase, FiTrendingUp, FiEdit3, FiList, FiTrash2 } from 'react-icons/fi';
 import {
+  deleteInboundEmail,
   fetchInboundEmailAuditLog,
   fetchInboundEmailById,
   fetchInboundEmails,
@@ -72,6 +73,7 @@ export default function InboundEmailsPage() {
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [draftReply, setDraftReply] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [senderFilter, setSenderFilter] = useState('');
@@ -336,6 +338,31 @@ export default function InboundEmailsPage() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!detail) return;
+    const confirmed = window.confirm(
+      'Delete this email only? Applications, contacts, and communications will not be changed.',
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteInboundEmail(detail.id);
+      setSelectedId(null);
+      setDetail(null);
+      setAutomation(null);
+      setDraftReply(null);
+      setShowAuditLog(false);
+      setAuditLog([]);
+      await loadList();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete email');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (demoMode) {
     return (
       <div className="max-w-3xl mx-auto space-y-4">
@@ -575,6 +602,15 @@ export default function InboundEmailsPage() {
                     >
                       <FiList size={14} />
                       View audit log
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDelete()}
+                      disabled={deleting}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 text-sm border border-red-200 text-red-700 rounded-lg hover:bg-red-50 disabled:opacity-60"
+                    >
+                      <FiTrash2 size={14} />
+                      {deleting ? 'Deleting…' : 'Delete'}
                     </button>
                     {!detail.processed && (
                       <button

@@ -317,4 +317,52 @@ describe('inbound emails API', () => {
 
     await close();
   });
+
+  it('soft deletes an email and removes it from the list', async () => {
+    const db = createTestDb();
+    const userId = seedTestUser(db, { email: 'seeker@example.com' });
+
+    const deleteId = seedInboundEmail(db, {
+      id: 'email-delete-me',
+      toEmail: 'seeker@example.com',
+      subject: 'Delete me',
+    });
+    seedInboundEmail(db, {
+      id: 'email-keep',
+      toEmail: 'seeker@example.com',
+      subject: 'Keep me',
+    });
+
+    const { baseUrl, close } = await startServer(db);
+    const cookie = `session=${encodeURIComponent(createSessionToken(userId))}`;
+
+    const deleteRes = await fetch(`${baseUrl}/api/inbound-emails/${deleteId}`, {
+      method: 'DELETE',
+      headers: { Cookie: cookie },
+    });
+    expect(deleteRes.status).toBe(204);
+
+    const listRes = await fetch(`${baseUrl}/api/inbound-emails`, {
+      headers: { Cookie: cookie },
+    });
+    const list = (await listRes.json()) as { total: number; items: { id: string }[] };
+    expect(list.total).toBe(1);
+    expect(list.items[0].id).toBe('email-keep');
+
+    const detailRes = await fetch(`${baseUrl}/api/inbound-emails/${deleteId}`, {
+      headers: { Cookie: cookie },
+    });
+    expect(detailRes.status).toBe(404);
+
+    const repeatDeleteRes = await fetch(
+      `${baseUrl}/api/inbound-emails/${deleteId}`,
+      {
+        method: 'DELETE',
+        headers: { Cookie: cookie },
+      },
+    );
+    expect(repeatDeleteRes.status).toBe(404);
+
+    await close();
+  });
 });

@@ -26,6 +26,7 @@ import { buildPipelineUpdateProposal } from './emailPipelineAutomation.js';
 import {
   getUserEmailContext,
   inboundEmailBelongsToUser,
+  isInboundEmailDeleted,
 } from './inboundEmailService.js';
 import { createId, nowIso } from './id.js';
 
@@ -45,7 +46,11 @@ function getEmailForUser(db: Db, userId: string, emailId: string) {
     .limit(1)
     .all();
   const row = rows[0];
-  if (!row || !inboundEmailBelongsToUser(row, userEmail, contactEmails)) {
+  if (
+    !row ||
+    isInboundEmailDeleted(row) ||
+    !inboundEmailBelongsToUser(row, userEmail, contactEmails)
+  ) {
     return null;
   }
   return row;

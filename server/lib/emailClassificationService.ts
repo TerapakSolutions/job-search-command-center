@@ -10,6 +10,7 @@ import { nowIso } from './id.js';
 import {
   getUserEmailContext,
   inboundEmailBelongsToUser,
+  isInboundEmailDeleted,
 } from './inboundEmailService.js';
 
 export type {
@@ -80,7 +81,11 @@ export async function classifyInboundEmailForUser(
     .limit(1)
     .all();
   const row = rows[0];
-  if (!row || !inboundEmailBelongsToUser(row, userEmail, contactEmails)) {
+  if (
+    !row ||
+    isInboundEmailDeleted(row) ||
+    !inboundEmailBelongsToUser(row, userEmail, contactEmails)
+  ) {
     return null;
   }
 
@@ -144,6 +149,7 @@ export async function classifyUnprocessedInboundEmailsForUser(
     .from(inboundEmails)
     .all()
     .filter((row) => inboundEmailBelongsToUser(row, userEmail, contactEmails))
+    .filter((row) => !isInboundEmailDeleted(row))
     .filter((row) => !row.processedAt)
     .sort(
       (a, b) =>

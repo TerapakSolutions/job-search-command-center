@@ -146,6 +146,7 @@ export const inboundEmails = sqliteTable('inbound_emails', {
   processingError: text('processing_error'),
   lastProcessedAt: text('last_processed_at'),
   processingAttempts: integer('processing_attempts').notNull().default(0),
+  deletedAt: text('deleted_at'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });

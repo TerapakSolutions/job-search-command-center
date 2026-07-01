@@ -4,11 +4,13 @@ import {
   inboundEmailBelongsToUser,
   listInboundEmailsForUser,
   markInboundEmailProcessedForUser,
+  softDeleteInboundEmailForUser,
 } from './inboundEmailService.js';
 import { createTestDb, seedInboundEmail, seedTestUser } from './testDb.js';
-import { contacts } from '../db/schema.js';
+import { contacts, inboundEmails } from '../db/schema.js';
 import { createId, nowIso } from './id.js';
 import { seedApplication } from './testDb.js';
+import { eq } from 'drizzle-orm';
 
 describe('inboundEmailBelongsToUser', () => {
   it('matches user email in to or from and contact emails', () => {
@@ -124,5 +126,52 @@ describe('inbound email service', () => {
     const result = listInboundEmailsForUser(db, userId);
     expect(result.total).toBe(1);
     expect(result.items[0].fromEmail).toBe('jobs@corp.com');
+  });
+
+  it('soft deletes email and excludes it from lists and detail', () => {
+    const db = createTestDb();
+    const userId = seedTestUser(db, { email: 'seeker@example.com' });
+
+    const emailId = seedInboundEmail(db, {
+      id: 'to-delete',
+      toEmail: 'seeker@example.com',
+    });
+    seedInboundEmail(db, {
+      id: 'keep',
+      toEmail: 'seeker@example.com',
+    });
+
+    expect(softDeleteInboundEmailForUser(db, userId, emailId)).toBe(true);
+
+    const list = listInboundEmailsForUser(db, userId);
+    expect(list.total).toBe(1);
+    expect(list.items[0].id).toBe('keep');
+
+    expect(getInboundEmailDetailForUser(db, userId, emailId)).toBeNull();
+    expect(softDeleteInboundEmailForUser(db, userId, emailId)).toBe(false);
+
+    const row = db
+      .select()
+      .from(inboundEmails)
+      .where(eq(inboundEmails.id, emailId))
+      .all()[0];
+    expect(row.deletedAt).toBeTruthy();
+  });
+
+  it('does not soft delete emails belonging to other users', () => {
+    const db = createTestDb();
+    seedTestUser(db, { email: 'seeker@example.com' });
+    const otherUserId = seedTestUser(db, {
+      id: 'user-other',
+      email: 'other@example.com',
+    });
+
+    const emailId = seedInboundEmail(db, {
+      id: 'other-email',
+      toEmail: 'seeker@example.com',
+    });
+
+    expect(softDeleteInboundEmailForUser(db, otherUserId, emailId)).toBe(false);
+    expect(getInboundEmailDetailForUser(db, otherUserId, emailId)).toBeNull();
   });
 });

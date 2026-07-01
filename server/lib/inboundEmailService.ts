@@ -72,6 +72,12 @@ export function getUserEmailContext(db: Db, userId: string) {
   return { userEmail, contactEmails };
 }
 
+export function isInboundEmailDeleted(
+  email: Pick<typeof inboundEmails.$inferSelect, 'deletedAt'>,
+): boolean {
+  return email.deletedAt != null;
+}
+
 export function inboundEmailBelongsToUser(
   email: typeof inboundEmails.$inferSelect,
   userEmail: string,
@@ -184,6 +190,7 @@ export function listInboundEmailsForUser(
     .select()
     .from(inboundEmails)
     .all()
+    .filter((row) => !isInboundEmailDeleted(row))
     .filter((row) => inboundEmailBelongsToUser(row, userEmail, contactEmails))
     .filter((row) => matchesFilters(row, options))
     .sort(
@@ -210,7 +217,11 @@ export function getInboundEmailDetailForUser(
     .limit(1)
     .all();
   const row = rows[0];
-  if (!row || !inboundEmailBelongsToUser(row, userEmail, contactEmails)) {
+  if (
+    !row ||
+    isInboundEmailDeleted(row) ||
+    !inboundEmailBelongsToUser(row, userEmail, contactEmails)
+  ) {
     return null;
   }
 
@@ -247,7 +258,11 @@ export function markInboundEmailProcessedForUser(
     .limit(1)
     .all();
   const row = rows[0];
-  if (!row || !inboundEmailBelongsToUser(row, userEmail, contactEmails)) {
+  if (
+    !row ||
+    isInboundEmailDeleted(row) ||
+    !inboundEmailBelongsToUser(row, userEmail, contactEmails)
+  ) {
     return null;
   }
 
@@ -258,4 +273,34 @@ export function markInboundEmailProcessedForUser(
     .run();
 
   return toListItem(db, { ...row, processed, updatedAt: timestamp });
+}
+
+export function softDeleteInboundEmailForUser(
+  db: Db,
+  userId: string,
+  id: string,
+): boolean {
+  const { userEmail, contactEmails } = getUserEmailContext(db, userId);
+  const rows = db
+    .select()
+    .from(inboundEmails)
+    .where(eq(inboundEmails.id, id))
+    .limit(1)
+    .all();
+  const row = rows[0];
+  if (
+    !row ||
+    isInboundEmailDeleted(row) ||
+    !inboundEmailBelongsToUser(row, userEmail, contactEmails)
+  ) {
+    return false;
+  }
+
+  const timestamp = nowIso();
+  db.update(inboundEmails)
+    .set({ deletedAt: timestamp, updatedAt: timestamp })
+    .where(eq(inboundEmails.id, id))
+    .run();
+
+  return true;
 }
