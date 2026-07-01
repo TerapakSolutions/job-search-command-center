@@ -30,22 +30,8 @@ jest.mock('../api/emailAutomationClient', () => ({
       },
       requiresManualSelection: false,
     },
-    nextActions: [
-      {
-        type: 'reply',
-        label: 'Reply to recruiter',
-        description: 'Send a timely response',
-        priority: 'high',
-      },
-    ],
-    pipelineProposal: {
-      applicationId: 'app-1',
-      currentStatus: 'applied',
-      proposedStatus: 'interviewing',
-      confidence: 90,
-      requiresApproval: false,
-      reason: 'Interview request',
-    },
+    nextActions: [],
+    pipelineProposal: null,
     canCreateApplication: false,
     duplicateApplicationId: null,
   }),
@@ -65,9 +51,12 @@ const mockFetchInboundEmailById = jest.mocked(inboundEmailsClient.fetchInboundEm
 const mockMarkInboundEmailProcessed = jest.mocked(
   inboundEmailsClient.markInboundEmailProcessed,
 );
-const mockClassifyInboundEmail = jest.mocked(inboundEmailsClient.classifyInboundEmail);
-const mockClassifyUnprocessedInboundEmails = jest.mocked(
-  inboundEmailsClient.classifyUnprocessedInboundEmails,
+const mockReanalyzeInboundEmail = jest.mocked(inboundEmailsClient.reanalyzeInboundEmail);
+const mockRetryInboundEmailProcessing = jest.mocked(
+  inboundEmailsClient.retryInboundEmailProcessing,
+);
+const mockFetchInboundEmailAuditLog = jest.mocked(
+  inboundEmailsClient.fetchInboundEmailAuditLog,
 );
 
 const sampleList = {
@@ -84,6 +73,10 @@ const sampleList = {
       suggestedAction: 'Reply to schedule the interview',
       requiresResponse: true,
       processedAt: '2026-07-01T10:00:00.000Z',
+      processingStatus: 'processed' as const,
+      processingError: null,
+      lastProcessedAt: '2026-07-01T10:00:00.000Z',
+      needsApproval: false,
     },
   ],
   total: 1,
@@ -107,25 +100,22 @@ describe('InboundEmailsPage', () => {
       interviewDetected: true,
       interviewDatetime: null,
       aiSummary: 'Recruiter wants to schedule an interview.',
+      processingStartedAt: '2026-07-01T10:00:00.000Z',
+      processingCompletedAt: '2026-07-01T10:00:00.000Z',
+      processingAttempts: 1,
     });
     mockMarkInboundEmailProcessed.mockResolvedValue({
       ...sampleList.items[0],
       processed: true,
     });
-    mockClassifyInboundEmail.mockResolvedValue({
-      classification: {
-        classification: 'Interview Request',
-        classificationConfidence: 90,
-        companyName: 'Acme Corp',
-        positionTitle: 'Engineer',
-        recruiterName: 'Jane',
-        requiresResponse: true,
-        suggestedAction: 'Reply to schedule the interview',
-        actionDueAt: null,
-        interviewDetected: true,
-        interviewDatetime: null,
-        aiSummary: 'Recruiter wants to schedule an interview.',
-        processedAt: '2026-07-01T10:00:00.000Z',
+    mockReanalyzeInboundEmail.mockResolvedValue({
+      result: {
+        emailId: 'email-1',
+        processingStatus: 'processed',
+        processingError: null,
+        classificationRan: true,
+        automationActions: 1,
+        pendingApprovals: 0,
       },
       email: {
         ...sampleList.items[0],
@@ -139,12 +129,52 @@ describe('InboundEmailsPage', () => {
         interviewDetected: true,
         interviewDatetime: null,
         aiSummary: 'Recruiter wants to schedule an interview.',
+        processingStartedAt: '2026-07-01T10:00:00.000Z',
+        processingCompletedAt: '2026-07-01T10:00:00.000Z',
+        processingAttempts: 2,
       },
     });
-    mockClassifyUnprocessedInboundEmails.mockResolvedValue({
-      classified: 1,
-      failed: 0,
-      skipped: 0,
+    mockRetryInboundEmailProcessing.mockResolvedValue({
+      result: {
+        emailId: 'email-1',
+        processingStatus: 'processed',
+        processingError: null,
+        classificationRan: true,
+        automationActions: 0,
+        pendingApprovals: 0,
+      },
+      email: {
+        ...sampleList.items[0],
+        processingStatus: 'processed',
+        processingError: null,
+        provider: 'postmark',
+        textBody: 'Hello candidate',
+        htmlBody: null,
+        companyName: 'Acme Corp',
+        positionTitle: 'Engineer',
+        recruiterName: 'Jane',
+        actionDueAt: null,
+        interviewDetected: true,
+        interviewDatetime: null,
+        aiSummary: 'Recruiter wants to schedule an interview.',
+        processingStartedAt: '2026-07-01T10:00:00.000Z',
+        processingCompletedAt: '2026-07-01T10:00:00.000Z',
+        processingAttempts: 2,
+      },
+    });
+    mockFetchInboundEmailAuditLog.mockResolvedValue({
+      items: [
+        {
+          id: 'audit-1',
+          inboundEmailId: 'email-1',
+          actionType: 'auto_process',
+          confidence: null,
+          status: 'completed',
+          details: {},
+          resultingChanges: {},
+          createdAt: '2026-07-01T10:00:00.000Z',
+        },
+      ],
     });
   });
 
@@ -156,7 +186,7 @@ describe('InboundEmailsPage', () => {
     );
 
     expect(await screen.findByText('Interview invite')).toBeTruthy();
-    expect(screen.getByText('New')).toBeTruthy();
+    expect(screen.getByText('Processed')).toBeTruthy();
 
     await userEvent.click(screen.getByRole('button', { name: /recruiter@acme.com/i }));
 
@@ -164,8 +194,8 @@ describe('InboundEmailsPage', () => {
       expect(mockFetchInboundEmailById).toHaveBeenCalledWith('email-1');
     });
     expect(await screen.findByText('Hello candidate')).toBeTruthy();
-    expect(screen.getByText('Interview Request')).toBeTruthy();
-    expect(screen.getByText(/Suggested action:/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Analyze$/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /Re-analyze/i })).toBeTruthy();
   });
 
   it('marks email as reviewed', async () => {
@@ -187,7 +217,7 @@ describe('InboundEmailsPage', () => {
     expect(screen.queryByRole('button', { name: /Mark reviewed/i })).toBeNull();
   });
 
-  it('re-runs classification from the analyze button', async () => {
+  it('re-runs processing from the re-analyze button', async () => {
     render(
       <MemoryRouter>
         <InboundEmailsPage />
@@ -201,8 +231,65 @@ describe('InboundEmailsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /Re-analyze/i }));
 
     await waitFor(() => {
-      expect(mockClassifyInboundEmail).toHaveBeenCalledWith('email-1', { force: true });
+      expect(mockReanalyzeInboundEmail).toHaveBeenCalledWith('email-1');
     });
+  });
+
+  it('shows retry and error for failed processing', async () => {
+    const failedItem = {
+      ...sampleList.items[0],
+      processingStatus: 'failed' as const,
+      processingError: 'Classification failed',
+    };
+    mockFetchInboundEmails.mockResolvedValue({
+      ...sampleList,
+      items: [failedItem],
+    });
+    mockFetchInboundEmailById.mockResolvedValue({
+      ...failedItem,
+      provider: 'postmark',
+      textBody: 'Hello candidate',
+      htmlBody: null,
+      companyName: 'Acme Corp',
+      positionTitle: 'Engineer',
+      recruiterName: 'Jane',
+      actionDueAt: null,
+      interviewDetected: true,
+      interviewDatetime: null,
+      aiSummary: 'Recruiter wants to schedule an interview.',
+      processingStartedAt: '2026-07-01T10:00:00.000Z',
+      processingCompletedAt: '2026-07-01T10:00:00.000Z',
+      processingAttempts: 1,
+    });
+
+    render(
+      <MemoryRouter>
+        <InboundEmailsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('Interview invite');
+    await userEvent.click(screen.getByRole('button', { name: /recruiter@acme.com/i }));
+
+    expect(await screen.findByText(/Processing error:/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Retry failed processing/i })).toBeTruthy();
+  });
+
+  it('loads audit log from secondary action', async () => {
+    render(
+      <MemoryRouter>
+        <InboundEmailsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('Interview invite');
+    await userEvent.click(screen.getByRole('button', { name: /recruiter@acme.com/i }));
+    await userEvent.click(screen.getByRole('button', { name: /View audit log/i }));
+
+    await waitFor(() => {
+      expect(mockFetchInboundEmailAuditLog).toHaveBeenCalledWith('email-1');
+    });
+    expect(await screen.findByText('auto_process')).toBeTruthy();
   });
 
   it('shows empty state when no emails', async () => {

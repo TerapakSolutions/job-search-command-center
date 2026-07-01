@@ -51,7 +51,7 @@ function getEmailForUser(db: Db, userId: string, emailId: string) {
   return row;
 }
 
-function recordAuditLog(
+export function recordEmailAutomationAudit(
   db: Db,
   input: {
     userId: string;
@@ -79,6 +79,61 @@ function recordAuditLog(
     })
     .run();
   return id;
+}
+
+function recordAuditLog(
+  db: Db,
+  input: Parameters<typeof recordEmailAutomationAudit>[1],
+): string {
+  return recordEmailAutomationAudit(db, input);
+}
+
+export function hasCompletedAutomationAction(
+  db: Db,
+  inboundEmailId: string,
+  actionType: AutomationActionType,
+): boolean {
+  const rows = db
+    .select()
+    .from(emailAutomationAuditLog)
+    .where(eq(emailAutomationAuditLog.inboundEmailId, inboundEmailId))
+    .all();
+  return rows.some(
+    (row) => row.actionType === actionType && row.status === 'completed',
+  );
+}
+
+export function queueProcessingApproval(
+  db: Db,
+  input: {
+    userId: string;
+    inboundEmailId: string;
+    approvalType: string;
+    applicationId?: string | null;
+    proposedStatus: string;
+    currentStatus?: string | null;
+    confidence: number;
+    reason: string;
+  },
+): string {
+  const approvalId = createId();
+  const timestamp = nowIso();
+  db.insert(emailAutomationPendingApprovals)
+    .values({
+      id: approvalId,
+      userId: input.userId,
+      inboundEmailId: input.inboundEmailId,
+      approvalType: input.approvalType,
+      applicationId: input.applicationId ?? null,
+      proposedStatus: input.proposedStatus,
+      currentStatus: input.currentStatus ?? null,
+      confidence: input.confidence,
+      reason: input.reason,
+      status: 'pending',
+      createdAt: timestamp,
+    })
+    .run();
+  return approvalId;
 }
 
 function extractTextBody(payloadJson: string): string {
@@ -600,6 +655,38 @@ export function runEmailAutomation(
   });
 
   return { analysis, results };
+}
+
+export function listAuditLogForInboundEmail(
+  db: Db,
+  userId: string,
+  inboundEmailId: string,
+  options: { limit?: number } = {},
+): AuditLogEntry[] {
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 100);
+  const rows = db
+    .select()
+    .from(emailAutomationAuditLog)
+    .where(
+      and(
+        eq(emailAutomationAuditLog.userId, userId),
+        eq(emailAutomationAuditLog.inboundEmailId, inboundEmailId),
+      ),
+    )
+    .orderBy(desc(emailAutomationAuditLog.createdAt))
+    .limit(limit)
+    .all();
+
+  return rows.map((row) => ({
+    id: row.id,
+    inboundEmailId: row.inboundEmailId,
+    actionType: row.actionType as AutomationActionType,
+    confidence: row.confidence,
+    status: row.status,
+    details: JSON.parse(row.detailsJson) as Record<string, unknown>,
+    resultingChanges: JSON.parse(row.resultingChangesJson) as Record<string, unknown>,
+    createdAt: row.createdAt,
+  }));
 }
 
 export function listAuditLogForUser(

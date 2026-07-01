@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FiCheck, FiInbox, FiMail, FiRefreshCw, FiZap, FiPlay, FiUserPlus, FiBriefcase, FiTrendingUp, FiEdit3 } from 'react-icons/fi';
+import { FiCheck, FiInbox, FiMail, FiRefreshCw, FiPlay, FiUserPlus, FiBriefcase, FiTrendingUp, FiEdit3, FiList } from 'react-icons/fi';
 import {
-  classifyInboundEmail,
-  classifyUnprocessedInboundEmails,
+  fetchInboundEmailAuditLog,
   fetchInboundEmailById,
   fetchInboundEmails,
   markInboundEmailProcessed,
+  reanalyzeInboundEmail,
+  retryInboundEmailProcessing,
 } from '../api/inboundEmailsClient';
 import {
   createApplicationFromEmail,
@@ -21,11 +22,16 @@ import {
   classificationBadgeClass,
   classificationPriorityLabel,
 } from '../lib/inboundEmailClassification';
+import {
+  processingStatusBadgeClass,
+  processingStatusLabel,
+} from '../lib/inboundEmailProcessing';
 import type {
   InboundEmailDetail,
   InboundEmailListItem,
 } from '../types/inboundEmail';
 import type {
+  AuditLogEntry,
   AutomationActionResult,
   EmailAutomationAnalysis,
 } from '../types/emailAutomation';
@@ -54,8 +60,11 @@ export default function InboundEmailsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [marking, setMarking] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [batchAnalyzing, setBatchAnalyzing] = useState(false);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [showAuditLog, setShowAuditLog] = useState(false);
+  const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
   const [showHtml, setShowHtml] = useState(false);
   const [automation, setAutomation] = useState<EmailAutomationAnalysis | null>(null);
   const [automationLoading, setAutomationLoading] = useState(false);
@@ -123,6 +132,21 @@ export default function InboundEmailsPage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!detail || demoMode) return;
+    if (
+      detail.processingStatus !== 'processing' &&
+      detail.processingStatus !== 'unprocessed'
+    ) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void loadDetail(detail.id);
+      void loadList();
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [detail, demoMode, loadDetail, loadList]);
+
   const loadAutomation = useCallback(async (id: string) => {
     setAutomationLoading(true);
     try {
@@ -143,6 +167,8 @@ export default function InboundEmailsPage() {
 
   const handleSelect = (id: string) => {
     setSelectedId(id);
+    setShowAuditLog(false);
+    setAuditLog([]);
     void loadDetail(id);
     void loadAutomation(id);
   };
@@ -175,25 +201,60 @@ export default function InboundEmailsPage() {
               suggestedAction: email.suggestedAction,
               requiresResponse: email.requiresResponse,
               processedAt: email.processedAt,
+              processingStatus: email.processingStatus,
+              processingError: email.processingError,
+              lastProcessedAt: email.lastProcessedAt,
+              needsApproval: email.needsApproval,
             }
           : item,
       ),
     );
   };
 
-  const handleAnalyze = async (force = false) => {
+  const handleReanalyze = async () => {
     if (!detail) return;
-    setAnalyzing(true);
+    setReanalyzing(true);
     setError(null);
     try {
-      const result = await classifyInboundEmail(detail.id, { force });
+      const result = await reanalyzeInboundEmail(detail.id);
       setDetail(result.email);
       syncEmailInList(result.email);
       await loadAutomation(detail.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to analyze email');
+      setError(err instanceof Error ? err.message : 'Failed to re-analyze email');
     } finally {
-      setAnalyzing(false);
+      setReanalyzing(false);
+    }
+  };
+
+  const handleRetryProcessing = async () => {
+    if (!detail) return;
+    setRetrying(true);
+    setError(null);
+    try {
+      const result = await retryInboundEmailProcessing(detail.id);
+      setDetail(result.email);
+      syncEmailInList(result.email);
+      await loadAutomation(detail.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to retry processing');
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  const handleViewAuditLog = async () => {
+    if (!detail) return;
+    setAuditLoading(true);
+    setShowAuditLog(true);
+    setError(null);
+    try {
+      const result = await fetchInboundEmailAuditLog(detail.id);
+      setAuditLog(result.items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load audit log');
+    } finally {
+      setAuditLoading(false);
     }
   };
 
@@ -272,22 +333,6 @@ export default function InboundEmailsPage() {
       setError(err instanceof Error ? err.message : 'Failed to draft reply');
     } finally {
       setAutomationRunning(false);
-    }
-  };
-
-  const handleAnalyzeUnprocessed = async () => {
-    setBatchAnalyzing(true);
-    setError(null);
-    try {
-      await classifyUnprocessedInboundEmails();
-      await loadList();
-      if (selectedId) {
-        await loadDetail(selectedId);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to analyze emails');
-    } finally {
-      setBatchAnalyzing(false);
     }
   };
 
@@ -391,12 +436,12 @@ export default function InboundEmailsPage() {
             </span>
             <button
               type="button"
-              onClick={() => void handleAnalyzeUnprocessed()}
-              disabled={batchAnalyzing || loading}
+              onClick={() => void loadList()}
+              disabled={loading}
               className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs border rounded-lg hover:bg-gray-50 disabled:opacity-60"
             >
-              <FiZap size={12} />
-              {batchAnalyzing ? 'Analyzing…' : 'Analyze new'}
+              <FiRefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+              Refresh
             </button>
           </div>
 
@@ -452,6 +497,11 @@ export default function InboundEmailsPage() {
                           {email.classification}
                         </span>
                       )}
+                      <span
+                        className={`inline-block mt-2 ml-1 text-xs px-2 py-0.5 rounded-full border ${processingStatusBadgeClass(email.processingStatus, email.needsApproval)}`}
+                      >
+                        {processingStatusLabel(email.processingStatus, email.needsApproval)}
+                      </span>
                     </button>
                   </li>
                 );
@@ -484,18 +534,47 @@ export default function InboundEmailsPage() {
                     </p>
                   </div>
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-end gap-2 shrink-0">
+                    <span
+                      className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border ${processingStatusBadgeClass(detail.processingStatus, detail.needsApproval)}`}
+                    >
+                      {(detail.processingStatus === 'processing' ||
+                        reanalyzing ||
+                        retrying) && (
+                        <FiRefreshCw className="animate-spin" size={14} />
+                      )}
+                      {processingStatusLabel(detail.processingStatus, detail.needsApproval)}
+                    </span>
+                    {(detail.processingStatus === 'processed' ||
+                      detail.processingStatus === 'failed') && (
+                      <button
+                        type="button"
+                        onClick={() => void handleReanalyze()}
+                        disabled={reanalyzing}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50 disabled:opacity-60"
+                      >
+                        <FiRefreshCw size={14} className={reanalyzing ? 'animate-spin' : ''} />
+                        Re-analyze
+                      </button>
+                    )}
+                    {detail.processingStatus === 'failed' && (
+                      <button
+                        type="button"
+                        onClick={() => void handleRetryProcessing()}
+                        disabled={retrying}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 text-sm border border-red-200 text-red-700 rounded-lg hover:bg-red-50 disabled:opacity-60"
+                      >
+                        <FiRefreshCw size={14} className={retrying ? 'animate-spin' : ''} />
+                        Retry failed processing
+                      </button>
+                    )}
                     <button
                       type="button"
-                      onClick={() => void handleAnalyze(Boolean(detail.processedAt))}
-                      disabled={analyzing}
+                      onClick={() => void handleViewAuditLog()}
+                      disabled={auditLoading}
                       className="inline-flex items-center gap-2 px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50 disabled:opacity-60"
                     >
-                      {analyzing ? (
-                        <FiRefreshCw className="animate-spin" size={14} />
-                      ) : (
-                        <FiZap size={14} />
-                      )}
-                      {detail.processedAt ? 'Re-analyze' : 'Analyze'}
+                      <FiList size={14} />
+                      View audit log
                     </button>
                     {!detail.processed && (
                       <button
@@ -516,6 +595,38 @@ export default function InboundEmailsPage() {
                     )}
                   </div>
                 </div>
+
+                {detail.processingError && (
+                  <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    Processing error: {detail.processingError}
+                  </div>
+                )}
+
+                {showAuditLog && (
+                  <div className="rounded-lg border bg-white p-4 space-y-2">
+                    <h4 className="text-sm font-semibold text-gray-900">Audit log</h4>
+                    {auditLoading ? (
+                      <p className="text-sm text-gray-500">Loading audit log…</p>
+                    ) : auditLog.length === 0 ? (
+                      <p className="text-sm text-gray-500">No audit entries yet.</p>
+                    ) : (
+                      <ul className="space-y-2 max-h-48 overflow-y-auto">
+                        {auditLog.map((entry) => (
+                          <li
+                            key={entry.id}
+                            className="text-xs border rounded p-2 text-gray-700"
+                          >
+                            <span className="font-medium">{entry.actionType}</span>
+                            {' · '}
+                            {entry.status}
+                            {' · '}
+                            {formatReceivedAt(entry.createdAt)}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
 
                 {(detail.classification || detail.aiSummary || detail.suggestedAction) && (
                   <div className="rounded-lg border bg-gray-50 p-4 space-y-3">
@@ -584,7 +695,7 @@ export default function InboundEmailsPage() {
                   </div>
                 )}
 
-                {detail.processedAt && (
+                {(detail.processingStatus === 'processed' || detail.processedAt) && (
                   <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-4 space-y-4">
                     <div className="flex items-center justify-between gap-2">
                       <h4 className="text-sm font-semibold text-gray-900">
@@ -749,7 +860,7 @@ export default function InboundEmailsPage() {
                       </>
                     ) : (
                       <p className="text-xs text-gray-500">
-                        Analyze this email to enable automation.
+                        Processing complete — review automation suggestions below.
                       </p>
                     )}
                   </div>

@@ -6,6 +6,7 @@ import {
   saveInboundEmail,
   type PostmarkInboundPayload,
 } from '../lib/postmarkInbound.js';
+import { scheduleInboundEmailProcessing } from '../lib/inboundEmailProcessingQueue.js';
 import { postmarkWebhookAuth } from '../lib/postmarkWebhookAuth.js';
 
 export function postmarkInboundRouter(db: Db): Router {
@@ -26,6 +27,7 @@ export function postmarkInboundRouter(db: Db): Router {
 
       try {
         const id = await saveInboundEmail(db, payload);
+        scheduleInboundEmailProcessing(db, id);
         res.status(200).json({ ok: true, id });
       } catch (err) {
         console.error('[postmark/inbound] failed to save inbound email', err);

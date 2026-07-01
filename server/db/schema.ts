@@ -140,6 +140,12 @@ export const inboundEmails = sqliteTable('inbound_emails', {
   interviewDatetime: text('interview_datetime'),
   aiSummary: text('ai_summary'),
   processedAt: text('processed_at'),
+  processingStatus: text('processing_status').notNull().default('unprocessed'),
+  processingStartedAt: text('processing_started_at'),
+  processingCompletedAt: text('processing_completed_at'),
+  processingError: text('processing_error'),
+  lastProcessedAt: text('last_processed_at'),
+  processingAttempts: integer('processing_attempts').notNull().default(0),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });

@@ -5,6 +5,7 @@ import {
   createApplicationFromEmail,
   createContactFromEmail,
   draftReplyFromEmail,
+  listAuditLogForInboundEmail,
   runEmailAutomation,
   updatePipelineFromEmail,
 } from '../lib/emailAutomationService.js';
@@ -17,6 +18,7 @@ import {
   listInboundEmailsForUser,
   markInboundEmailProcessedForUser,
 } from '../lib/inboundEmailService.js';
+import { processInboundEmail } from '../lib/inboundEmailProcessingService.js';
 
 function parseLimit(value: unknown, defaultLimit = 50): number {
   const n = Number(value);
@@ -70,6 +72,66 @@ export function inboundEmailsRouter(db: Db): Router {
       console.error('[inbound-emails] batch classification failed', err);
       res.status(500).json({ error: 'Classification batch failed' });
     }
+  });
+
+  router.post('/:id/reanalyze', async (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const id = String(req.params.id);
+    const email = getInboundEmailDetailForUser(db, userId, id);
+    if (!email) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+
+    try {
+      const result = await processInboundEmail(db, id, {
+        userId,
+        reanalysis: true,
+        manual: true,
+      });
+      const updated = getInboundEmailDetailForUser(db, userId, id);
+      res.json({ result, email: updated });
+    } catch (err) {
+      console.error('[inbound-emails] reanalysis failed', err);
+      res.status(500).json({ error: 'Re-analysis failed' });
+    }
+  });
+
+  router.post('/:id/retry-processing', async (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const id = String(req.params.id);
+    const email = getInboundEmailDetailForUser(db, userId, id);
+    if (!email) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+
+    try {
+      const result = await processInboundEmail(db, id, {
+        userId,
+        reanalysis: email.processingStatus === 'processed',
+        manual: true,
+      });
+      const updated = getInboundEmailDetailForUser(db, userId, id);
+      res.json({ result, email: updated });
+    } catch (err) {
+      console.error('[inbound-emails] retry processing failed', err);
+      res.status(500).json({ error: 'Retry processing failed' });
+    }
+  });
+
+  router.get('/:id/audit', (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const id = String(req.params.id);
+    const email = getInboundEmailDetailForUser(db, userId, id);
+    if (!email) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    const items = listAuditLogForInboundEmail(db, userId, id, {
+      limit: parseLimit(req.query.limit, 50),
+    });
+    res.json({ items });
   });
 
   router.get('/:id', (req: Request, res: Response) => {

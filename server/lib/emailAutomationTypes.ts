@@ -19,6 +19,8 @@ export const AUTOMATION_ACTION_TYPES = [
   'draft_reply',
   'record_communication',
   'run_automation',
+  'auto_process',
+  'reanalyze',
 ] as const;
 
 export type AutomationActionType = (typeof AUTOMATION_ACTION_TYPES)[number];

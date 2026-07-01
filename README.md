@@ -188,21 +188,26 @@ Base path: `/api`
 
 ### Inbound emails (Postmark)
 
-Postmark inbound webhooks store emails in SQLite (`POST /webhooks/postmark/inbound`). The webhook path only persists the raw payload and returns quickly — **no AI runs on ingest**. Classification happens later via the API or the **Analyze** buttons in the UI.
+Postmark inbound webhooks store emails in SQLite (`POST /webhooks/postmark/inbound`). The webhook path persists the raw payload, returns **200 immediately**, and schedules **background processing** (classification + safe automation). Manual **Re-analyze** and **Retry failed processing** remain available in the UI.
 
-The **Inbound Emails** page (`/inbound-emails`) lets authenticated users browse emails matched to their account — by their sign-in email address or sender addresses that match their contacts. Each email can be classified into types such as **Interview Request**, **Application Confirmation**, **Rejection**, and more, with extracted fields (company, role, recruiter), an AI summary, and a suggested next action.
+The **Inbound Emails** page (`/inbound-emails`) lets authenticated users browse emails matched to their account — by their sign-in email address or sender addresses that match their contacts. New emails are classified automatically after ingest. Each email shows a processing state (**Processing…**, **Processed**, **Failed**, **Needs approval**), extracted fields (company, role, recruiter), an AI summary, and a suggested next action.
 
 | Endpoint | Auth | Description |
 |----------|------|-------------|
 | `GET /api/inbound-emails` | Session | Paginated list (newest first). Query: `limit`, `offset`, `processed`, `sender`, `subject`, `fromDate`, `toDate` |
 | `GET /api/inbound-emails/:id` | Session | Full detail including plain text, HTML body, and classification fields |
 | `PATCH /api/inbound-emails/:id` | Session | Mark reviewed/processed: `{ "processed": true }` |
-| `POST /api/inbound-emails/:id/classify` | Session | Run AI/rule-based classification. Body: `{ "force": true }` to re-analyze |
+| `POST /api/inbound-emails/:id/classify` | Session | Run AI/rule-based classification only. Body: `{ "force": true }` to re-classify |
+| `POST /api/inbound-emails/:id/reanalyze` | Session | Re-run full processing (classification + safe automation, duplicate-safe) |
+| `POST /api/inbound-emails/:id/retry-processing` | Session | Retry failed automatic processing |
+| `GET /api/inbound-emails/:id/audit` | Session | Audit log entries for this email |
 | `POST /api/inbound-emails/classify-unprocessed` | Session | Classify up to `limit` (default 20, max 50) emails without `processed_at` |
 
-List responses include classification summary fields (`classification`, `classificationConfidence`, `suggestedAction`, `requiresResponse`, `processedAt`). Detail responses add full extraction (`companyName`, `positionTitle`, `recruiterName`, `actionDueAt`, `interviewDetected`, `interviewDatetime`, `aiSummary`). Emails belonging to other users return `404`.
+List responses include classification summary fields (`classification`, `classificationConfidence`, `suggestedAction`, `requiresResponse`, `processedAt`) and processing fields (`processingStatus`, `processingError`, `lastProcessedAt`, `needsApproval`). Detail responses add full extraction (`companyName`, `positionTitle`, `recruiterName`, `actionDueAt`, `interviewDetected`, `interviewDatetime`, `aiSummary`) plus processing timestamps (`processingStartedAt`, `processingCompletedAt`, `processingAttempts`). Emails belonging to other users return `404`.
 
-**Classification behavior:** When `OPENAI_API_KEY` is set, the app calls an OpenAI-compatible chat API with structured JSON output. If the LLM is unavailable or fails, a deterministic keyword-based fallback classifies common patterns (e.g. “thank you for applying” → Application Confirmation). Classification failures never block email ingestion.
+**Classification behavior:** When `OPENAI_API_KEY` is set, the app calls an OpenAI-compatible chat API with structured JSON output. If the LLM is unavailable or fails, a deterministic keyword-based fallback classifies common patterns (e.g. “thank you for applying” → Application Confirmation). Classification failures mark the email `processingStatus: failed` but never block email ingestion.
+
+**Automatic processing:** After persist, a background worker classifies the email, matches applications, applies **safe** automation rules, and queues **risky** actions for approval. Safe auto-actions include LinkedIn application confirmations, high-confidence rejections, application-confirmation timeline events, and recruiter outreach contact/suggestion handling. Risky actions (ambiguous matches, low confidence, offers, salary negotiation, interview scheduling, outbound email, protected pipeline statuses) go to the pending-approval queue with audit records.
 
 Optional webhook auth env vars: `POSTMARK_WEBHOOK_USER`, `POSTMARK_WEBHOOK_PASSWORD`.
 
@@ -212,9 +217,9 @@ After an inbound email is classified, the automation engine can match it to exis
 
 **Workflow:**
 
-1. Classify the email (`POST /api/inbound-emails/:id/classify` or **Analyze** in the UI)
+1. Email arrives via Postmark webhook and is processed automatically in the background
 2. Fetch automation analysis (`GET /api/inbound-emails/:id/automation`) — returns application matches with confidence scores, suggested next actions, and pipeline update proposals
-3. Execute one-click actions or run full automation (`POST /api/inbound-emails/:id/automation/run`)
+3. Execute one-click actions or run full automation (`POST /api/inbound-emails/:id/automation/run`), or use **Re-analyze** / **Retry failed processing** when needed
 
 **Matching:** Applications are scored by sender email (contact match), company name, role title, and recruiter name. Confidence ≥ 70% with a clear top match is auto-selected; ambiguous matches require manual selection in the UI.
 

@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import type { Db } from '../db/index.js';
-import { contacts, inboundEmails, users } from '../db/schema.js';
+import { contacts, emailAutomationPendingApprovals, inboundEmails, users } from '../db/schema.js';
+import type { ProcessingStatus } from './inboundEmailProcessingTypes.js';
 import { nowIso } from './id.js';
 
 export interface InboundEmailListItem {
@@ -15,6 +16,10 @@ export interface InboundEmailListItem {
   suggestedAction: string | null;
   requiresResponse: boolean | null;
   processedAt: string | null;
+  processingStatus: ProcessingStatus;
+  processingError: string | null;
+  lastProcessedAt: string | null;
+  needsApproval: boolean;
 }
 
 export interface InboundEmailDetail extends InboundEmailListItem {
@@ -28,6 +33,9 @@ export interface InboundEmailDetail extends InboundEmailListItem {
   interviewDetected: boolean | null;
   interviewDatetime: string | null;
   aiSummary: string | null;
+  processingStartedAt: string | null;
+  processingCompletedAt: string | null;
+  processingAttempts: number;
 }
 
 export interface ListInboundEmailsOptions {
@@ -78,7 +86,24 @@ export function inboundEmailBelongsToUser(
   return false;
 }
 
-function toListItem(row: typeof inboundEmails.$inferSelect): InboundEmailListItem {
+function emailNeedsApproval(
+  db: Db,
+  emailId: string,
+  processingStatus: string,
+): boolean {
+  if (processingStatus !== 'processed') return false;
+  const rows = db
+    .select()
+    .from(emailAutomationPendingApprovals)
+    .where(eq(emailAutomationPendingApprovals.inboundEmailId, emailId))
+    .all();
+  return rows.some((row) => row.status === 'pending');
+}
+
+function toListItem(
+  db: Db,
+  row: typeof inboundEmails.$inferSelect,
+): InboundEmailListItem {
   return {
     id: row.id,
     subject: row.subject,
@@ -91,6 +116,10 @@ function toListItem(row: typeof inboundEmails.$inferSelect): InboundEmailListIte
     suggestedAction: row.suggestedAction,
     requiresResponse: row.requiresResponse,
     processedAt: row.processedAt,
+    processingStatus: row.processingStatus as ProcessingStatus,
+    processingError: row.processingError,
+    lastProcessedAt: row.lastProcessedAt,
+    needsApproval: emailNeedsApproval(db, row.id, row.processingStatus),
   };
 }
 
@@ -163,7 +192,7 @@ export function listInboundEmailsForUser(
     );
 
   const total = matched.length;
-  const items = matched.slice(offset, offset + limit).map(toListItem);
+  const items = matched.slice(offset, offset + limit).map((row) => toListItem(db, row));
 
   return { items, total, limit, offset };
 }
@@ -187,7 +216,7 @@ export function getInboundEmailDetailForUser(
 
   const { textBody, htmlBody } = extractBodies(row.payload);
   return {
-    ...toListItem(row),
+    ...toListItem(db, row),
     provider: row.provider,
     textBody,
     htmlBody,
@@ -198,6 +227,9 @@ export function getInboundEmailDetailForUser(
     interviewDetected: row.interviewDetected,
     interviewDatetime: row.interviewDatetime,
     aiSummary: row.aiSummary,
+    processingStartedAt: row.processingStartedAt,
+    processingCompletedAt: row.processingCompletedAt,
+    processingAttempts: row.processingAttempts,
   };
 }
 
@@ -225,5 +257,5 @@ export function markInboundEmailProcessedForUser(
     .where(eq(inboundEmails.id, id))
     .run();
 
-  return toListItem({ ...row, processed, updatedAt: timestamp });
+  return toListItem(db, { ...row, processed, updatedAt: timestamp });
 }

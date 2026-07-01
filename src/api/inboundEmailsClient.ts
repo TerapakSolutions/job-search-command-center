@@ -1,3 +1,4 @@
+import type { AuditLogEntry } from '../types/emailAutomation';
 import type {
   ClassifyInboundEmailResponse,
   ClassifyUnprocessedResponse,
@@ -5,6 +6,7 @@ import type {
   InboundEmailFilters,
   InboundEmailListItem,
   InboundEmailListResponse,
+  InboundEmailProcessingResponse,
 } from '../types/inboundEmail';
 import { getApiBaseUrl } from './persistence';
 
@@ -72,6 +74,36 @@ export async function classifyInboundEmail(
     method: 'POST',
     body: JSON.stringify({ force: options.force ?? false }),
   });
+}
+
+export async function reanalyzeInboundEmail(
+  id: string,
+): Promise<InboundEmailProcessingResponse> {
+  return request<InboundEmailProcessingResponse>(`/inbound-emails/${id}/reanalyze`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+export async function retryInboundEmailProcessing(
+  id: string,
+): Promise<InboundEmailProcessingResponse> {
+  return request<InboundEmailProcessingResponse>(
+    `/inbound-emails/${id}/retry-processing`,
+    {
+      method: 'POST',
+      body: JSON.stringify({}),
+    },
+  );
+}
+
+export async function fetchInboundEmailAuditLog(
+  id: string,
+  limit = 50,
+): Promise<{ items: AuditLogEntry[] }> {
+  return request<{ items: AuditLogEntry[] }>(
+    `/inbound-emails/${id}/audit?limit=${limit}`,
+  );
 }
 
 export async function classifyUnprocessedInboundEmails(
