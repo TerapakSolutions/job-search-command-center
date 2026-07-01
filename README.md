@@ -17,6 +17,7 @@ An open-source **TypeScript + React** app for managing your job search pipeline 
 - **Daily action view** — "What should I do today?" with due reminders, upcoming interviews, and contact next actions
 - **AI Daily Executive Brief** — personalized daily pipeline summary with AI recommendations, recruiter email activity, follow-ups, and historical briefings (API mode)
 - **Inbound email viewer** — browse Postmark inbound recruiter emails, AI classification, suggested actions, filter, and mark as reviewed (API mode)
+- **Intelligent pipeline automation** — match emails to applications, auto-create applications/contacts, pipeline status updates, draft replies, audit history, and pending approvals (API mode)
 - **Settings** — export/import JSON backup, clear data, persistence mode info
 - **SQLite backend** — applications, contacts, communications, follow-up tasks, interviews, documents (REST CRUD)
 - **AI assist** — daily executive brief implemented; fit score, resume tailoring, etc. still deferred
@@ -183,6 +184,7 @@ Base path: `/api`
 | Documents | `GET/POST /api/documents`, `GET/PUT/DELETE /api/documents/:id` |
 | Daily briefings | `GET /api/daily-briefings/latest`, `GET /api/daily-briefings`, `GET /api/daily-briefings/:id`, `POST /api/daily-briefings/generate` |
 | Inbound emails | `GET /api/inbound-emails`, `GET /api/inbound-emails/:id`, `PATCH /api/inbound-emails/:id`, `POST /api/inbound-emails/:id/classify`, `POST /api/inbound-emails/classify-unprocessed` |
+| Email automation | `GET /api/inbound-emails/:id/automation`, `POST /api/inbound-emails/:id/automation/*`, `GET /api/email-automation/dashboard`, `GET /api/email-automation/audit`, `GET /api/email-automation/pending-approvals` |
 
 ### Inbound emails (Postmark)
 
@@ -203,6 +205,49 @@ List responses include classification summary fields (`classification`, `classif
 **Classification behavior:** When `OPENAI_API_KEY` is set, the app calls an OpenAI-compatible chat API with structured JSON output. If the LLM is unavailable or fails, a deterministic keyword-based fallback classifies common patterns (e.g. “thank you for applying” → Application Confirmation). Classification failures never block email ingestion.
 
 Optional webhook auth env vars: `POSTMARK_WEBHOOK_USER`, `POSTMARK_WEBHOOK_PASSWORD`.
+
+### Intelligent pipeline automation
+
+After an inbound email is classified, the automation engine can match it to existing applications, create new applications/contacts, update pipeline status, and generate draft replies — with full audit history.
+
+**Workflow:**
+
+1. Classify the email (`POST /api/inbound-emails/:id/classify` or **Analyze** in the UI)
+2. Fetch automation analysis (`GET /api/inbound-emails/:id/automation`) — returns application matches with confidence scores, suggested next actions, and pipeline update proposals
+3. Execute one-click actions or run full automation (`POST /api/inbound-emails/:id/automation/run`)
+
+**Matching:** Applications are scored by sender email (contact match), company name, role title, and recruiter name. Confidence ≥ 70% with a clear top match is auto-selected; ambiguous matches require manual selection in the UI.
+
+**Pipeline status mapping:**
+
+| Email classification | Proposed status |
+|---------------------|-----------------|
+| Application Confirmation | `applied` |
+| Recruiter Outreach | `recruiter_screen` |
+| Interview Request / Scheduling | `interviewing` |
+| Offer | `offer` |
+| Rejection | `rejected` |
+
+**Confidence thresholds:**
+
+- Pipeline auto-update: ≥ 75% classification confidence (below this → pending approval)
+- Match auto-select: ≥ 70% with ≥ 15% gap to second match
+
+| Endpoint | Auth | Description |
+|----------|------|-------------|
+| `GET /api/inbound-emails/:id/automation` | Session | Match results, next actions, pipeline proposal |
+| `POST /api/inbound-emails/:id/automation/create-application` | Session | Create application from email fields |
+| `POST /api/inbound-emails/:id/automation/create-contact` | Session | Body: `{ "applicationId": "..." }` — create/merge contact + log communication |
+| `POST /api/inbound-emails/:id/automation/update-pipeline` | Session | Body: `{ "applicationId": "...", "force": true }` — update status or queue approval |
+| `POST /api/inbound-emails/:id/automation/draft-reply` | Session | Generate template reply draft |
+| `POST /api/inbound-emails/:id/automation/run` | Session | Run create contact + pipeline update (and create application if no match) |
+| `GET /api/email-automation/dashboard` | Session | Recent AI actions, pending approvals, attention applications |
+| `GET /api/email-automation/audit?limit=20` | Session | Audit log of all AI-generated actions |
+| `GET /api/email-automation/pending-approvals` | Session | Low-confidence pipeline updates awaiting approval |
+| `POST /api/email-automation/pending-approvals/:id/approve` | Session | Approve pending pipeline update |
+| `POST /api/email-automation/pending-approvals/:id/reject` | Session | Reject pending pipeline update |
+
+The **Today** dashboard shows pending approvals and recent AI actions in API mode. The **Inbound Emails** detail view shows matches, confidence scores, suggested actions, and one-click automation buttons.
 
 ### Daily executive brief
 

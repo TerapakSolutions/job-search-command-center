@@ -6,6 +6,55 @@ import InboundEmailsPage from './InboundEmailsPage';
 import * as inboundEmailsClient from '../api/inboundEmailsClient';
 
 jest.mock('../api/inboundEmailsClient');
+jest.mock('../api/emailAutomationClient', () => ({
+  fetchEmailAutomationAnalysis: jest.fn().mockResolvedValue({
+    emailId: 'email-1',
+    matches: {
+      matches: [
+        {
+          applicationId: 'app-1',
+          company: 'Acme Corp',
+          roleTitle: 'Engineer',
+          status: 'applied',
+          confidence: 85,
+          matchReasons: ['Company match'],
+        },
+      ],
+      bestMatch: {
+        applicationId: 'app-1',
+        company: 'Acme Corp',
+        roleTitle: 'Engineer',
+        status: 'applied',
+        confidence: 85,
+        matchReasons: ['Company match'],
+      },
+      requiresManualSelection: false,
+    },
+    nextActions: [
+      {
+        type: 'reply',
+        label: 'Reply to recruiter',
+        description: 'Send a timely response',
+        priority: 'high',
+      },
+    ],
+    pipelineProposal: {
+      applicationId: 'app-1',
+      currentStatus: 'applied',
+      proposedStatus: 'interviewing',
+      confidence: 90,
+      requiresApproval: false,
+      reason: 'Interview request',
+    },
+    canCreateApplication: false,
+    duplicateApplicationId: null,
+  }),
+  runEmailAutomation: jest.fn(),
+  createApplicationFromEmail: jest.fn(),
+  createContactFromEmail: jest.fn(),
+  updatePipelineFromEmail: jest.fn(),
+  draftReplyFromEmail: jest.fn(),
+}));
 jest.mock('../api/persistence', () => ({
   isDemoMode: () => false,
   getApiBaseUrl: () => '/api',

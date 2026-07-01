@@ -19,6 +19,7 @@ import {
   dailyBriefingsRouter,
 } from './routes/dailyBriefings.js';
 import { inboundEmailsRouter } from './routes/inboundEmails.js';
+import { emailAutomationRouter } from './routes/emailAutomation.js';
 
 export function createApp(db: Db) {
   const app = express();
@@ -50,6 +51,7 @@ export function createApp(db: Db) {
   app.use('/api/documents', documentsRouter(db));
   app.use('/api/daily-briefings', dailyBriefingsRouter(db));
   app.use('/api/inbound-emails', inboundEmailsRouter(db));
+  app.use('/api/email-automation', emailAutomationRouter(db));
 
   const distPath = path.join(process.cwd(), 'dist');
 

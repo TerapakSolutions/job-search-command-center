@@ -6,6 +6,7 @@ import { useJobSearchStore } from '../store/useJobSearchStore';
 import { REMINDER_TYPE_LABELS, type Reminder } from '../types/reminder';
 import { formatDate } from '../lib/dates';
 import DailyBriefingPanel from '../components/DailyBriefingPanel';
+import AutomationDashboardPanel from '../components/AutomationDashboardPanel';
 
 const priorityStyles = {
   high: 'border-red-200 bg-red-50',
@@ -141,6 +142,8 @@ export default function TodayPage() {
       </section>
 
       <DailyBriefingPanel />
+
+      <AutomationDashboardPanel />
     </div>
   );
 }

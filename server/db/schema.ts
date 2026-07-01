@@ -144,6 +144,46 @@ export const inboundEmails = sqliteTable('inbound_emails', {
   updatedAt: text('updated_at').notNull(),
 });
 
+export const emailAutomationAuditLog = sqliteTable('email_automation_audit_log', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  inboundEmailId: text('inbound_email_id')
+    .notNull()
+    .references(() => inboundEmails.id, { onDelete: 'cascade' }),
+  actionType: text('action_type').notNull(),
+  confidence: integer('confidence'),
+  status: text('status').notNull().default('completed'),
+  detailsJson: text('details_json').notNull().default('{}'),
+  resultingChangesJson: text('resulting_changes_json').notNull().default('{}'),
+  createdAt: text('created_at').notNull(),
+});
+
+export const emailAutomationPendingApprovals = sqliteTable(
+  'email_automation_pending_approvals',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    inboundEmailId: text('inbound_email_id')
+      .notNull()
+      .references(() => inboundEmails.id, { onDelete: 'cascade' }),
+    approvalType: text('approval_type').notNull(),
+    applicationId: text('application_id').references(() => applications.id, {
+      onDelete: 'cascade',
+    }),
+    proposedStatus: text('proposed_status').notNull(),
+    currentStatus: text('current_status'),
+    confidence: integer('confidence').notNull(),
+    reason: text('reason').notNull().default(''),
+    status: text('status').notNull().default('pending'),
+    createdAt: text('created_at').notNull(),
+    resolvedAt: text('resolved_at'),
+  },
+);
+
 export const dailyBriefings = sqliteTable(
   'daily_briefings',
   {

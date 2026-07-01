@@ -1,6 +1,14 @@
 import { Router, type Request, type Response } from 'express';
 import type { Db } from '../db/index.js';
 import {
+  analyzeEmailAutomation,
+  createApplicationFromEmail,
+  createContactFromEmail,
+  draftReplyFromEmail,
+  runEmailAutomation,
+  updatePipelineFromEmail,
+} from '../lib/emailAutomationService.js';
+import {
   classifyInboundEmailForUser,
   classifyUnprocessedInboundEmailsForUser,
 } from '../lib/emailClassificationService.js';
@@ -111,6 +119,92 @@ export function inboundEmailsRouter(db: Db): Router {
       return;
     }
     res.json(updated);
+  });
+
+  router.get('/:id/automation', (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const id = String(req.params.id);
+    const analysis = analyzeEmailAutomation(db, userId, id);
+    if (!analysis) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    res.json(analysis);
+  });
+
+  router.post('/:id/automation/create-application', (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const id = String(req.params.id);
+    const result = createApplicationFromEmail(db, userId, id);
+    if (!result) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    res.status(result.success ? 201 : 409).json(result);
+  });
+
+  router.post('/:id/automation/create-contact', (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const id = String(req.params.id);
+    const applicationId = req.body?.applicationId;
+    if (typeof applicationId !== 'string' || !applicationId) {
+      res.status(400).json({ error: 'applicationId is required' });
+      return;
+    }
+    const result = createContactFromEmail(db, userId, id, applicationId);
+    if (!result) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    res.json(result);
+  });
+
+  router.post('/:id/automation/update-pipeline', (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const id = String(req.params.id);
+    const applicationId = req.body?.applicationId;
+    if (typeof applicationId !== 'string' || !applicationId) {
+      res.status(400).json({ error: 'applicationId is required' });
+      return;
+    }
+    const result = updatePipelineFromEmail(db, userId, id, {
+      applicationId,
+      status: typeof req.body?.status === 'string' ? req.body.status : undefined,
+      force: req.body?.force === true,
+    });
+    if (!result) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    res.json(result);
+  });
+
+  router.post('/:id/automation/draft-reply', (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const id = String(req.params.id);
+    const result = draftReplyFromEmail(db, userId, id);
+    if (!result) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    res.json(result);
+  });
+
+  router.post('/:id/automation/run', (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const id = String(req.params.id);
+    const result = runEmailAutomation(db, userId, id, {
+      applicationId:
+        typeof req.body?.applicationId === 'string'
+          ? req.body.applicationId
+          : undefined,
+      force: req.body?.force === true,
+    });
+    if (!result) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    res.json(result);
   });
 
   return router;
