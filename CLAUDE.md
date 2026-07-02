@@ -32,7 +32,14 @@ pnpm cypress:open / pnpm cypress:run
 
 **Run a single test:** `pnpm jest path/to/file.test.ts` (or `pnpm jest -t "test name"`). `pnpm test` always collects coverage; call `jest` directly to skip it.
 
-**`scripts/verify.sh`** runs lint + test + build — the pre-commit gate. `scripts/safe-run.sh` only allows an allowlist of commands (test/lint/typecheck/build/prettier/node/tsx).
+**Quality gate — `scripts/verify.sh`** (pre-commit gate; `set -euo pipefail`, so it **stops on the first failure**). Runs, in order: **`pnpm typecheck` → `pnpm lint` → `pnpm test` → `pnpm build`**, so a type error fails fast before the (slower) Jest suite runs. What each step covers:
+- **typecheck** — both TS projects (frontend `tsconfig.json` + `tsconfig.server.json`).
+- **lint** — ESLint on `src/` **only**; `server/` is **not** linted (see gotcha below).
+- **test** — the full Jest suite (`src/` + `server/`), with coverage.
+- **build** — `pnpm build` runs its own `pnpm typecheck` again, then `vite build` → `dist/` (the leading typecheck just moves failures earlier; build behavior is unchanged).
+- **Not run by this gate:** Cypress/e2e (separate `pnpm cypress:*` scripts).
+
+`scripts/safe-run.sh` only allows an allowlist of commands (test/lint/typecheck/build/prettier/node/tsx).
 
 ## Critical gotchas
 
