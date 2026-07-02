@@ -22,6 +22,32 @@ export function isApplicationConfirmationText(text: string): boolean {
   );
 }
 
+export function isUnknownRole(roleTitle: string | null | undefined): boolean {
+  const trimmed = roleTitle?.trim();
+  if (!trimmed) return true;
+  const lower = trimmed.toLowerCase();
+  return (
+    lower === 'unknown role' ||
+    lower === 'application not identified yet' ||
+    lower === 'role from email'
+  );
+}
+
+export function isLikelyDomainCompany(company: string): boolean {
+  const trimmed = company.trim();
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(trimmed) && !trimmed.includes(' ');
+}
+
+export function hasIdentifiedCompanyAndRole(input: {
+  companyName: string | null | undefined;
+  originalCompany?: string | null | undefined;
+  positionTitle: string | null | undefined;
+}): boolean {
+  const company = input.companyName?.trim() || input.originalCompany?.trim();
+  if (!company || isLikelyDomainCompany(company)) return false;
+  return !isUnknownRole(input.positionTitle);
+}
+
 export function isNoReplyOrApplicationConfirmation(input: {
   fromEmail: string;
   classification: string | null;
@@ -107,6 +133,9 @@ export function isMeaningfulContactNextAction(nextAction: string): boolean {
   return !(
     lower.includes('no action needed') ||
     lower.includes('no action required') ||
+    lower.includes('application received') ||
+    lower.includes('wait response') ||
+    lower.includes('wait for response') ||
     lower === 'none' ||
     lower === 'n/a'
   );

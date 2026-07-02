@@ -5,6 +5,9 @@ export function isMeaningfulContactNextAction(nextAction: string): boolean {
   return !(
     lower.includes('no action needed') ||
     lower.includes('no action required') ||
+    lower.includes('application received') ||
+    lower.includes('wait response') ||
+    lower.includes('wait for response') ||
     lower === 'none' ||
     lower === 'n/a'
   );

@@ -63,7 +63,6 @@ export default function GoalsProgressPanel() {
       return;
     }
 
-    setLoading(true);
     setError(null);
     try {
       const data = await fetchActivityMetrics();
@@ -73,7 +72,7 @@ export default function GoalsProgressPanel() {
     } finally {
       setLoading(false);
     }
-  }, [applications, demoMode]);
+  }, [demoMode]);
 
   useEffect(() => {
     void load();
@@ -88,7 +87,7 @@ export default function GoalsProgressPanel() {
     setMetrics(computeLocalActivityMetrics(applications, goals));
   }, [applications, demoMode]);
 
-  if (loading) {
+  if (loading && !metrics) {
     return (
       <section className="bg-white border rounded-lg p-5">
         <p className="text-sm text-gray-500">Loading goal progress…</p>

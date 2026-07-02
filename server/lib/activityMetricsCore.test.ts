@@ -73,4 +73,23 @@ describe('activityMetricsCore', () => {
     expect(messages[0]).toContain('You applied to 2 jobs today');
     expect(messages[0]).toContain('Your goal is 5');
   });
+
+  it('does not count saved applications without dateApplied', () => {
+    const metrics = computeActivityMetrics(
+      [
+        {
+          dateApplied: null,
+          createdAt: '2026-07-01T10:00:00.000Z',
+          status: 'saved',
+        },
+        {
+          dateApplied: '2026-07-01',
+          createdAt: '2026-07-01T10:00:00.000Z',
+          status: 'applied',
+        },
+      ],
+      DEFAULT_JOB_SEARCH_GOALS,
+    );
+    expect(metrics.applicationsToday).toBe(1);
+  });
 });

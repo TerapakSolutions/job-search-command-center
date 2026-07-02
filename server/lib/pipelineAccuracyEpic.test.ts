@@ -1,7 +1,10 @@
 /** @jest-environment node */
 import { createTestDb, seedInboundEmail, seedTestUser } from './testDb.js';
 import { applySafeAutomationRules } from './emailProcessingAutomation.js';
-import { createApplicationFromEmail } from './emailAutomationService.js';
+import {
+  createApplicationFromEmail,
+  listPendingApprovalsForUser,
+} from './emailAutomationService.js';
 import { getActivityMetrics } from './activityMetrics.js';
 import { processInboundEmail } from './inboundEmailProcessingService.js';
 import { ProcessingTimelineBuilder } from './processingTimeline.js';
@@ -170,5 +173,83 @@ Thank you for your application to PwC.`,
     const { skipSummary, results } = applySafeAutomationRules(db, userId, emailId);
     expect(skipSummary).toMatch(/Automation skipped: no-reply\/application confirmation/i);
     expect(results.some((r) => r.actionType === 'create_application' && r.success)).toBe(true);
+  });
+
+  it('queues approval instead of creating junk application when company/role missing', () => {
+    const db = createTestDb();
+    const userId = seedTestUser(db);
+    const emailId = seedInboundEmail(db, {
+      id: 'email-unidentified',
+      fromEmail: 'steve@terapak.com',
+      classification: 'Application Confirmation',
+      classificationConfidence: 90,
+      companyName: 'terapak.com',
+      positionTitle: 'Unknown role',
+      suggestedAction: 'No action needed — application received',
+      processedAt: '2026-07-01T10:00:00.000Z',
+      payload: JSON.stringify({
+        TextBody: 'Thank you for your application',
+      }),
+    });
+
+    const { results, pendingApprovals } = applySafeAutomationRules(db, userId, emailId);
+    expect(results.some((r) => r.actionType === 'create_application' && r.success)).toBe(
+      false,
+    );
+    expect(pendingApprovals).toBeGreaterThan(0);
+    expect(db.select().from(applications).all()).toHaveLength(0);
+
+    const pending = listPendingApprovalsForUser(db, userId);
+    expect(
+      pending.some(
+        (p) =>
+          p.approvalType === 'no_matching_application' &&
+          p.stopReason.includes('insufficient company role extraction'),
+      ),
+    ).toBe(true);
+  });
+
+  it('skips duplicate application creation for repeated confirmations', () => {
+    const db = createTestDb();
+    const userId = seedTestUser(db);
+    db.insert(applications)
+      .values({
+        id: 'app-existing-pwc',
+        userId,
+        company: 'PwC',
+        roleTitle: 'Engineer',
+        jobUrl: '',
+        workLocationType: 'remote',
+        location: '',
+        salaryMin: null,
+        salaryMax: null,
+        dateApplied: '2026-07-01',
+        status: 'applied',
+        notes: '',
+        interviewDate: null,
+        createdAt: '2026-07-01T10:00:00.000Z',
+        updatedAt: '2026-07-01T10:00:00.000Z',
+      })
+      .run();
+
+    const emailId = seedInboundEmail(db, {
+      id: 'email-dup-confirm',
+      fromEmail: 'noreply@myworkday.com',
+      classification: 'Application Confirmation',
+      classificationConfidence: 90,
+      companyName: 'PwC',
+      positionTitle: 'Engineer',
+      suggestedAction: 'No action needed — application received',
+      processedAt: '2026-07-01T12:00:00.000Z',
+      payload: JSON.stringify({
+        TextBody: 'Thank you for your application to PwC',
+      }),
+    });
+
+    const { results } = applySafeAutomationRules(db, userId, emailId);
+    expect(results.some((r) => r.actionType === 'create_application' && r.success)).toBe(
+      false,
+    );
+    expect(db.select().from(applications).all()).toHaveLength(1);
   });
 });

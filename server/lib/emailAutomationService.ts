@@ -23,7 +23,7 @@ import type {
 } from './emailAutomationTypes.js';
 import type { AutomationActionType } from './emailAutomationTypes.js';
 import { buildPipelineUpdateProposal } from './emailPipelineAutomation.js';
-import { contactRoleFallback, isMeaningfulContactNextAction } from './emailAutomationMessages.js';
+import { contactRoleFallback, hasIdentifiedCompanyAndRole, isMeaningfulContactNextAction } from './emailAutomationMessages.js';
 import {
   approvalReasonFromLegacyRow,
   buildApprovalReason,
@@ -221,7 +221,12 @@ export function analyzeEmailAutomation(
   const canCreateApplication =
     CREATE_APPLICATION_CLASSIFICATIONS.has(row.classification ?? '') &&
     !matches.bestMatch &&
-    !duplicateApplicationId;
+    !duplicateApplicationId &&
+    hasIdentifiedCompanyAndRole({
+      companyName: row.companyName,
+      originalCompany: row.originalCompany,
+      positionTitle: row.positionTitle,
+    });
 
   let pipelineProposal = null;
   const targetAppId =
@@ -273,6 +278,35 @@ export function createApplicationFromEmail(
   const row = getEmailForUser(db, userId, emailId);
   if (!row) return null;
 
+  if (
+    !options.applicationId &&
+    !hasIdentifiedCompanyAndRole({
+      companyName: row.companyName,
+      originalCompany: row.originalCompany,
+      positionTitle: row.positionTitle,
+    })
+  ) {
+    return {
+      success: false,
+      actionType: 'create_application',
+      confidence: row.classificationConfidence,
+      auditLogId: recordAuditLog(db, {
+        userId,
+        inboundEmailId: emailId,
+        actionType: 'create_application',
+        confidence: row.classificationConfidence,
+        status: 'rejected',
+        details: { reason: 'insufficient_company_role_extraction' },
+      }),
+      changes: {},
+      message: formatAutomationActionMessage({
+        actionType: 'create_application',
+        success: false,
+        detail: 'company and role must be identified',
+      }),
+    };
+  }
+
   const duplicateId = findDuplicateApplication(
     db,
     userId,
@@ -314,8 +348,6 @@ export function createApplicationFromEmail(
   const company =
     row.companyName?.trim() ||
     row.originalCompany?.trim() ||
-    row.originalSenderEmail?.split('@')[1]?.split('.')[0] ||
-    row.fromEmail.split('@')[1]?.split('.')[0] ||
     'Unknown';
   const roleTitle = contactRoleFallback(row.positionTitle);
   const status = initialStatusFromClassification(row.classification);
@@ -403,6 +435,11 @@ export function createContactFromEmail(
   const timestamp = nowIso();
   let contactId: string;
   let merged = false;
+  const resolvedNextAction =
+    row.classification === 'Application Confirmation' ||
+    !isMeaningfulContactNextAction(row.suggestedAction ?? '')
+      ? ''
+      : (row.suggestedAction ?? '');
 
   if (existing) {
     contactId = existing.id;
@@ -415,8 +452,8 @@ export function createContactFromEmail(
         messageNotes: row.aiSummary
           ? `${existing.messageNotes}\n[${row.receivedAt.slice(0, 10)}] ${row.aiSummary}`.trim()
           : existing.messageNotes,
-        nextAction: isMeaningfulContactNextAction(row.suggestedAction ?? '')
-          ? (row.suggestedAction ?? existing.nextAction)
+        nextAction: isMeaningfulContactNextAction(resolvedNextAction)
+          ? resolvedNextAction
           : existing.nextAction,
         updatedAt: timestamp,
       })
@@ -446,9 +483,7 @@ export function createContactFromEmail(
         source: row.fromEmail.includes('linkedin') ? 'linkedin' : 'email',
         lastContactDate: row.receivedAt.slice(0, 10),
         messageNotes: row.aiSummary ?? '',
-        nextAction: isMeaningfulContactNextAction(row.suggestedAction ?? '')
-          ? (row.suggestedAction ?? '')
-          : '',
+        nextAction: resolvedNextAction,
         createdAt: timestamp,
         updatedAt: timestamp,
       })
@@ -696,13 +731,16 @@ export function runEmailAutomation(
     if (createResult) {
       results.push(createResult);
       if (createResult.success && createResult.changes.applicationId) {
-        const contactResult = createContactFromEmail(
-          db,
-          userId,
-          emailId,
-          String(createResult.changes.applicationId),
-        );
-        if (contactResult) results.push(contactResult);
+        const emailRow = getEmailForUser(db, userId, emailId);
+        if (emailRow?.classification !== 'Application Confirmation') {
+          const contactResult = createContactFromEmail(
+            db,
+            userId,
+            emailId,
+            String(createResult.changes.applicationId),
+          );
+          if (contactResult) results.push(contactResult);
+        }
 
         const pipelineResult = updatePipelineFromEmail(db, userId, emailId, {
           applicationId: String(createResult.changes.applicationId),

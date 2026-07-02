@@ -16,6 +16,7 @@ import type { EmailAutomationAnalysis } from './emailAutomationTypes.js';
 import {
   formatApprovalReason,
   formatPipelineApprovalLabel,
+  hasIdentifiedCompanyAndRole,
   isNoReplyOrApplicationConfirmation,
 } from './emailAutomationMessages.js';
 import { formatAutomationActionMessage } from './automationOutcomeMessages.js';
@@ -193,17 +194,56 @@ export function applySafeAutomationRules(
         });
       }
     } else if (!analysis.duplicateApplicationId) {
-      const createResult = createApplicationFromEmail(db, userId, emailId);
-      if (createResult) {
-        results.push(createResult);
-        if (createResult.success && createResult.changes.applicationId) {
-          const pipelineResult = updatePipelineFromEmail(db, userId, emailId, {
-            applicationId: String(createResult.changes.applicationId),
-            status: 'applied',
-            force: true,
-          });
-          if (pipelineResult) results.push(pipelineResult);
+      if (
+        hasIdentifiedCompanyAndRole({
+          companyName: row.companyName,
+          originalCompany: row.originalCompany,
+          positionTitle: row.positionTitle,
+        })
+      ) {
+        const createResult = createApplicationFromEmail(db, userId, emailId);
+        if (createResult) {
+          results.push(createResult);
+          if (createResult.success && createResult.changes.applicationId) {
+            const pipelineResult = updatePipelineFromEmail(db, userId, emailId, {
+              applicationId: String(createResult.changes.applicationId),
+              status: 'applied',
+              force: true,
+            });
+            if (pipelineResult) results.push(pipelineResult);
+          }
         }
+      } else {
+        const approvalId = queueProcessingApproval(db, {
+          userId,
+          inboundEmailId: emailId,
+          approvalType: 'create_application_suggestion',
+          proposedStatus: 'applied',
+          confidence: row.classificationConfidence ?? 50,
+          reason: 'insufficient_company_role_extraction',
+          reasonCodes: ['insufficient_company_role_extraction', 'no_application_match'],
+          suggestedAction:
+            'Identify the company and role from this confirmation before creating an application',
+        });
+        pendingApprovals += 1;
+        approvalMessages.push(approvalTypeLabel('no_matching_application'));
+        recordEmailAutomationAudit(db, {
+          userId,
+          inboundEmailId: emailId,
+          actionType: 'create_application',
+          confidence: row.classificationConfidence,
+          status: 'pending',
+          details: {
+            pendingApprovalId: approvalId,
+            type: 'create_application_suggestion',
+            reasonCode: 'insufficient_company_role_extraction',
+            suggestedAction:
+              'Identify the company and role from this confirmation before creating an application',
+          },
+        });
+        skipReasons.push(
+          'Skipped application creation: company and role not identified',
+        );
       }
     } else {
       skipReasons.push('Skipped application creation: duplicate found');
@@ -216,7 +256,13 @@ export function applySafeAutomationRules(
         force: true,
       });
       if (pipelineResult) results.push(pipelineResult);
-    } else {
+    } else if (
+      hasIdentifiedCompanyAndRole({
+        companyName: row.companyName,
+        originalCompany: row.originalCompany,
+        positionTitle: row.positionTitle,
+      })
+    ) {
       const createResult = createApplicationFromEmail(db, userId, emailId);
       if (createResult) {
         results.push(createResult);
@@ -229,6 +275,10 @@ export function applySafeAutomationRules(
           if (pipelineResult) results.push(pipelineResult);
         }
       }
+    } else {
+      skipReasons.push(
+        'Skipped application creation: company and role not identified',
+      );
     }
   }
 

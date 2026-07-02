@@ -35,39 +35,40 @@ export default function TodayPage() {
   );
   const [metricsLoading, setMetricsLoading] = useState(false);
 
-  const loadMetrics = useCallback(async () => {
-    setMetricsLoading(true);
-    if (demoMode) {
-      const stored = localStorage.getItem('job-search-goals');
-      const goals = stored
-        ? (JSON.parse(stored) as typeof DEFAULT_JOB_SEARCH_GOALS)
-        : DEFAULT_JOB_SEARCH_GOALS;
-      setActivityMetrics(computeLocalActivityMetrics(applications, goals));
-      setMetricsLoading(false);
-      return;
-    }
-    try {
-      await refreshData();
-      const data = await fetchActivityMetrics();
-      setActivityMetrics(data);
-    } catch {
-      setActivityMetrics(null);
-    } finally {
-      setMetricsLoading(false);
-    }
-  }, [applications, demoMode, refreshData]);
+  const loadMetrics = useCallback(
+    async (options?: { refreshStore?: boolean }) => {
+      setMetricsLoading(true);
+      if (demoMode) {
+        setMetricsLoading(false);
+        return;
+      }
+      try {
+        if (options?.refreshStore) {
+          await refreshData();
+        }
+        const data = await fetchActivityMetrics();
+        setActivityMetrics(data);
+      } catch {
+        setActivityMetrics(null);
+      } finally {
+        setMetricsLoading(false);
+      }
+    },
+    [demoMode, refreshData],
+  );
 
   useEffect(() => {
     void loadMetrics();
   }, [loadMetrics]);
 
   useEffect(() => {
-    const onFocus = () => {
-      void loadMetrics();
-    };
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [loadMetrics]);
+    if (!demoMode) return;
+    const stored = localStorage.getItem('job-search-goals');
+    const goals = stored
+      ? (JSON.parse(stored) as typeof DEFAULT_JOB_SEARCH_GOALS)
+      : DEFAULT_JOB_SEARCH_GOALS;
+    setActivityMetrics(computeLocalActivityMetrics(applications, goals));
+  }, [applications, demoMode]);
 
   const reminders = useMemo(() => {
     const pipelineReminders = computeReminders(applications, contacts);
@@ -113,7 +114,7 @@ export default function TodayPage() {
         </div>
         <button
           type="button"
-          onClick={() => void loadMetrics()}
+          onClick={() => void loadMetrics({ refreshStore: true })}
           disabled={metricsLoading}
           className="inline-flex items-center gap-2 px-3 py-2 text-sm border rounded-lg hover:bg-gray-50 disabled:opacity-60"
         >

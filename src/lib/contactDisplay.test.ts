@@ -9,6 +9,9 @@ describe('contactDisplay', () => {
     expect(isMeaningfulContactNextAction('No action needed — application received')).toBe(
       false,
     );
+    expect(
+      isMeaningfulContactNextAction('Wait response, but gut says something changed'),
+    ).toBe(false);
     expect(isMeaningfulContactNextAction('Send follow-up Thursday')).toBe(true);
   });
 

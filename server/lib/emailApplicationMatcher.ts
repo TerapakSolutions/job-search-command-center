@@ -6,6 +6,7 @@ import {
   MATCH_AMBIGUITY_GAP,
   MATCH_CONFIDENCE_THRESHOLD,
 } from './emailAutomationTypes.js';
+import { isUnknownRole } from './emailAutomationMessages.js';
 
 function normalize(value: string | null | undefined): string {
   return (value ?? '')
@@ -178,10 +179,14 @@ export function findDuplicateApplication(
   for (const app of apps) {
     const companyScore = companyMatchScore(companyName, app.company);
     if (companyScore < 20) continue;
-    if (positionTitle) {
+    if (positionTitle && !isUnknownRole(positionTitle)) {
       const roleScore = roleMatchScore(positionTitle, app.roleTitle);
       if (roleScore >= 15) return app.id;
-    } else if (normalize(app.company) === normalizedCompany) {
+    }
+    if (normalize(app.company) === normalizedCompany) {
+      return app.id;
+    }
+    if (companyScore >= 25 && isUnknownRole(app.roleTitle)) {
       return app.id;
     }
   }
