@@ -341,6 +341,31 @@ export function applySafeAutomationRules(
     }
   }
 
+  // Interview Request emails create/update an interview record only when they
+  // carry a concrete date/time AND meet the same high-confidence + confident-match
+  // gates as Scheduling. Date-less, low-confidence, or ambiguous-match Interview
+  // Requests fall through to the existing risky -> pending-approval routing below
+  // (Interview Request is always flagged risky by isInterviewScheduling). This
+  // reuses upsertInterviewFromEmail (shared record write + dedupe), so it never
+  // creates a duplicate when the same email is reprocessed or a later Scheduling
+  // email references the same application/day.
+  if (
+    row.classification === 'Interview Request' &&
+    isHighConfidence(row) &&
+    applicationId &&
+    !analysis.matches.requiresManualSelection &&
+    row.interviewDatetime &&
+    !shouldSkip('create_interview')
+  ) {
+    const interviewResult = upsertInterviewFromEmail(
+      db,
+      userId,
+      emailId,
+      applicationId,
+    );
+    if (interviewResult) results.push(interviewResult);
+  }
+
   if (
     (row.classification === 'Scheduling' || row.classification === 'Interview Request') &&
     isHighConfidence(row) &&
