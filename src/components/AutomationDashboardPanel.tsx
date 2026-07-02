@@ -7,6 +7,7 @@ import {
   rejectPendingAutomation,
 } from '../api/emailAutomationClient';
 import { isDemoMode } from '../api/persistence';
+import { approvalTypeLabel } from '../lib/approvalDisplay';
 import type {
   AutomationDashboardSummary,
   PendingApprovalEntry,
@@ -109,11 +110,17 @@ export default function AutomationDashboardPanel() {
                 className="border border-amber-200 bg-amber-50 rounded-lg px-3 py-2 text-sm"
               >
                 <p className="font-medium text-gray-900">
-                  {approval.company ?? 'Application'} —{' '}
-                  {approval.currentStatus} → {approval.proposedStatus}
+                  {approvalTypeLabel(approval.approvalType)}
+                  {approval.company ? ` — ${approval.company}` : ''}
+                  {approval.currentStatus && approval.proposedStatus
+                    ? `: ${approval.currentStatus} → ${approval.proposedStatus}`
+                    : ''}
                 </p>
+                <p className="text-xs text-gray-700 mt-0.5">{approval.reasonMessage}</p>
                 <p className="text-xs text-gray-600 mt-0.5">
-                  {approval.reason} · {approval.confidence}% confidence
+                  {approval.suggestedAction} · {approval.confidence}% confidence
+                  {approval.confidence < approval.autoApprovalThreshold &&
+                    ` (needs ${approval.autoApprovalThreshold}%+)`}
                 </p>
                 <div className="flex gap-2 mt-2">
                   <button

@@ -146,7 +146,7 @@ Thank you for your application to PwC.`,
       .run();
 
     const result = createApplicationFromEmail(db, userId, 'email-dup');
-    expect(result?.message).toMatch(/Skipped application creation: duplicate found/i);
+    expect(result?.message).toMatch(/Duplicate skipped/i);
   });
 
   it('includes automation skip reasons in safe rules result', () => {
@@ -168,7 +168,7 @@ Thank you for your application to PwC.`,
     });
 
     const { skipSummary, results } = applySafeAutomationRules(db, userId, emailId);
-    expect(skipSummary).toMatch(/Skipped reply: no-reply\/application confirmation/i);
+    expect(skipSummary).toMatch(/Automation skipped: no-reply\/application confirmation/i);
     expect(results.some((r) => r.actionType === 'create_application' && r.success)).toBe(true);
   });
 });

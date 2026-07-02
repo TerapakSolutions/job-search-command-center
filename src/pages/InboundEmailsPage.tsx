@@ -10,10 +10,12 @@ import {
   retryInboundEmailProcessing,
 } from '../api/inboundEmailsClient';
 import {
+  approvePendingAutomation,
   createApplicationFromEmail,
   createContactFromEmail,
   draftReplyFromEmail,
   fetchEmailAutomationAnalysis,
+  rejectPendingAutomation,
   runEmailAutomation,
   updatePipelineFromEmail,
 } from '../api/emailAutomationClient';
@@ -27,6 +29,7 @@ import {
   processingStatusBadgeClass,
   processingStatusLabel,
 } from '../lib/inboundEmailProcessing';
+import { approvalTypeLabel } from '../lib/approvalDisplay';
 import {
   PROCESSING_TIMELINE_LABELS,
   processingTimelineStatusClass,
@@ -78,6 +81,7 @@ export default function InboundEmailsPage() {
   const [draftReply, setDraftReply] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [resolvingApprovalId, setResolvingApprovalId] = useState<string | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [senderFilter, setSenderFilter] = useState('');
@@ -342,6 +346,30 @@ export default function InboundEmailsPage() {
     }
   };
 
+  const handleResolveApproval = async (
+    approvalId: string,
+    decision: 'approved' | 'rejected',
+  ) => {
+    if (!detail) return;
+    setResolvingApprovalId(approvalId);
+    setError(null);
+    try {
+      const result =
+        decision === 'approved'
+          ? await approvePendingAutomation(approvalId)
+          : await rejectPendingAutomation(approvalId);
+      setActionMessage(result.message);
+      const refreshed = await fetchInboundEmailById(detail.id);
+      setDetail(refreshed);
+      syncEmailInList(refreshed);
+      await loadAutomation(detail.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to resolve approval');
+    } finally {
+      setResolvingApprovalId(null);
+    }
+  };
+
   const handleDelete = async () => {
     if (!detail) return;
     const confirmed = window.confirm(
@@ -531,7 +559,11 @@ export default function InboundEmailsPage() {
                       <span
                         className={`inline-block mt-2 ml-1 text-xs px-2 py-0.5 rounded-full border ${processingStatusBadgeClass(email.processingStatus, email.needsApproval)}`}
                       >
-                        {processingStatusLabel(email.processingStatus, email.needsApproval)}
+                        {processingStatusLabel(
+                          email.processingStatus,
+                          email.needsApproval,
+                          email.approvalItems,
+                        )}
                       </span>
                     </button>
                   </li>
@@ -573,7 +605,11 @@ export default function InboundEmailsPage() {
                         retrying) && (
                         <FiRefreshCw className="animate-spin" size={14} />
                       )}
-                      {processingStatusLabel(detail.processingStatus, detail.needsApproval)}
+                      {processingStatusLabel(
+                        detail.processingStatus,
+                        detail.needsApproval,
+                        detail.pendingApprovals,
+                      )}
                     </span>
                     {(detail.processingStatus === 'processed' ||
                       detail.processingStatus === 'failed') && (
@@ -675,19 +711,75 @@ export default function InboundEmailsPage() {
                 )}
 
                 {detail.needsApproval && detail.pendingApprovals.length > 0 && (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-2">
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
                     <h4 className="text-sm font-semibold text-amber-900">
-                      Approval needed
+                      Approval details
                     </h4>
-                    <ul className="space-y-2">
+                    <ul className="space-y-3">
                       {detail.pendingApprovals.map((approval) => (
-                        <li key={approval.id} className="text-sm text-amber-900">
-                          <span className="font-medium">{approval.label}</span>
-                          {approval.reason && (
-                            <span className="block text-xs text-amber-800 mt-0.5">
-                              {approval.reason}
+                        <li
+                          key={approval.id}
+                          className="rounded-lg border border-amber-200 bg-white p-3 space-y-2"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <span className="text-sm font-medium text-gray-900">
+                              {approval.label ||
+                                approvalTypeLabel(approval.approvalType)}
                             </span>
+                            <span className="text-xs text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full">
+                              {approval.aiConfidence}% confidence
+                              {approval.aiConfidence < approval.autoApprovalThreshold &&
+                                ` (needs ${approval.autoApprovalThreshold}%+)`}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-700">{approval.reasonMessage}</p>
+                          <p className="text-xs text-gray-600">
+                            <span className="font-medium">Why automation stopped: </span>
+                            {approval.stopReason}
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            <span className="font-medium">Suggested action: </span>
+                            {approval.suggestedAction}
+                          </p>
+                          {approval.currentStatus && approval.proposedStatus && (
+                            <p className="text-xs text-gray-600">
+                              Pipeline: {approval.currentStatus.replace(/_/g, ' ')} →{' '}
+                              {approval.proposedStatus.replace(/_/g, ' ')}
+                            </p>
                           )}
+                          {approval.candidateMatches.length > 0 && (
+                            <ul className="text-xs text-gray-600 space-y-1">
+                              <li className="font-medium">Candidate matches:</li>
+                              {approval.candidateMatches.map((match) => (
+                                <li key={match.applicationId}>
+                                  {match.company} — {match.roleTitle} ({match.confidence}%)
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleResolveApproval(approval.id, 'approved')
+                              }
+                              disabled={resolvingApprovalId === approval.id}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-60"
+                            >
+                              <FiCheck size={12} />
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleResolveApproval(approval.id, 'rejected')
+                              }
+                              disabled={resolvingApprovalId === approval.id}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs border rounded-lg hover:bg-gray-50 disabled:opacity-60"
+                            >
+                              Reject
+                            </button>
+                          </div>
                         </li>
                       ))}
                     </ul>
@@ -748,6 +840,20 @@ export default function InboundEmailsPage() {
                             {entry.status}
                             {' · '}
                             {formatReceivedAt(entry.createdAt)}
+                            {typeof entry.details.reasonMessage === 'string' && (
+                              <p className="mt-1 text-gray-600">{entry.details.reasonMessage}</p>
+                            )}
+                            {typeof entry.details.userDecision === 'string' && (
+                              <p className="mt-0.5 text-gray-600">
+                                Decision: {entry.details.userDecision}
+                                {entry.confidence != null && ` · ${entry.confidence}% confidence`}
+                              </p>
+                            )}
+                            {typeof entry.details.suggestedAction === 'string' && (
+                              <p className="mt-0.5 text-gray-500">
+                                Suggested: {entry.details.suggestedAction}
+                              </p>
+                            )}
                           </li>
                         ))}
                       </ul>

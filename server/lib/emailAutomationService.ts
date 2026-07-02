@@ -25,6 +25,13 @@ import type { AutomationActionType } from './emailAutomationTypes.js';
 import { buildPipelineUpdateProposal } from './emailPipelineAutomation.js';
 import { contactRoleFallback, isMeaningfulContactNextAction } from './emailAutomationMessages.js';
 import {
+  approvalReasonFromLegacyRow,
+  buildApprovalReason,
+  serializeApprovalReasonDetails,
+  type ApprovalReasonDetails,
+} from './approvalReason.js';
+import { formatAutomationActionMessage } from './automationOutcomeMessages.js';
+import {
   getUserEmailContext,
   inboundEmailBelongsToUser,
   isInboundEmailDeleted,
@@ -120,8 +127,23 @@ export function queueProcessingApproval(
     currentStatus?: string | null;
     confidence: number;
     reason: string;
+    reasonCodes?: string[];
+    suggestedAction?: string;
+    candidateMatches?: ApprovalReasonDetails['candidateMatches'];
+    autoApprovalThreshold?: number;
   },
 ): string {
+  const approvalDetails = buildApprovalReason({
+    legacyApprovalType: input.approvalType,
+    reasonCodes: input.reasonCodes ?? input.reason.split(',').map((p) => p.trim()).filter(Boolean),
+    reasonText: input.reason.includes('_') ? undefined : input.reason,
+    aiConfidence: input.confidence,
+    suggestedAction:
+      input.suggestedAction ?? 'Review the suggested action and approve or reject.',
+    candidateMatches: input.candidateMatches,
+    autoApprovalThreshold: input.autoApprovalThreshold,
+  });
+
   const approvalId = createId();
   const timestamp = nowIso();
   db.insert(emailAutomationPendingApprovals)
@@ -134,7 +156,9 @@ export function queueProcessingApproval(
       proposedStatus: input.proposedStatus,
       currentStatus: input.currentStatus ?? null,
       confidence: input.confidence,
-      reason: input.reason,
+      reason: approvalDetails.reasonMessage,
+      suggestedAction: approvalDetails.suggestedAction,
+      detailsJson: serializeApprovalReasonDetails(approvalDetails),
       status: 'pending',
       createdAt: timestamp,
     })
@@ -275,9 +299,13 @@ export function createApplicationFromEmail(
         details: { reason: 'duplicate_detected', duplicateApplicationId: duplicateId },
       }),
       changes: { duplicateApplicationId: duplicateId },
-      message: dup
-        ? `Skipped application creation: duplicate found (${dup.company} / ${dup.roleTitle})`
-        : 'Skipped application creation: duplicate found',
+      message: formatAutomationActionMessage({
+        actionType: 'create_application',
+        success: false,
+        detail: dup
+          ? `duplicate found (${dup.company} / ${dup.roleTitle})`
+          : 'duplicate found',
+      }),
     };
   }
 
@@ -335,7 +363,11 @@ export function createApplicationFromEmail(
     confidence: row.classificationConfidence,
     auditLogId,
     changes: { applicationId: appId, company, roleTitle, status },
-    message: `Created application: ${company} / ${roleTitle}`,
+    message: formatAutomationActionMessage({
+      actionType: 'create_application',
+      success: true,
+      detail: `${company} / ${roleTitle}`,
+    }),
   };
 }
 
@@ -510,7 +542,11 @@ export function updatePipelineFromEmail(
         details: { reason: 'no_proposed_status' },
       }),
       changes: {},
-      message: 'Skipped pipeline update: no matched application',
+      message: formatAutomationActionMessage({
+        actionType: 'update_pipeline',
+        success: false,
+        detail: 'no matched application',
+      }),
     };
   }
 
@@ -519,23 +555,18 @@ export function updatePipelineFromEmail(
     proposal?.requiresApproval && !input.force && confidence < 75;
 
   if (requiresApproval) {
-    const approvalId = createId();
-    const timestamp = nowIso();
-    db.insert(emailAutomationPendingApprovals)
-      .values({
-        id: approvalId,
-        userId,
-        inboundEmailId: emailId,
-        approvalType: 'pipeline_update',
-        applicationId: app.id,
-        proposedStatus: targetStatus,
-        currentStatus: app.status,
-        confidence,
-        reason: proposal?.reason ?? 'Low-confidence pipeline update',
-        status: 'pending',
-        createdAt: timestamp,
-      })
-      .run();
+    const approvalId = queueProcessingApproval(db, {
+      userId,
+      inboundEmailId: emailId,
+      approvalType: 'pipeline_update',
+      applicationId: app.id,
+      proposedStatus: targetStatus,
+      currentStatus: app.status,
+      confidence,
+      reason: proposal?.reason ?? 'pipeline_update_low_confidence',
+      reasonCodes: ['pipeline_update_low_confidence', 'low_confidence_classification'],
+      suggestedAction: `Approve pipeline update to ${targetStatus.replace(/_/g, ' ')}`,
+    });
 
     const auditLogId = recordAuditLog(db, {
       userId,
@@ -543,7 +574,12 @@ export function updatePipelineFromEmail(
       actionType: 'update_pipeline',
       confidence,
       status: 'pending',
-      details: { pendingApprovalId: approvalId, proposedStatus: targetStatus },
+      details: {
+        pendingApprovalId: approvalId,
+        proposedStatus: targetStatus,
+        reason: proposal?.reason ?? 'Low-confidence pipeline update',
+        suggestedAction: `Approve pipeline update to ${targetStatus.replace(/_/g, ' ')}`,
+      },
     });
 
     return {
@@ -553,7 +589,12 @@ export function updatePipelineFromEmail(
       auditLogId,
       pendingApprovalId: approvalId,
       changes: { pendingApprovalId: approvalId, proposedStatus: targetStatus },
-      message: `Queued approval: low confidence (${targetStatus.replace(/_/g, ' ')})`,
+      message: formatAutomationActionMessage({
+        actionType: 'update_pipeline',
+        success: true,
+        pendingApprovalId: approvalId,
+        detail: `low confidence (${targetStatus.replace(/_/g, ' ')})`,
+      }),
     };
   }
 
@@ -596,7 +637,11 @@ export function updatePipelineFromEmail(
       previousStatus: app.status,
       newStatus: targetStatus,
     },
-    message: `Updated pipeline for ${app.company} / ${app.roleTitle} to ${targetStatus.replace(/_/g, ' ')}`,
+    message: formatAutomationActionMessage({
+      actionType: 'update_pipeline',
+      success: true,
+      detail: `${app.company} / ${app.roleTitle} to ${targetStatus.replace(/_/g, ' ')}`,
+    }),
   };
 }
 
@@ -757,6 +802,56 @@ export function listAuditLogForUser(
   });
 }
 
+function pendingApprovalToEntry(
+  db: Db,
+  row: typeof emailAutomationPendingApprovals.$inferSelect,
+): PendingApprovalEntry {
+  const emailRows = db
+    .select({ subject: inboundEmails.subject, suggestedAction: inboundEmails.suggestedAction })
+    .from(inboundEmails)
+    .where(eq(inboundEmails.id, row.inboundEmailId))
+    .all();
+  let company: string | undefined;
+  let roleTitle: string | undefined;
+  if (row.applicationId) {
+    const appRows = db
+      .select({ company: applications.company, roleTitle: applications.roleTitle })
+      .from(applications)
+      .where(eq(applications.id, row.applicationId))
+      .all();
+    company = appRows[0]?.company;
+    roleTitle = appRows[0]?.roleTitle;
+  }
+  const details = approvalReasonFromLegacyRow({
+    approvalType: row.approvalType,
+    reason: row.reason,
+    confidence: row.confidence,
+    suggestedAction: row.suggestedAction || emailRows[0]?.suggestedAction,
+    detailsJson: row.detailsJson,
+  });
+  return {
+    id: row.id,
+    inboundEmailId: row.inboundEmailId,
+    approvalType: details.approvalType,
+    applicationId: row.applicationId,
+    proposedStatus: row.proposedStatus,
+    currentStatus: row.currentStatus,
+    confidence: row.confidence,
+    reason: row.reason,
+    reasonCode: details.reasonCode,
+    reasonMessage: details.reasonMessage,
+    suggestedAction: details.suggestedAction,
+    autoApprovalThreshold: details.autoApprovalThreshold,
+    stopReason: details.stopReason,
+    candidateMatches: details.candidateMatches ?? [],
+    status: row.status,
+    createdAt: row.createdAt,
+    emailSubject: emailRows[0]?.subject,
+    company,
+    roleTitle,
+  };
+}
+
 export function listPendingApprovalsForUser(
   db: Db,
   userId: string,
@@ -773,39 +868,7 @@ export function listPendingApprovalsForUser(
     .orderBy(desc(emailAutomationPendingApprovals.createdAt))
     .all();
 
-  return rows.map((row) => {
-    const emailRows = db
-      .select({ subject: inboundEmails.subject })
-      .from(inboundEmails)
-      .where(eq(inboundEmails.id, row.inboundEmailId))
-      .all();
-    let company: string | undefined;
-    let roleTitle: string | undefined;
-    if (row.applicationId) {
-      const appRows = db
-        .select({ company: applications.company, roleTitle: applications.roleTitle })
-        .from(applications)
-        .where(eq(applications.id, row.applicationId))
-        .all();
-      company = appRows[0]?.company;
-      roleTitle = appRows[0]?.roleTitle;
-    }
-    return {
-      id: row.id,
-      inboundEmailId: row.inboundEmailId,
-      approvalType: row.approvalType,
-      applicationId: row.applicationId,
-      proposedStatus: row.proposedStatus,
-      currentStatus: row.currentStatus,
-      confidence: row.confidence,
-      reason: row.reason,
-      status: row.status,
-      createdAt: row.createdAt,
-      emailSubject: emailRows[0]?.subject,
-      company,
-      roleTitle,
-    };
-  });
+  return rows.map((row) => pendingApprovalToEntry(db, row));
 }
 
 export function resolvePendingApproval(
@@ -826,13 +889,32 @@ export function resolvePendingApproval(
     )
     .all();
   const approval = rows[0];
-  if (!approval || !approval.applicationId) return null;
+  if (!approval) return null;
+
+  const approvalDetails = approvalReasonFromLegacyRow({
+    approvalType: approval.approvalType,
+    reason: approval.reason,
+    confidence: approval.confidence,
+    suggestedAction: approval.suggestedAction,
+    detailsJson: approval.detailsJson,
+  });
 
   const timestamp = nowIso();
   db.update(emailAutomationPendingApprovals)
     .set({ status: decision, resolvedAt: timestamp })
     .where(eq(emailAutomationPendingApprovals.id, approvalId))
     .run();
+
+  const auditDetails = {
+    pendingApprovalId: approvalId,
+    approvalType: approval.approvalType,
+    reasonCode: approvalDetails.reasonCode,
+    reasonMessage: approvalDetails.reasonMessage,
+    confidence: approval.confidence,
+    suggestedAction: approvalDetails.suggestedAction,
+    userDecision: decision,
+    stopReason: approvalDetails.stopReason,
+  };
 
   if (decision === 'rejected') {
     const auditLogId = recordAuditLog(db, {
@@ -841,7 +923,7 @@ export function resolvePendingApproval(
       actionType: 'update_pipeline',
       confidence: approval.confidence,
       status: 'rejected',
-      details: { pendingApprovalId: approvalId },
+      details: auditDetails,
     });
     return {
       success: false,
@@ -849,9 +931,108 @@ export function resolvePendingApproval(
       confidence: approval.confidence,
       auditLogId,
       changes: {},
-      message: 'Pipeline update rejected.',
+      message: `Rejected: ${approvalDetails.reasonMessage}`,
     };
   }
+
+  if (approval.approvalType === 'create_application_suggestion') {
+    const createResult = createApplicationFromEmail(db, userId, approval.inboundEmailId);
+    if (!createResult) return null;
+    recordAuditLog(db, {
+      userId,
+      inboundEmailId: approval.inboundEmailId,
+      actionType: 'create_application',
+      confidence: approval.confidence,
+      status: 'completed',
+      details: { ...auditDetails, approvedFromPending: approvalId },
+      resultingChanges: createResult.changes,
+    });
+    return createResult;
+  }
+
+  if (approval.approvalType === 'link_application' && approval.applicationId) {
+    const contactResult = createContactFromEmail(
+      db,
+      userId,
+      approval.inboundEmailId,
+      approval.applicationId,
+    );
+    const pipelineResult = updatePipelineFromEmail(db, userId, approval.inboundEmailId, {
+      applicationId: approval.applicationId,
+      status: approval.proposedStatus as PipelineStatus,
+      force: true,
+    });
+    const auditLogId = recordAuditLog(db, {
+      userId,
+      inboundEmailId: approval.inboundEmailId,
+      actionType: 'match_applications',
+      confidence: approval.confidence,
+      status: 'completed',
+      details: { ...auditDetails, approvedFromPending: approvalId },
+      resultingChanges: {
+        contact: contactResult?.changes,
+        pipeline: pipelineResult?.changes,
+      },
+    });
+    return (
+      pipelineResult ?? {
+        success: true,
+        actionType: 'match_applications',
+        confidence: approval.confidence,
+        auditLogId,
+        changes: contactResult?.changes ?? {},
+        message: formatAutomationActionMessage({
+          actionType: 'match_applications',
+          success: true,
+          detail: 'Linked email to existing application',
+        }),
+      }
+    );
+  }
+
+  if (approval.approvalType === 'create_contact' && approval.applicationId) {
+    const contactResult = createContactFromEmail(
+      db,
+      userId,
+      approval.inboundEmailId,
+      approval.applicationId,
+    );
+    if (!contactResult) return null;
+    recordAuditLog(db, {
+      userId,
+      inboundEmailId: approval.inboundEmailId,
+      actionType: 'create_contact',
+      confidence: approval.confidence,
+      status: 'completed',
+      details: { ...auditDetails, approvedFromPending: approvalId },
+      resultingChanges: contactResult.changes,
+    });
+    return contactResult;
+  }
+
+  if (approval.approvalType === 'draft_reply') {
+    const draftResult = draftReplyFromEmail(db, userId, approval.inboundEmailId);
+    if (!draftResult) return null;
+    const auditLogId = recordAuditLog(db, {
+      userId,
+      inboundEmailId: approval.inboundEmailId,
+      actionType: 'draft_reply',
+      confidence: approval.confidence,
+      status: 'completed',
+      details: { ...auditDetails, approvedFromPending: approvalId },
+      resultingChanges: { draftLength: draftResult.draft.length },
+    });
+    return {
+      success: true,
+      actionType: 'draft_reply',
+      confidence: approval.confidence,
+      auditLogId,
+      changes: { draft: draftResult.draft },
+      message: 'Draft reply ready for review',
+    };
+  }
+
+  if (!approval.applicationId) return null;
 
   db.update(applications)
     .set({
@@ -866,11 +1047,12 @@ export function resolvePendingApproval(
     inboundEmailId: approval.inboundEmailId,
     actionType: 'update_pipeline',
     confidence: approval.confidence,
+    status: 'completed',
+    details: { ...auditDetails, approvedFromPending: approvalId },
     resultingChanges: {
       applicationId: approval.applicationId,
       previousStatus: approval.currentStatus,
       newStatus: approval.proposedStatus,
-      approvedFromPending: approvalId,
     },
   });
 
@@ -883,7 +1065,11 @@ export function resolvePendingApproval(
       applicationId: approval.applicationId,
       newStatus: approval.proposedStatus,
     },
-    message: `Approved pipeline update to ${approval.proposedStatus}`,
+    message: formatAutomationActionMessage({
+      actionType: 'update_pipeline',
+      success: true,
+      detail: `Approved pipeline update to ${approval.proposedStatus.replace(/_/g, ' ')}`,
+    }),
   };
 }
 

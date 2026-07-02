@@ -1,6 +1,10 @@
 import { eq } from 'drizzle-orm';
 import type { Db } from '../db/index.js';
-import { contacts, emailAutomationPendingApprovals, inboundEmails, users } from '../db/schema.js';
+import { applications, contacts, emailAutomationPendingApprovals, inboundEmails, users } from '../db/schema.js';
+import {
+  approvalReasonFromLegacyRow,
+  approvalTypeLabel,
+} from './approvalReason.js';
 import {
   formatApprovalTypeLabel,
   formatPipelineApprovalLabel,
@@ -33,6 +37,20 @@ export interface PendingApprovalSummary {
   approvalType: string;
   label: string;
   reason: string;
+  reasonCode: string;
+  reasonMessage: string;
+  suggestedAction: string;
+  aiConfidence: number;
+  autoApprovalThreshold: number;
+  stopReason: string;
+  candidateMatches: Array<{
+    applicationId: string;
+    company: string;
+    roleTitle: string;
+    status: string;
+    confidence: number;
+    matchReasons: string[];
+  }>;
   proposedStatus: string;
   currentStatus: string | null;
   company?: string;
@@ -150,17 +168,46 @@ function listPendingApprovalsForEmail(
   return rows
     .filter((row) => row.status === 'pending')
     .map((row) => {
-      let label = formatApprovalTypeLabel(row.approvalType);
+      const details = approvalReasonFromLegacyRow({
+        approvalType: row.approvalType,
+        reason: row.reason,
+        confidence: row.confidence,
+        suggestedAction: row.suggestedAction,
+        detailsJson: row.detailsJson,
+      });
+      let label = approvalTypeLabel(details.approvalType);
       if (row.approvalType === 'pipeline_update') {
         label = formatPipelineApprovalLabel(row.proposedStatus, row.currentStatus);
+      } else if (row.approvalType !== details.approvalType) {
+        label = formatApprovalTypeLabel(row.approvalType);
+      }
+      let company: string | undefined;
+      let roleTitle: string | undefined;
+      if (row.applicationId) {
+        const appRows = db
+          .select({ company: applications.company, roleTitle: applications.roleTitle })
+          .from(applications)
+          .where(eq(applications.id, row.applicationId))
+          .all();
+        company = appRows[0]?.company;
+        roleTitle = appRows[0]?.roleTitle;
       }
       return {
         id: row.id,
-        approvalType: row.approvalType,
+        approvalType: details.approvalType,
         label,
         reason: row.reason,
+        reasonCode: details.reasonCode,
+        reasonMessage: details.reasonMessage,
+        suggestedAction: details.suggestedAction,
+        aiConfidence: details.aiConfidence,
+        autoApprovalThreshold: details.autoApprovalThreshold,
+        stopReason: details.stopReason,
+        candidateMatches: details.candidateMatches ?? [],
         proposedStatus: row.proposedStatus,
         currentStatus: row.currentStatus,
+        company,
+        roleTitle,
       };
     });
 }

@@ -5,6 +5,20 @@ export interface PendingApprovalSummary {
   approvalType: string;
   label: string;
   reason: string;
+  reasonCode: string;
+  reasonMessage: string;
+  suggestedAction: string;
+  aiConfidence: number;
+  autoApprovalThreshold: number;
+  stopReason: string;
+  candidateMatches: Array<{
+    applicationId: string;
+    company: string;
+    roleTitle: string;
+    status: string;
+    confidence: number;
+    matchReasons: string[];
+  }>;
   proposedStatus: string;
   currentStatus: string | null;
   company?: string;

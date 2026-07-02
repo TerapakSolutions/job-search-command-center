@@ -18,6 +18,8 @@ import {
   formatPipelineApprovalLabel,
   isNoReplyOrApplicationConfirmation,
 } from './emailAutomationMessages.js';
+import { formatAutomationActionMessage } from './automationOutcomeMessages.js';
+import { approvalTypeLabel } from './approvalReason.js';
 import type { ProcessingTimelineBuilder } from './processingTimeline.js';
 
 const PROTECTED_PIPELINE_STATUSES = new Set(['offer']);
@@ -279,17 +281,24 @@ export function applySafeAutomationRules(
         approvalType: 'create_application_suggestion',
         proposedStatus: 'saved',
         confidence: row.classificationConfidence ?? 50,
-        reason: 'High-confidence recruiter outreach suggests creating an application',
+        reason: 'no_application_match',
+        reasonCodes: ['no_application_match'],
+        suggestedAction: `Create application for ${row.companyName ?? 'this company'} / ${row.positionTitle ?? 'role from email'}`,
       });
       pendingApprovals += 1;
-      approvalMessages.push('Approve creating application');
+      approvalMessages.push(approvalTypeLabel('no_matching_application'));
       recordEmailAutomationAudit(db, {
         userId,
         inboundEmailId: emailId,
         actionType: 'match_applications',
         confidence: row.classificationConfidence,
         status: 'pending',
-        details: { pendingApprovalId: approvalId, type: 'create_application_suggestion' },
+        details: {
+          pendingApprovalId: approvalId,
+          type: 'create_application_suggestion',
+          reasonCode: 'no_application_match',
+          suggestedAction: `Create application for ${row.companyName ?? 'this company'}`,
+        },
       });
     } else if (analysis.duplicateApplicationId) {
       const approvalId = queueProcessingApproval(db, {
@@ -299,17 +308,25 @@ export function applySafeAutomationRules(
         applicationId: analysis.duplicateApplicationId,
         proposedStatus: 'recruiter_screen',
         confidence: row.classificationConfidence ?? 50,
-        reason: 'Ambiguous match — confirm linking to existing application',
+        reason: 'duplicate_application_ambiguous',
+        reasonCodes: ['duplicate_application_ambiguous', 'ambiguous_application_match'],
+        suggestedAction: 'Link this email to the existing application and update pipeline',
+        candidateMatches: analysis.matches.matches,
       });
       pendingApprovals += 1;
-      approvalMessages.push('Approve linking to existing application');
+      approvalMessages.push(approvalTypeLabel('multiple_matching_applications'));
       recordEmailAutomationAudit(db, {
         userId,
         inboundEmailId: emailId,
         actionType: 'match_applications',
         confidence: row.classificationConfidence,
         status: 'pending',
-        details: { pendingApprovalId: approvalId, type: 'link_application' },
+        details: {
+          pendingApprovalId: approvalId,
+          type: 'link_application',
+          reasonCode: 'ambiguous_application_match',
+          candidateMatches: analysis.matches.matches,
+        },
       });
     }
   }
@@ -324,6 +341,9 @@ export function applySafeAutomationRules(
       currentStatus: analysis.pipelineProposal.currentStatus,
       confidence: row.classificationConfidence ?? 50,
       reason: riskyReasons.join(', '),
+      reasonCodes: riskyReasons,
+      suggestedAction: `Update pipeline to ${analysis.pipelineProposal.proposedStatus.replace(/_/g, ' ')}`,
+      candidateMatches: analysis.matches.matches,
     });
     pendingApprovals += 1;
     approvalMessages.push(
@@ -338,7 +358,13 @@ export function applySafeAutomationRules(
       actionType: 'update_pipeline',
       confidence: row.classificationConfidence,
       status: 'pending',
-      details: { pendingApprovalId: approvalId, riskyReasons },
+      details: {
+        pendingApprovalId: approvalId,
+        riskyReasons,
+        reasonCode: riskyReasons[0],
+        suggestedAction: `Update pipeline to ${analysis.pipelineProposal.proposedStatus.replace(/_/g, ' ')}`,
+        confidence: row.classificationConfidence,
+      },
     });
   }
 
@@ -356,20 +382,31 @@ export function applySafeAutomationRules(
       approvalType: 'draft_reply',
       proposedStatus: 'saved',
       confidence: row.classificationConfidence ?? 50,
-      reason: 'Response may involve sending email',
+      reason: 'requires_response',
+      reasonCodes: ['requires_response'],
+      suggestedAction: row.suggestedAction ?? 'Review and send a reply to this email',
     });
     pendingApprovals += 1;
-    approvalMessages.push('Approve draft reply');
+    approvalMessages.push(approvalTypeLabel('manual_review_required'));
     recordEmailAutomationAudit(db, {
       userId,
       inboundEmailId: emailId,
       actionType: 'draft_reply',
       confidence: row.classificationConfidence,
       status: 'pending',
-      details: { pendingApprovalId: approvalId, reason: 'requires_response' },
+      details: {
+        pendingApprovalId: approvalId,
+        reasonCode: 'requires_response',
+        suggestedAction: row.suggestedAction,
+        confidence: row.classificationConfidence,
+      },
     });
   } else if (row.requiresResponse && suppressReply) {
-    skipReasons.push('Skipped reply: no-reply/application confirmation');
+    skipReasons.push(formatAutomationActionMessage({
+      actionType: 'draft_reply',
+      success: false,
+      detail: 'no-reply/application confirmation',
+    }));
   }
 
   if (
@@ -385,17 +422,24 @@ export function applySafeAutomationRules(
       approvalType: 'create_contact',
       proposedStatus: 'saved',
       confidence: row.classificationConfidence ?? 50,
-      reason: 'Recruiter detected without linked application',
+      reason: 'recruiter_without_application',
+      reasonCodes: ['recruiter_without_application', 'no_application_match'],
+      suggestedAction: 'Create recruiter contact and optionally link to a new application',
     });
     pendingApprovals += 1;
-    approvalMessages.push('Approve recruiter contact creation');
+    approvalMessages.push(approvalTypeLabel('no_matching_application'));
     recordEmailAutomationAudit(db, {
       userId,
       inboundEmailId: emailId,
       actionType: 'create_contact',
       confidence: row.classificationConfidence,
       status: 'pending',
-      details: { pendingApprovalId: approvalId, type: 'create_contact' },
+      details: {
+        pendingApprovalId: approvalId,
+        type: 'create_contact',
+        reasonCode: 'recruiter_without_application',
+        suggestedAction: 'Create recruiter contact',
+      },
     });
   }
 

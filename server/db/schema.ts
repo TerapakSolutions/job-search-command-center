@@ -195,6 +195,8 @@ export const emailAutomationPendingApprovals = sqliteTable(
     currentStatus: text('current_status'),
     confidence: integer('confidence').notNull(),
     reason: text('reason').notNull().default(''),
+    suggestedAction: text('suggested_action').notNull().default(''),
+    detailsJson: text('details_json').notNull().default('{}'),
     status: text('status').notNull().default('pending'),
     createdAt: text('created_at').notNull(),
     resolvedAt: text('resolved_at'),

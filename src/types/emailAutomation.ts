@@ -79,6 +79,12 @@ export interface PendingApprovalEntry {
   currentStatus: string | null;
   confidence: number;
   reason: string;
+  reasonCode: string;
+  reasonMessage: string;
+  suggestedAction: string;
+  autoApprovalThreshold: number;
+  stopReason: string;
+  candidateMatches: ApplicationMatch[];
   status: string;
   createdAt: string;
   emailSubject?: string;

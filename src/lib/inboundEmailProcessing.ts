@@ -1,12 +1,14 @@
-import type { ProcessingStatus } from '../types/inboundEmail';
+import type { ProcessingStatus, PendingApprovalSummary } from '../types/inboundEmail';
+import { processingStatusWithApprovalLabel } from './approvalDisplay';
 
 export function processingStatusLabel(
   status: ProcessingStatus,
   needsApproval: boolean,
+  approvalItems?: PendingApprovalSummary[],
 ): string {
   if (status === 'processing') return 'Processing…';
   if (status === 'failed') return 'Failed';
-  if (needsApproval) return 'Needs approval';
+  if (needsApproval) return processingStatusWithApprovalLabel(approvalItems);
   if (status === 'processed') return 'Processed';
   return 'Pending';
 }
