@@ -14,6 +14,7 @@ import { formatDate } from '../lib/dates';
 import {
   contactApplicationLabel,
   isMeaningfulContactNextAction,
+  resolveContactCompany,
 } from '../lib/contactDisplay';
 import DailyBriefingPanel from '../components/DailyBriefingPanel';
 import AutomationDashboardPanel from '../components/AutomationDashboardPanel';
@@ -196,7 +197,10 @@ export default function TodayPage() {
                 : null;
               const label = contactApplicationLabel({
                 applicationId: contact.applicationId,
-                company: contact.company || app?.company || '',
+                company: resolveContactCompany({
+                  contactCompany: contact.company,
+                  applicationCompany: app?.company,
+                }),
                 roleTitle: app?.roleTitle,
                 source: contact.source,
                 linkedIn: contact.linkedIn,

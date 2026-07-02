@@ -23,7 +23,7 @@ import type {
 } from './emailAutomationTypes.js';
 import type { AutomationActionType } from './emailAutomationTypes.js';
 import { buildPipelineUpdateProposal } from './emailPipelineAutomation.js';
-import { contactRoleFallback, hasIdentifiedCompanyAndRole, isMeaningfulContactNextAction } from './emailAutomationMessages.js';
+import { hasIdentifiedCompanyAndRole, isLikelyDomainCompany, isMeaningfulContactNextAction, isUnknownRole } from './emailAutomationMessages.js';
 import {
   approvalReasonFromLegacyRow,
   buildApprovalReason,
@@ -349,7 +349,9 @@ export function createApplicationFromEmail(
     row.companyName?.trim() ||
     row.originalCompany?.trim() ||
     'Unknown';
-  const roleTitle = contactRoleFallback(row.positionTitle);
+  const roleTitle = isUnknownRole(row.positionTitle)
+    ? 'Unknown role'
+    : row.positionTitle?.trim() || 'Unknown role';
   const status = initialStatusFromClassification(row.classification);
   const dateApplied =
     row.classification === 'Application Confirmation'
@@ -466,11 +468,13 @@ export function createContactFromEmail(
       row.originalSenderName?.trim() ||
       row.fromEmail.split('@')[0].replace(/[._]/g, ' ') ||
       'Recruiter';
-    const company =
+    const extractedCompany =
       row.companyName?.trim() ||
       row.originalCompany?.trim() ||
-      appRows[0]?.company ||
       '';
+    const company = isLikelyDomainCompany(extractedCompany)
+      ? (appRows[0]?.company ?? '')
+      : extractedCompany || appRows[0]?.company || '';
     db.insert(contacts)
       .values({
         id: contactId,

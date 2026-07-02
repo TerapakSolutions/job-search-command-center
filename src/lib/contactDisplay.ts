@@ -1,3 +1,20 @@
+export function isLikelyDomainCompany(company: string): boolean {
+  const trimmed = company.trim();
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(trimmed) && !trimmed.includes(' ');
+}
+
+export function resolveContactCompany(input: {
+  contactCompany: string;
+  applicationCompany?: string | null;
+}): string {
+  const contact = input.contactCompany.trim();
+  const application = input.applicationCompany?.trim() ?? '';
+  if (application && (!contact || isLikelyDomainCompany(contact))) {
+    return application;
+  }
+  return contact || application;
+}
+
 export function isMeaningfulContactNextAction(nextAction: string): boolean {
   const trimmed = nextAction.trim();
   if (!trimmed) return false;
@@ -13,10 +30,13 @@ export function isMeaningfulContactNextAction(nextAction: string): boolean {
   );
 }
 
-export function contactRoleFallback(roleTitle: string | null | undefined): string {
+export function contactRoleFallback(
+  roleTitle: string | null | undefined,
+  hasKnownCompany = false,
+): string {
   const trimmed = roleTitle?.trim();
   if (!trimmed || trimmed.toLowerCase() === 'unknown role') {
-    return 'Application not identified yet';
+    return hasKnownCompany ? 'Role not identified' : 'Application not identified yet';
   }
   return trimmed;
 }
@@ -28,20 +48,26 @@ export function contactApplicationLabel(input: {
   source?: string;
   linkedIn?: string;
 }): string {
-  if (input.applicationId && input.roleTitle) {
-    return `${input.company} — ${contactRoleFallback(input.roleTitle)}`;
-  }
+  const company = input.company.trim();
+  const displayCompany =
+    company && !isLikelyDomainCompany(company) ? company : '';
+
   if (input.applicationId) {
-    return `${input.company} — No linked application yet`;
+    const roleLabel = contactRoleFallback(input.roleTitle, Boolean(displayCompany));
+    if (displayCompany) {
+      return `${displayCompany} — ${roleLabel}`;
+    }
+    return roleLabel;
   }
+
   if (input.linkedIn?.trim()) {
-    return input.company ? `${input.company} — LinkedIn contact` : 'LinkedIn contact';
+    return displayCompany ? `${displayCompany} — LinkedIn contact` : 'LinkedIn contact';
   }
   if (input.source === 'linkedin') {
-    return input.company ? `${input.company} — LinkedIn contact` : 'LinkedIn contact';
+    return displayCompany ? `${displayCompany} — LinkedIn contact` : 'LinkedIn contact';
   }
-  if (input.company) {
-    return `${input.company} — Recruiter contact only`;
+  if (displayCompany) {
+    return `${displayCompany} — Recruiter contact only`;
   }
   return 'Recruiter contact only';
 }

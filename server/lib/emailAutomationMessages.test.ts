@@ -1,9 +1,11 @@
 /** @jest-environment node */
 import {
+  contactApplicationLabel,
   hasIdentifiedCompanyAndRole,
   isLikelyDomainCompany,
   isMeaningfulContactNextAction,
   isUnknownRole,
+  resolveContactCompany,
 } from './emailAutomationMessages.js';
 
 describe('emailAutomationMessages helpers', () => {
@@ -37,5 +39,38 @@ describe('emailAutomationMessages helpers', () => {
       isMeaningfulContactNextAction('Wait response, but gut says something changed'),
     ).toBe(false);
     expect(isMeaningfulContactNextAction('Send follow-up Thursday')).toBe(true);
+  });
+
+  it('builds contact labels without domain-only company names', () => {
+    expect(
+      resolveContactCompany({
+        contactCompany: 'terapak.com',
+        applicationCompany: 'PwC',
+      }),
+    ).toBe('PwC');
+    expect(
+      contactApplicationLabel({
+        applicationId: null,
+        company: 'terapak.com',
+        source: 'email',
+      }),
+    ).toBe('Recruiter contact only');
+  });
+
+  it('shows role-not-identified when company is known but role is unknown', () => {
+    expect(
+      contactApplicationLabel({
+        applicationId: 'app-1',
+        company: 'PwC',
+        roleTitle: 'Unknown role',
+      }),
+    ).toBe('PwC — Role not identified');
+    expect(
+      contactApplicationLabel({
+        applicationId: 'app-1',
+        company: 'terapak.com',
+        roleTitle: 'Unknown role',
+      }),
+    ).toBe('Application not identified yet');
   });
 });

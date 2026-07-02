@@ -4,6 +4,7 @@ import { useJobSearchStore } from '../store/useJobSearchStore';
 import { formatDate } from '../lib/dates';
 import {
   contactApplicationLabel,
+  resolveContactCompany,
   contactSourceLabel,
   isMeaningfulContactNextAction,
 } from '../lib/contactDisplay';
@@ -233,10 +234,10 @@ export function ContactRow({
   const linkedApp = contact.applicationId
     ? applications.find((a) => a.id === contact.applicationId)
     : null;
-  const company =
-    contact.company ||
-    linkedApp?.company ||
-    '';
+  const company = resolveContactCompany({
+    contactCompany: contact.company,
+    applicationCompany: linkedApp?.company,
+  });
   const subtitle = contactApplicationLabel({
     applicationId: contact.applicationId,
     company,
