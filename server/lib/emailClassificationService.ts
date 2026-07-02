@@ -5,11 +5,16 @@ import {
   classifyInboundEmailWithLlm,
   classifyInboundEmailWithRules,
 } from './emailClassificationEngine.js';
+import { isInterviewConfirmationText } from './emailContentExtraction.js';
 import type {
   EmailClassificationResult,
   InboundEmailClassificationFields,
 } from './emailClassificationTypes.js';
 import { classificationInputFromEmail } from './emailForwardedParser.js';
+import {
+  resolveEmployerCompany,
+  resolveRoleTitle,
+} from './emailContentExtraction.js';
 import { nowIso } from './id.js';
 import {
   getUserEmailContext,
@@ -56,6 +61,30 @@ export function classificationFieldsFromRow(
   };
 }
 
+function applyKnownPatternRuleOverrides(
+  result: EmailClassificationResult,
+  classifiedInput: ReturnType<typeof classificationInputFromEmail>,
+): EmailClassificationResult {
+  const haystack = `${classifiedInput.subject}\n${classifiedInput.textBody}`;
+  const ruleResult = classifyInboundEmailWithRules({
+    subject: classifiedInput.subject,
+    fromEmail: classifiedInput.fromEmail,
+    textBody: classifiedInput.textBody,
+  });
+
+  if (
+    isInterviewConfirmationText(haystack) &&
+    ruleResult.classification === 'Scheduling' &&
+    (result.classification === 'Other' ||
+      result.classification === 'General Update' ||
+      (result.classificationConfidence ?? 0) < ruleResult.classificationConfidence)
+  ) {
+    return enrichClassificationFromForward(ruleResult, classifiedInput);
+  }
+
+  return enrichClassificationFromForward(result, classifiedInput);
+}
+
 export async function classifyEmailContent(input: {
   subject: string;
   fromEmail: string;
@@ -70,7 +99,7 @@ export async function classifyEmailContent(input: {
       textBody: classifiedInput.textBody,
     });
     if (llmResult) {
-      return enrichClassificationFromForward(llmResult, classifiedInput);
+      return applyKnownPatternRuleOverrides(llmResult, classifiedInput);
     }
   } catch (err) {
     console.error('[email-classification] LLM classification failed', err);
@@ -89,25 +118,36 @@ function enrichClassificationFromForward(
   classifiedInput: ReturnType<typeof classificationInputFromEmail>,
 ): EmailClassificationResult {
   const { forwardMetadata } = classifiedInput;
+  const subject = forwardMetadata.originalSubject ?? classifiedInput.subject;
+  const senderEmail = forwardMetadata.originalSenderEmail ?? classifiedInput.fromEmail;
+
+  const resolvedCompany = resolveEmployerCompany({
+    companyName: result.companyName,
+    originalCompany: forwardMetadata.originalCompany,
+    subject,
+    senderEmail,
+  });
+
+  const resolvedRole = resolveRoleTitle({
+    positionTitle: result.positionTitle,
+    subject,
+  });
+
   if (!forwardMetadata.isForwarded) {
-    return result;
+    return {
+      ...result,
+      companyName: resolvedCompany ?? result.companyName,
+      positionTitle: resolvedRole ?? result.positionTitle,
+    };
   }
 
   return {
     ...result,
-    companyName:
-      result.companyName ??
-      forwardMetadata.originalCompany ??
-      inferCompanyFromEmail(classifiedInput.fromEmail),
+    companyName: resolvedCompany ?? result.companyName,
+    positionTitle: resolvedRole ?? result.positionTitle,
     recruiterName:
       result.recruiterName ?? forwardMetadata.originalSenderName ?? null,
   };
-}
-
-function inferCompanyFromEmail(email: string): string | null {
-  const domain = email.split('@')[1]?.split('.')[0];
-  if (!domain || domain.length < 2) return null;
-  return domain.charAt(0).toUpperCase() + domain.slice(1);
 }
 
 export function persistForwardMetadata(

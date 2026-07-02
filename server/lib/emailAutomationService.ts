@@ -8,6 +8,7 @@ import {
   emailAutomationAuditLog,
   emailAutomationPendingApprovals,
   inboundEmails,
+  interviews,
 } from '../db/schema.js';
 import {
   findDuplicateApplication,
@@ -23,7 +24,14 @@ import type {
 } from './emailAutomationTypes.js';
 import type { AutomationActionType } from './emailAutomationTypes.js';
 import { buildPipelineUpdateProposal } from './emailPipelineAutomation.js';
-import { hasIdentifiedCompanyAndRole, isLikelyDomainCompany, isMeaningfulContactNextAction, isUnknownRole } from './emailAutomationMessages.js';
+import {
+  hasIdentifiedCompanyAndRole,
+  isLikelyDomainCompany,
+  isMeaningfulContactNextAction,
+  isUnknownRole,
+  resolveEmployerCompany,
+  resolveRoleTitle,
+} from './emailAutomationMessages.js';
 import {
   approvalReasonFromLegacyRow,
   buildApprovalReason,
@@ -202,20 +210,32 @@ export function analyzeEmailAutomation(
   if (!row) return null;
 
   const effectiveFromEmail = row.originalSenderEmail ?? row.fromEmail;
-  const effectiveCompany = row.originalCompany ?? row.companyName;
+  const effectiveSubject = row.originalSubject ?? row.subject;
+  const effectiveCompany =
+    resolveEmployerCompany({
+      companyName: row.companyName,
+      originalCompany: row.originalCompany,
+      subject: effectiveSubject,
+      senderEmail: effectiveFromEmail,
+    }) ?? row.companyName;
+  const effectiveRole =
+    resolveRoleTitle({
+      positionTitle: row.positionTitle,
+      subject: effectiveSubject,
+    }) ?? row.positionTitle;
 
   const matches = matchEmailToApplications(db, userId, {
     fromEmail: effectiveFromEmail,
     companyName: effectiveCompany,
-    positionTitle: row.positionTitle,
+    positionTitle: effectiveRole,
     recruiterName: row.recruiterName ?? row.originalSenderName,
   });
 
   const duplicateApplicationId = findDuplicateApplication(
     db,
     userId,
-    row.companyName,
-    row.positionTitle,
+    effectiveCompany,
+    effectiveRole,
   );
 
   const canCreateApplication =
@@ -223,9 +243,11 @@ export function analyzeEmailAutomation(
     !matches.bestMatch &&
     !duplicateApplicationId &&
     hasIdentifiedCompanyAndRole({
-      companyName: row.companyName,
+      companyName: effectiveCompany,
       originalCompany: row.originalCompany,
-      positionTitle: row.positionTitle,
+      positionTitle: effectiveRole,
+      subject: effectiveSubject,
+      senderEmail: effectiveFromEmail,
     });
 
   let pipelineProposal = null;
@@ -284,6 +306,8 @@ export function createApplicationFromEmail(
       companyName: row.companyName,
       originalCompany: row.originalCompany,
       positionTitle: row.positionTitle,
+      subject: row.originalSubject ?? row.subject,
+      senderEmail: row.originalSenderEmail ?? row.fromEmail,
     })
   ) {
     return {
@@ -345,13 +369,26 @@ export function createApplicationFromEmail(
 
   const timestamp = nowIso();
   const appId = createId();
+  const effectiveSubject = row.originalSubject ?? row.subject;
+  const effectiveFromEmail = row.originalSenderEmail ?? row.fromEmail;
   const company =
-    row.companyName?.trim() ||
-    row.originalCompany?.trim() ||
-    'Unknown';
-  const roleTitle = isUnknownRole(row.positionTitle)
+    resolveEmployerCompany({
+      companyName: row.companyName,
+      originalCompany: row.originalCompany,
+      subject: effectiveSubject,
+      senderEmail: effectiveFromEmail,
+    }) ??
+    (row.companyName?.trim() ||
+      row.originalCompany?.trim() ||
+      'Unknown');
+  const resolvedRole =
+    resolveRoleTitle({
+      positionTitle: row.positionTitle,
+      subject: effectiveSubject,
+    }) ?? row.positionTitle;
+  const roleTitle = isUnknownRole(resolvedRole)
     ? 'Unknown role'
-    : row.positionTitle?.trim() || 'Unknown role';
+    : resolvedRole?.trim() || 'Unknown role';
   const status = initialStatusFromClassification(row.classification);
   const dateApplied =
     row.classification === 'Application Confirmation'
@@ -437,11 +474,15 @@ export function createContactFromEmail(
   const timestamp = nowIso();
   let contactId: string;
   let merged = false;
-  const resolvedNextAction =
-    row.classification === 'Application Confirmation' ||
-    !isMeaningfulContactNextAction(row.suggestedAction ?? '')
-      ? ''
-      : (row.suggestedAction ?? '');
+  let resolvedNextAction = '';
+  if (row.classification === 'Scheduling') {
+    resolvedNextAction = row.suggestedAction ?? '';
+  } else if (
+    row.classification !== 'Application Confirmation' &&
+    isMeaningfulContactNextAction(row.suggestedAction ?? '')
+  ) {
+    resolvedNextAction = row.suggestedAction ?? '';
+  }
 
   if (existing) {
     contactId = existing.id;
@@ -469,9 +510,12 @@ export function createContactFromEmail(
       row.fromEmail.split('@')[0].replace(/[._]/g, ' ') ||
       'Recruiter';
     const extractedCompany =
-      row.companyName?.trim() ||
-      row.originalCompany?.trim() ||
-      '';
+      resolveEmployerCompany({
+        companyName: row.companyName,
+        originalCompany: row.originalCompany,
+        subject: row.originalSubject ?? row.subject,
+        senderEmail: row.originalSenderEmail ?? row.fromEmail,
+      }) ?? '';
     const company = isLikelyDomainCompany(extractedCompany)
       ? (appRows[0]?.company ?? '')
       : extractedCompany || appRows[0]?.company || '';
@@ -680,6 +724,123 @@ export function updatePipelineFromEmail(
       actionType: 'update_pipeline',
       success: true,
       detail: `${app.company} / ${app.roleTitle} to ${targetStatus.replace(/_/g, ' ')}`,
+    }),
+  };
+}
+
+export function upsertInterviewFromEmail(
+  db: Db,
+  userId: string,
+  emailId: string,
+  applicationId: string,
+): AutomationActionResult | null {
+  const row = getEmailForUser(db, userId, emailId);
+  if (!row?.interviewDatetime) return null;
+
+  const appRows = db
+    .select()
+    .from(applications)
+    .where(and(eq(applications.id, applicationId), eq(applications.userId, userId)))
+    .all();
+  if (appRows.length === 0) return null;
+
+  const scheduledAt = row.interviewDatetime;
+  const scheduledDay = scheduledAt.slice(0, 10);
+  const existingInterviews = db
+    .select()
+    .from(interviews)
+    .where(and(eq(interviews.userId, userId), eq(interviews.applicationId, applicationId)))
+    .all();
+
+  const existing = existingInterviews.find(
+    (interview) => interview.scheduledAt.slice(0, 10) === scheduledDay,
+  );
+
+  const timestamp = nowIso();
+  const notes = row.aiSummary?.trim() || 'Interview confirmed via inbound email';
+  const recruiterLabel = row.recruiterName ?? row.originalSenderName;
+  const location = recruiterLabel ? `With ${recruiterLabel}` : '';
+
+  if (existing) {
+    db.update(interviews)
+      .set({
+        scheduledAt,
+        location: location || existing.location,
+        notes,
+        updatedAt: timestamp,
+      })
+      .where(eq(interviews.id, existing.id))
+      .run();
+
+    const auditLogId = recordAuditLog(db, {
+      userId,
+      inboundEmailId: emailId,
+      actionType: 'create_interview',
+      confidence: row.classificationConfidence,
+      resultingChanges: {
+        interviewId: existing.id,
+        applicationId,
+        scheduledAt,
+        updated: true,
+      },
+    });
+
+    return {
+      success: true,
+      actionType: 'create_interview',
+      confidence: row.classificationConfidence,
+      auditLogId,
+      changes: {
+        interviewId: existing.id,
+        applicationId,
+        scheduledAt,
+        updated: true,
+      },
+      message: formatAutomationActionMessage({
+        actionType: 'create_interview',
+        success: true,
+        detail: `Updated interview on ${scheduledDay}`,
+      }),
+    };
+  }
+
+  const interviewId = createId();
+  db.insert(interviews)
+    .values({
+      id: interviewId,
+      userId,
+      applicationId,
+      scheduledAt,
+      type: 'video',
+      location,
+      notes,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    .run();
+
+  const auditLogId = recordAuditLog(db, {
+    userId,
+    inboundEmailId: emailId,
+    actionType: 'create_interview',
+    confidence: row.classificationConfidence,
+    resultingChanges: {
+      interviewId,
+      applicationId,
+      scheduledAt,
+    },
+  });
+
+  return {
+    success: true,
+    actionType: 'create_interview',
+    confidence: row.classificationConfidence,
+    auditLogId,
+    changes: { interviewId, applicationId, scheduledAt },
+    message: formatAutomationActionMessage({
+      actionType: 'create_interview',
+      success: true,
+      detail: `Scheduled for ${scheduledDay}`,
     }),
   };
 }

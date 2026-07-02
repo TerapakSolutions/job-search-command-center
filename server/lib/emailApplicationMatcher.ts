@@ -128,6 +128,17 @@ export function matchEmailToApplications(
       }
     }
 
+    const companyScore = input.companyName
+      ? companyMatchScore(input.companyName, app.company)
+      : 0;
+    const roleScore = input.positionTitle
+      ? roleMatchScore(input.positionTitle, app.roleTitle)
+      : 0;
+    if (companyScore >= 25 && roleScore >= 20) {
+      score += 15;
+      reasons.push('Strong company and role match');
+    }
+
     if (score > 0) {
       matches.push({
         applicationId: app.id,

@@ -86,4 +86,20 @@ describe('classifyInboundEmailWithRules', () => {
     expect(result.classification).toBe('Rejection');
     expect(result.suggestedAction).toContain('Archive');
   });
+
+  it('classifies Pathstream interview confirmation with employer and role extraction', () => {
+    const result = classifyInboundEmailWithRules({
+      subject: 'Pathstream | Interview Confirmation for Engineering Manager',
+      fromEmail: 'jhardin@pathstream.com',
+      textBody:
+        'Your interview with Pathstream for the Engineering Manager position is confirmed for July 5, 2026 at 2:00 PM PT.',
+    });
+
+    expect(result.classification).toBe('Scheduling');
+    expect(result.classificationConfidence).toBeGreaterThanOrEqual(75);
+    expect(result.companyName).toBe('Pathstream');
+    expect(result.positionTitle).toBe('Engineering Manager');
+    expect(result.interviewDetected).toBe(true);
+    expect(result.interviewDatetime).toMatch(/^2026-07-05/);
+  });
 });

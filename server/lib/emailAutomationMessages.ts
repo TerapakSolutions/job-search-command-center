@@ -1,3 +1,11 @@
+import {
+  isAtsPlatformCompany,
+  resolveEmployerCompany,
+  resolveRoleTitle,
+} from './emailContentExtraction.js';
+
+export { isAtsPlatformCompany, resolveEmployerCompany, resolveRoleTitle } from './emailContentExtraction.js';
+
 const APPLICATION_CONFIRMATION_PHRASES = [
   'thank you for your application',
   'thanks for applying',
@@ -44,10 +52,23 @@ export function hasIdentifiedCompanyAndRole(input: {
   companyName: string | null | undefined;
   originalCompany?: string | null | undefined;
   positionTitle: string | null | undefined;
+  subject?: string | null;
+  senderEmail?: string | null;
 }): boolean {
-  const company = input.companyName?.trim() || input.originalCompany?.trim();
-  if (!company || isLikelyDomainCompany(company)) return false;
-  return !isUnknownRole(input.positionTitle);
+  const company = resolveEmployerCompany({
+    companyName: input.companyName,
+    originalCompany: input.originalCompany,
+    subject: input.subject,
+    senderEmail: input.senderEmail,
+  });
+  if (!company || isLikelyDomainCompany(company) || isAtsPlatformCompany(company)) {
+    return false;
+  }
+  const role = resolveRoleTitle({
+    positionTitle: input.positionTitle,
+    subject: input.subject,
+  });
+  return !isUnknownRole(role);
 }
 
 export function isNoReplyOrApplicationConfirmation(input: {

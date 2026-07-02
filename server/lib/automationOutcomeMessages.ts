@@ -5,6 +5,7 @@ export const AUTOMATION_OUTCOMES = [
   'updated_application',
   'updated_pipeline',
   'created_contact',
+  'created_interview',
   'duplicate_skipped',
   'waiting_for_approval',
   'automation_skipped',
@@ -23,6 +24,8 @@ export function automationOutcomeLabel(outcome: AutomationOutcome): string {
       return 'Updated pipeline';
     case 'created_contact':
       return 'Created contact';
+    case 'created_interview':
+      return 'Created interview';
     case 'duplicate_skipped':
       return 'Duplicate skipped';
     case 'waiting_for_approval':
@@ -74,6 +77,10 @@ export function formatAutomationActionMessage(input: {
       return input.detail
         ? `${automationOutcomeLabel('created_contact')}: ${input.detail}`
         : automationOutcomeLabel('created_contact');
+    case 'create_interview':
+      return input.detail
+        ? `${automationOutcomeLabel('created_interview')}: ${input.detail}`
+        : automationOutcomeLabel('created_interview');
     case 'match_applications':
       return automationOutcomeLabel('waiting_for_approval');
     case 'draft_reply':

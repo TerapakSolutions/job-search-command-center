@@ -1,3 +1,8 @@
+import {
+  extractEmployerFromSubject,
+  inferEmployerFromSenderEmail,
+} from './emailContentExtraction.js';
+
 export interface ForwardedEmailMetadata {
   isForwarded: boolean;
   originalSenderEmail: string | null;
@@ -49,33 +54,6 @@ function parseSentDate(value: string): string | null {
   if (!trimmed) return null;
   const parsed = new Date(trimmed);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-}
-
-function inferCompanyFromEmail(email: string | null): string | null {
-  if (!email) return null;
-  const domain = email.split('@')[1]?.toLowerCase() ?? '';
-  if (!domain || domain.includes('gmail') || domain.includes('yahoo')) {
-    return null;
-  }
-
-  const atsDomains: Record<string, string> = {
-    'myworkday.com': 'Workday',
-    'workday.com': 'Workday',
-    'greenhouse.io': 'Greenhouse',
-    'us.greenhouse-mail.io': 'Greenhouse',
-    'lever.co': 'Lever',
-    'ashbyhq.com': 'Ashby',
-  };
-
-  for (const [suffix, label] of Object.entries(atsDomains)) {
-    if (domain.includes(suffix.replace(/^[^.]+\./, '')) || domain.endsWith(suffix)) {
-      return label;
-    }
-  }
-
-  const root = domain.split('.')[0];
-  if (!root || root.length < 2) return null;
-  return root.charAt(0).toUpperCase() + root.slice(1);
 }
 
 function findForwardBlockStart(text: string): number {
@@ -157,7 +135,6 @@ export function parseForwardedEmail(
   const body = textBody ?? '';
   const subjectLower = subject.toLowerCase();
   const bodyLower = body.toLowerCase();
-  const fromLower = fromEmail.toLowerCase();
 
   const hasForwardMarker =
     FORWARD_MARKERS.some((p) => p.test(body)) ||
@@ -200,10 +177,8 @@ export function parseForwardedEmail(
   }
 
   const originalCompany =
-    inferCompanyFromEmail(originalSenderEmail) ??
-    (originalSenderEmail && !originalSenderEmail.includes(fromLower.split('@')[0])
-      ? inferCompanyFromEmail(originalSenderEmail)
-      : null);
+    (originalSubject ? extractEmployerFromSubject(originalSubject) : null) ??
+    inferEmployerFromSenderEmail(originalSenderEmail);
 
   if (!originalSenderEmail && !originalSubject && !originalBody) {
     return notForwarded;

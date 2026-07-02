@@ -64,6 +64,44 @@ describe('classifyEmailContent', () => {
     expect(result.classification).toBe('Offer');
   });
 
+  it('overrides LLM Other with rule-based interview confirmation for forwarded Pathstream email', async () => {
+    mockLlm.mockResolvedValue({
+      classification: 'Other',
+      classificationConfidence: 55,
+      companyName: 'Workday',
+      positionTitle: null,
+      recruiterName: null,
+      requiresResponse: false,
+      suggestedAction: 'Review manually',
+      actionDueAt: null,
+      interviewDetected: false,
+      interviewDatetime: null,
+      aiSummary: 'Generic email.',
+    });
+
+    const textBody = `---------- Forwarded message ---------
+From: John Hardin <jhardin@pathstream.com>
+Date: Mon, Jul 1, 2026 at 2:00 PM
+Subject: Pathstream | Interview Confirmation for Engineering Manager
+To: seeker@example.com
+
+Your interview with Pathstream for the Engineering Manager position is confirmed for July 5, 2026 at 2:00 PM PT.`;
+
+    const result = await classifyEmailContent({
+      subject: 'Fwd: Pathstream | Interview Confirmation for Engineering Manager',
+      fromEmail: 'steve@terapak.com',
+      textBody,
+    });
+
+    expect(result.classification).toBe('Scheduling');
+    expect(result.classification).not.toBe('Other');
+    expect(result.companyName).toBe('Pathstream');
+    expect(result.positionTitle).toBe('Engineering Manager');
+    expect(result.recruiterName).toBe('John Hardin');
+    expect(result.interviewDetected).toBe(true);
+    expect(result.interviewDatetime).toMatch(/^2026-07-05/);
+  });
+
   it('falls back to rules when LLM throws', async () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     mockLlm.mockRejectedValue(new Error('LLM down'));
