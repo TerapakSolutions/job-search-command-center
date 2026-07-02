@@ -22,6 +22,7 @@
     "lint:fix": "eslint src --ext .ts --ext .tsx --fix",
     "test": "jest --coverage",
     "test:postmark-inbound": "tsx server/scripts/testPostmarkInbound.ts",
+    "find:stale-classifications": "tsx server/scripts/findStaleClassificationEmails.ts",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
