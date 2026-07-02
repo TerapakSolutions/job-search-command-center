@@ -9,6 +9,7 @@ import {
   queueProcessingApproval,
   recordEmailAutomationAudit,
   updatePipelineFromEmail,
+  upsertInterviewFromEmail,
 } from './emailAutomationService.js';
 import type { AutomationActionResult } from './emailAutomationTypes.js';
 import { PIPELINE_AUTO_CONFIDENCE_THRESHOLD } from './emailAutomationTypes.js';
@@ -327,6 +328,16 @@ export function applySafeAutomationRules(
           ? `Matched existing application: ${match.company} / ${match.roleTitle}`
           : pipelineResult.message,
       });
+    }
+
+    if (row.interviewDatetime && !shouldSkip('create_interview')) {
+      const interviewResult = upsertInterviewFromEmail(
+        db,
+        userId,
+        emailId,
+        applicationId,
+      );
+      if (interviewResult) results.push(interviewResult);
     }
   }
 

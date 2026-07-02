@@ -5,6 +5,7 @@ import {
   classifyInboundEmailWithLlm,
   classifyInboundEmailWithRules,
 } from './emailClassificationEngine.js';
+import { isInterviewConfirmationText } from './emailContentExtraction.js';
 import type {
   EmailClassificationResult,
   InboundEmailClassificationFields,
@@ -60,6 +61,30 @@ export function classificationFieldsFromRow(
   };
 }
 
+function applyKnownPatternRuleOverrides(
+  result: EmailClassificationResult,
+  classifiedInput: ReturnType<typeof classificationInputFromEmail>,
+): EmailClassificationResult {
+  const haystack = `${classifiedInput.subject}\n${classifiedInput.textBody}`;
+  const ruleResult = classifyInboundEmailWithRules({
+    subject: classifiedInput.subject,
+    fromEmail: classifiedInput.fromEmail,
+    textBody: classifiedInput.textBody,
+  });
+
+  if (
+    isInterviewConfirmationText(haystack) &&
+    ruleResult.classification === 'Scheduling' &&
+    (result.classification === 'Other' ||
+      result.classification === 'General Update' ||
+      (result.classificationConfidence ?? 0) < ruleResult.classificationConfidence)
+  ) {
+    return enrichClassificationFromForward(ruleResult, classifiedInput);
+  }
+
+  return enrichClassificationFromForward(result, classifiedInput);
+}
+
 export async function classifyEmailContent(input: {
   subject: string;
   fromEmail: string;
@@ -74,7 +99,7 @@ export async function classifyEmailContent(input: {
       textBody: classifiedInput.textBody,
     });
     if (llmResult) {
-      return enrichClassificationFromForward(llmResult, classifiedInput);
+      return applyKnownPatternRuleOverrides(llmResult, classifiedInput);
     }
   } catch (err) {
     console.error('[email-classification] LLM classification failed', err);

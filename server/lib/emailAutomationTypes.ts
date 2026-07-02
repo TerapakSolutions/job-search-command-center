@@ -15,6 +15,7 @@ export const AUTOMATION_ACTION_TYPES = [
   'match_applications',
   'create_application',
   'create_contact',
+  'create_interview',
   'update_pipeline',
   'draft_reply',
   'record_communication',

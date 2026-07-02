@@ -8,6 +8,7 @@ import {
   emailAutomationAuditLog,
   emailAutomationPendingApprovals,
   inboundEmails,
+  interviews,
 } from '../db/schema.js';
 import {
   findDuplicateApplication,
@@ -473,11 +474,15 @@ export function createContactFromEmail(
   const timestamp = nowIso();
   let contactId: string;
   let merged = false;
-  const resolvedNextAction =
-    row.classification === 'Application Confirmation' ||
-    !isMeaningfulContactNextAction(row.suggestedAction ?? '')
-      ? ''
-      : (row.suggestedAction ?? '');
+  let resolvedNextAction = '';
+  if (row.classification === 'Scheduling') {
+    resolvedNextAction = row.suggestedAction ?? '';
+  } else if (
+    row.classification !== 'Application Confirmation' &&
+    isMeaningfulContactNextAction(row.suggestedAction ?? '')
+  ) {
+    resolvedNextAction = row.suggestedAction ?? '';
+  }
 
   if (existing) {
     contactId = existing.id;
@@ -719,6 +724,123 @@ export function updatePipelineFromEmail(
       actionType: 'update_pipeline',
       success: true,
       detail: `${app.company} / ${app.roleTitle} to ${targetStatus.replace(/_/g, ' ')}`,
+    }),
+  };
+}
+
+export function upsertInterviewFromEmail(
+  db: Db,
+  userId: string,
+  emailId: string,
+  applicationId: string,
+): AutomationActionResult | null {
+  const row = getEmailForUser(db, userId, emailId);
+  if (!row?.interviewDatetime) return null;
+
+  const appRows = db
+    .select()
+    .from(applications)
+    .where(and(eq(applications.id, applicationId), eq(applications.userId, userId)))
+    .all();
+  if (appRows.length === 0) return null;
+
+  const scheduledAt = row.interviewDatetime;
+  const scheduledDay = scheduledAt.slice(0, 10);
+  const existingInterviews = db
+    .select()
+    .from(interviews)
+    .where(and(eq(interviews.userId, userId), eq(interviews.applicationId, applicationId)))
+    .all();
+
+  const existing = existingInterviews.find(
+    (interview) => interview.scheduledAt.slice(0, 10) === scheduledDay,
+  );
+
+  const timestamp = nowIso();
+  const notes = row.aiSummary?.trim() || 'Interview confirmed via inbound email';
+  const recruiterLabel = row.recruiterName ?? row.originalSenderName;
+  const location = recruiterLabel ? `With ${recruiterLabel}` : '';
+
+  if (existing) {
+    db.update(interviews)
+      .set({
+        scheduledAt,
+        location: location || existing.location,
+        notes,
+        updatedAt: timestamp,
+      })
+      .where(eq(interviews.id, existing.id))
+      .run();
+
+    const auditLogId = recordAuditLog(db, {
+      userId,
+      inboundEmailId: emailId,
+      actionType: 'create_interview',
+      confidence: row.classificationConfidence,
+      resultingChanges: {
+        interviewId: existing.id,
+        applicationId,
+        scheduledAt,
+        updated: true,
+      },
+    });
+
+    return {
+      success: true,
+      actionType: 'create_interview',
+      confidence: row.classificationConfidence,
+      auditLogId,
+      changes: {
+        interviewId: existing.id,
+        applicationId,
+        scheduledAt,
+        updated: true,
+      },
+      message: formatAutomationActionMessage({
+        actionType: 'create_interview',
+        success: true,
+        detail: `Updated interview on ${scheduledDay}`,
+      }),
+    };
+  }
+
+  const interviewId = createId();
+  db.insert(interviews)
+    .values({
+      id: interviewId,
+      userId,
+      applicationId,
+      scheduledAt,
+      type: 'video',
+      location,
+      notes,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    .run();
+
+  const auditLogId = recordAuditLog(db, {
+    userId,
+    inboundEmailId: emailId,
+    actionType: 'create_interview',
+    confidence: row.classificationConfidence,
+    resultingChanges: {
+      interviewId,
+      applicationId,
+      scheduledAt,
+    },
+  });
+
+  return {
+    success: true,
+    actionType: 'create_interview',
+    confidence: row.classificationConfidence,
+    auditLogId,
+    changes: { interviewId, applicationId, scheduledAt },
+    message: formatAutomationActionMessage({
+      actionType: 'create_interview',
+      success: true,
+      detail: `Scheduled for ${scheduledDay}`,
     }),
   };
 }

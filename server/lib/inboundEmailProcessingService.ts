@@ -327,10 +327,18 @@ export async function processInboundEmail(
       confidence: updatedRow?.classificationConfidence ?? null,
       details: {
         manual: options.manual ?? false,
+        classification: updatedRow?.classification ?? null,
+        companyName: updatedRow?.companyName ?? null,
+        positionTitle: updatedRow?.positionTitle ?? null,
+        interviewDatetime: updatedRow?.interviewDatetime ?? null,
+        matchedApplication: analysis?.matches.bestMatch
+          ? `${analysis.matches.bestMatch.company} / ${analysis.matches.bestMatch.roleTitle}`
+          : null,
         automationActions: automation.results.length,
         pendingApprovals: automation.pendingApprovals,
         riskyReasons: automation.riskyReasons,
         skipSummary: automation.skipSummary,
+        actionMessages: automation.results.map((r) => r.message),
       },
       resultingChanges: {
         actions: automation.results.map((r) => r.actionType),

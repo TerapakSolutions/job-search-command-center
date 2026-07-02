@@ -50,6 +50,31 @@ We received your application.`;
     expect(result.originalSenderEmail).toBe('careers@telus.com');
     expect(result.originalSubject).toBe('Application received');
   });
+
+  it('extracts Pathstream interview confirmation from forwarded block', () => {
+    const textBody = `---------- Forwarded message ---------
+From: John Hardin <jhardin@pathstream.com>
+Date: Mon, Jul 1, 2026 at 2:00 PM
+Subject: Pathstream | Interview Confirmation for Engineering Manager
+To: seeker@example.com
+
+Your interview with Pathstream for the Engineering Manager position is confirmed for July 5, 2026 at 2:00 PM PT.`;
+
+    const result = parseForwardedEmail(
+      'Fwd: Pathstream | Interview Confirmation for Engineering Manager',
+      'steve@terapak.com',
+      textBody,
+    );
+
+    expect(result.isForwarded).toBe(true);
+    expect(result.originalSenderEmail).toBe('jhardin@pathstream.com');
+    expect(result.originalSenderName).toBe('John Hardin');
+    expect(result.originalSubject).toBe(
+      'Pathstream | Interview Confirmation for Engineering Manager',
+    );
+    expect(result.originalCompany).toBe('Pathstream');
+    expect(result.originalBody).toContain('confirmed for July 5, 2026');
+  });
 });
 
 describe('classificationInputFromEmail', () => {
@@ -107,5 +132,32 @@ Greenhouse application received for Staff Engineer.`;
     });
 
     expect(result.classification).toBe('Application Confirmation');
+  });
+
+  it('classifies forwarded Pathstream interview confirmation using original sender and body', () => {
+    const textBody = `---------- Forwarded message ---------
+From: John Hardin <jhardin@pathstream.com>
+Date: Mon, Jul 1, 2026 at 2:00 PM
+Subject: Pathstream | Interview Confirmation for Engineering Manager
+To: seeker@example.com
+
+Your interview with Pathstream for the Engineering Manager position is confirmed for July 5, 2026 at 2:00 PM PT.`;
+
+    const classified = classificationInputFromEmail({
+      subject: 'Fwd: Pathstream | Interview Confirmation for Engineering Manager',
+      fromEmail: 'steve@terapak.com',
+      textBody,
+    });
+
+    const result = classifyInboundEmailWithRules({
+      subject: classified.subject,
+      fromEmail: classified.fromEmail,
+      textBody: classified.textBody,
+    });
+
+    expect(result.classification).toBe('Scheduling');
+    expect(result.companyName).toBe('Pathstream');
+    expect(result.positionTitle).toBe('Engineering Manager');
+    expect(result.interviewDatetime).toMatch(/^2026-07-05/);
   });
 });

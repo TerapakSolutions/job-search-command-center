@@ -4,7 +4,9 @@ import {
   applications,
   communications,
   contacts,
+  emailAutomationAuditLog,
   inboundEmails,
+  interviews,
 } from '../db/schema.js';
 import { processInboundEmail } from './inboundEmailProcessingService.js';
 import {
@@ -105,5 +107,31 @@ describe('Pathstream interview confirmation email', () => {
     expect(comms[0].applicationId).toBe(appId);
     expect(comms[0].contactId).toBe(appContacts[0].id);
     expect(comms[0].direction).toBe('inbound');
+
+    const interviewRows = db.select().from(interviews).all();
+    expect(interviewRows).toHaveLength(1);
+    expect(interviewRows[0].applicationId).toBe(appId);
+    expect(interviewRows[0].scheduledAt).toMatch(/^2026-07-05/);
+    expect(interviewRows[0].location).toContain('John Hardin');
+
+    expect(appContacts[0].nextAction).toBe('Prepare for your upcoming interview');
+    expect(appContacts[0].nextAction).not.toMatch(/Jon responded/i);
+
+    const auditRows = db
+      .select()
+      .from(emailAutomationAuditLog)
+      .where(eq(emailAutomationAuditLog.inboundEmailId, emailId))
+      .all();
+    const processAudit = auditRows.find((entry) => entry.actionType === 'auto_process');
+    expect(processAudit).toBeTruthy();
+    const auditDetails = JSON.parse(processAudit!.detailsJson) as Record<string, unknown>;
+    expect(auditDetails.classification).toBe('Scheduling');
+    expect(auditDetails.matchedApplication).toBe('Pathstream / Engineering Manager');
+    expect(String(auditDetails.interviewDatetime)).toMatch(/^2026-07-05/);
+    expect(auditDetails.actionMessages).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Pathstream / Engineering Manager'),
+      ]),
+    );
   });
 });
