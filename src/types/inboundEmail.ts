@@ -1,5 +1,39 @@
 export type ProcessingStatus = 'unprocessed' | 'processing' | 'processed' | 'failed';
 
+export interface PendingApprovalSummary {
+  id: string;
+  approvalType: string;
+  label: string;
+  reason: string;
+  proposedStatus: string;
+  currentStatus: string | null;
+  company?: string;
+  roleTitle?: string;
+}
+
+export interface ForwardedEmailSummary {
+  isForwarded: boolean;
+  forwardedByEmail: string;
+  originalSenderEmail: string | null;
+  originalSenderName: string | null;
+  originalSubject: string | null;
+  originalRecipient: string | null;
+  originalSentAt: string | null;
+  originalCompany: string | null;
+}
+
+export interface ProcessingTimelineStep {
+  step: string;
+  status: 'pending' | 'completed' | 'skipped' | 'failed';
+  timestamp: string | null;
+  message: string;
+  error?: string | null;
+}
+
+export interface ProcessingTimeline {
+  steps: ProcessingTimelineStep[];
+}
+
 export interface InboundEmailListItem {
   id: string;
   subject: string;
@@ -16,6 +50,7 @@ export interface InboundEmailListItem {
   processingError: string | null;
   lastProcessedAt: string | null;
   needsApproval: boolean;
+  approvalItems?: PendingApprovalSummary[];
 }
 
 export interface InboundEmailDetail extends InboundEmailListItem {
@@ -32,6 +67,9 @@ export interface InboundEmailDetail extends InboundEmailListItem {
   processingStartedAt: string | null;
   processingCompletedAt: string | null;
   processingAttempts: number;
+  forwarded: ForwardedEmailSummary;
+  processingTimeline: ProcessingTimeline | null;
+  pendingApprovals: PendingApprovalSummary[];
 }
 
 export interface InboundEmailClassification {

@@ -13,6 +13,12 @@ import {
 import type { AutomationActionResult } from './emailAutomationTypes.js';
 import { PIPELINE_AUTO_CONFIDENCE_THRESHOLD } from './emailAutomationTypes.js';
 import type { EmailAutomationAnalysis } from './emailAutomationTypes.js';
+import {
+  formatApprovalReason,
+  formatPipelineApprovalLabel,
+  isNoReplyOrApplicationConfirmation,
+} from './emailAutomationMessages.js';
+import type { ProcessingTimelineBuilder } from './processingTimeline.js';
 
 const PROTECTED_PIPELINE_STATUSES = new Set(['offer']);
 
@@ -22,6 +28,10 @@ function isLinkedInApplicationConfirmation(
   const from = row.fromEmail.toLowerCase();
   const linkedInSender = from.includes('linkedin.com') || from.includes('linkedin');
   return linkedInSender && row.classification === 'Application Confirmation';
+}
+
+function isApplicationConfirmation(row: typeof inboundEmails.$inferSelect): boolean {
+  return row.classification === 'Application Confirmation';
 }
 
 function isSalaryNegotiation(row: typeof inboundEmails.$inferSelect): boolean {
@@ -44,6 +54,29 @@ function isInterviewScheduling(row: typeof inboundEmails.$inferSelect): boolean 
 
 function isHighConfidence(row: typeof inboundEmails.$inferSelect): boolean {
   return (row.classificationConfidence ?? 0) >= PIPELINE_AUTO_CONFIDENCE_THRESHOLD;
+}
+
+function extractTextBody(payloadJson: string): string {
+  try {
+    const payload = JSON.parse(payloadJson) as Record<string, unknown>;
+    return typeof payload.TextBody === 'string' ? payload.TextBody : '';
+  } catch {
+    return '';
+  }
+}
+
+function hasRecruiterSignal(row: typeof inboundEmails.$inferSelect): boolean {
+  if (row.recruiterName?.trim()) return true;
+  const from = row.fromEmail.toLowerCase();
+  if (
+    from.includes('noreply') ||
+    from.includes('no-reply') ||
+    from.includes('donotreply') ||
+    from.includes('notifications@')
+  ) {
+    return false;
+  }
+  return !isApplicationConfirmation(row);
 }
 
 export function collectRiskyApprovalReasons(
@@ -89,11 +122,16 @@ export function applySafeAutomationRules(
   db: Db,
   userId: string,
   emailId: string,
-  options: { skipCompletedActions?: boolean } = {},
+  options: {
+    skipCompletedActions?: boolean;
+    timeline?: ProcessingTimelineBuilder;
+  } = {},
 ): {
   results: AutomationActionResult[];
   pendingApprovals: number;
   riskyReasons: string[];
+  skipSummary?: string;
+  approvalSummary?: string;
 } {
   const row = db
     .select()
@@ -107,12 +145,19 @@ export function applySafeAutomationRules(
 
   const analysis = analyzeEmailAutomation(db, userId, emailId);
   if (!analysis) {
-    return { results: [], pendingApprovals: 0, riskyReasons: [] };
+    return {
+      results: [],
+      pendingApprovals: 0,
+      riskyReasons: [],
+      skipSummary: 'Skipped pipeline update: no matched application',
+    };
   }
 
   const riskyReasons = collectRiskyApprovalReasons(row, analysis);
   const results: AutomationActionResult[] = [];
+  const skipReasons: string[] = [];
   let pendingApprovals = 0;
+  const approvalMessages: string[] = [];
   const skipCompleted = options.skipCompletedActions ?? false;
 
   const shouldSkip = (actionType: AutomationActionResult['actionType']) =>
@@ -123,7 +168,45 @@ export function applySafeAutomationRules(
     analysis.duplicateApplicationId ??
     undefined;
 
-  if (isLinkedInApplicationConfirmation(row) && !shouldSkip('create_application')) {
+  const textBody = extractTextBody(row.payload);
+
+  if (
+    isApplicationConfirmation(row) &&
+    isHighConfidence(row) &&
+    !shouldSkip('create_application')
+  ) {
+    if (applicationId) {
+      const match = analysis.matches.bestMatch;
+      const pipelineResult = updatePipelineFromEmail(db, userId, emailId, {
+        applicationId,
+        status: 'applied',
+        force: true,
+      });
+      if (pipelineResult) {
+        results.push({
+          ...pipelineResult,
+          message: match
+            ? `Matched existing application: ${match.company} / ${match.roleTitle}`
+            : pipelineResult.message,
+        });
+      }
+    } else if (!analysis.duplicateApplicationId) {
+      const createResult = createApplicationFromEmail(db, userId, emailId);
+      if (createResult) {
+        results.push(createResult);
+        if (createResult.success && createResult.changes.applicationId) {
+          const pipelineResult = updatePipelineFromEmail(db, userId, emailId, {
+            applicationId: String(createResult.changes.applicationId),
+            status: 'applied',
+            force: true,
+          });
+          if (pipelineResult) results.push(pipelineResult);
+        }
+      }
+    } else {
+      skipReasons.push('Skipped application creation: duplicate found');
+    }
+  } else if (isLinkedInApplicationConfirmation(row) && !shouldSkip('create_application')) {
     if (applicationId) {
       const pipelineResult = updatePipelineFromEmail(db, userId, emailId, {
         applicationId,
@@ -160,6 +243,11 @@ export function applySafeAutomationRules(
       force: true,
     });
     if (pipelineResult) results.push(pipelineResult);
+  } else if (
+    row.classification === 'Rejection' &&
+    !applicationId
+  ) {
+    skipReasons.push('Skipped pipeline update: no matched application');
   }
 
   if (
@@ -168,8 +256,12 @@ export function applySafeAutomationRules(
     applicationId &&
     !shouldSkip('create_contact')
   ) {
-    const contactResult = createContactFromEmail(db, userId, emailId, applicationId);
-    if (contactResult) results.push(contactResult);
+    if (hasRecruiterSignal(row)) {
+      const contactResult = createContactFromEmail(db, userId, emailId, applicationId);
+      if (contactResult) results.push(contactResult);
+    } else {
+      skipReasons.push('Skipped contact creation: no recruiter detected');
+    }
   }
 
   if (
@@ -190,6 +282,7 @@ export function applySafeAutomationRules(
         reason: 'High-confidence recruiter outreach suggests creating an application',
       });
       pendingApprovals += 1;
+      approvalMessages.push('Approve creating application');
       recordEmailAutomationAudit(db, {
         userId,
         inboundEmailId: emailId,
@@ -197,6 +290,26 @@ export function applySafeAutomationRules(
         confidence: row.classificationConfidence,
         status: 'pending',
         details: { pendingApprovalId: approvalId, type: 'create_application_suggestion' },
+      });
+    } else if (analysis.duplicateApplicationId) {
+      const approvalId = queueProcessingApproval(db, {
+        userId,
+        inboundEmailId: emailId,
+        approvalType: 'link_application',
+        applicationId: analysis.duplicateApplicationId,
+        proposedStatus: 'recruiter_screen',
+        confidence: row.classificationConfidence ?? 50,
+        reason: 'Ambiguous match — confirm linking to existing application',
+      });
+      pendingApprovals += 1;
+      approvalMessages.push('Approve linking to existing application');
+      recordEmailAutomationAudit(db, {
+        userId,
+        inboundEmailId: emailId,
+        actionType: 'match_applications',
+        confidence: row.classificationConfidence,
+        status: 'pending',
+        details: { pendingApprovalId: approvalId, type: 'link_application' },
       });
     }
   }
@@ -213,6 +326,12 @@ export function applySafeAutomationRules(
       reason: riskyReasons.join(', '),
     });
     pendingApprovals += 1;
+    approvalMessages.push(
+      formatPipelineApprovalLabel(
+        analysis.pipelineProposal.proposedStatus,
+        analysis.pipelineProposal.currentStatus,
+      ),
+    );
     recordEmailAutomationAudit(db, {
       userId,
       inboundEmailId: emailId,
@@ -223,7 +342,14 @@ export function applySafeAutomationRules(
     });
   }
 
-  if (row.requiresResponse) {
+  const suppressReply = isNoReplyOrApplicationConfirmation({
+    fromEmail: row.originalSenderEmail ?? row.fromEmail,
+    classification: row.classification,
+    subject: row.originalSubject ?? row.subject,
+    textBody,
+  });
+
+  if (row.requiresResponse && !suppressReply) {
     const approvalId = queueProcessingApproval(db, {
       userId,
       inboundEmailId: emailId,
@@ -233,6 +359,7 @@ export function applySafeAutomationRules(
       reason: 'Response may involve sending email',
     });
     pendingApprovals += 1;
+    approvalMessages.push('Approve draft reply');
     recordEmailAutomationAudit(db, {
       userId,
       inboundEmailId: emailId,
@@ -241,7 +368,47 @@ export function applySafeAutomationRules(
       status: 'pending',
       details: { pendingApprovalId: approvalId, reason: 'requires_response' },
     });
+  } else if (row.requiresResponse && suppressReply) {
+    skipReasons.push('Skipped reply: no-reply/application confirmation');
   }
 
-  return { results, pendingApprovals, riskyReasons };
+  if (
+    row.classification === 'Recruiter Outreach' &&
+    isHighConfidence(row) &&
+    !applicationId &&
+    !analysis.canCreateApplication &&
+    !shouldSkip('create_contact')
+  ) {
+    const approvalId = queueProcessingApproval(db, {
+      userId,
+      inboundEmailId: emailId,
+      approvalType: 'create_contact',
+      proposedStatus: 'saved',
+      confidence: row.classificationConfidence ?? 50,
+      reason: 'Recruiter detected without linked application',
+    });
+    pendingApprovals += 1;
+    approvalMessages.push('Approve recruiter contact creation');
+    recordEmailAutomationAudit(db, {
+      userId,
+      inboundEmailId: emailId,
+      actionType: 'create_contact',
+      confidence: row.classificationConfidence,
+      status: 'pending',
+      details: { pendingApprovalId: approvalId, type: 'create_contact' },
+    });
+  }
+
+  return {
+    results,
+    pendingApprovals,
+    riskyReasons,
+    skipSummary: skipReasons.length > 0 ? skipReasons.join('; ') : undefined,
+    approvalSummary:
+      approvalMessages.length > 0
+        ? approvalMessages.join('; ')
+        : pendingApprovals > 0
+          ? formatApprovalReason(riskyReasons.join(', '))
+          : undefined,
+  };
 }

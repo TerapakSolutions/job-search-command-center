@@ -1,5 +1,6 @@
 import type { EmailClassificationResult } from './emailClassificationTypes.js';
 import { defaultSuggestedAction, parseClassificationJson } from './emailClassificationParser.js';
+import { isApplicationConfirmationText } from './emailAutomationMessages.js';
 import { generateLlmCompletion, isLlmConfigured } from './llmClient.js';
 
 const SYSTEM_PROMPT = `You classify inbound job-search emails and extract structured fields for a job seeker's command center.
@@ -78,12 +79,8 @@ export function classifyInboundEmailWithRules(
     });
   }
 
-  if (
-    /thank you for applying|application received|we received your application|thanks for your interest in/.test(
-      text,
-    )
-  ) {
-    return buildRuleResult('Application Confirmation', 80, input, {
+  if (isApplicationConfirmationText(text)) {
+    return buildRuleResult('Application Confirmation', 85, input, {
       requiresResponse: false,
       suggestedAction: 'No action needed — application received',
       aiSummary: 'Automated or recruiter confirmation that your application was received.',
@@ -119,6 +116,13 @@ export function classifyInboundEmailWithRules(
   }
 
   if (/recruiter|talent acquisition|hiring manager|opportunity at/.test(text)) {
+    if (isApplicationConfirmationText(text)) {
+      return buildRuleResult('Application Confirmation', 85, input, {
+        requiresResponse: false,
+        suggestedAction: 'No action needed — application received',
+        aiSummary: 'Automated or recruiter confirmation that your application was received.',
+      });
+    }
     return buildRuleResult('Recruiter Outreach', 65, input, {
       requiresResponse: true,
       suggestedAction: 'Review opportunity and respond if interested',

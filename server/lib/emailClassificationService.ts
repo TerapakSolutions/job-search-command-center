@@ -5,7 +5,11 @@ import {
   classifyInboundEmailWithLlm,
   classifyInboundEmailWithRules,
 } from './emailClassificationEngine.js';
-import type { InboundEmailClassificationFields } from './emailClassificationTypes.js';
+import type {
+  EmailClassificationResult,
+  InboundEmailClassificationFields,
+} from './emailClassificationTypes.js';
+import { classificationInputFromEmail } from './emailForwardedParser.js';
 import { nowIso } from './id.js';
 import {
   getUserEmailContext,
@@ -57,14 +61,81 @@ export async function classifyEmailContent(input: {
   fromEmail: string;
   textBody: string;
 }) {
+  const classifiedInput = classificationInputFromEmail(input);
+
   try {
-    const llmResult = await classifyInboundEmailWithLlm(input);
-    if (llmResult) return llmResult;
+    const llmResult = await classifyInboundEmailWithLlm({
+      subject: classifiedInput.subject,
+      fromEmail: classifiedInput.fromEmail,
+      textBody: classifiedInput.textBody,
+    });
+    if (llmResult) {
+      return enrichClassificationFromForward(llmResult, classifiedInput);
+    }
   } catch (err) {
     console.error('[email-classification] LLM classification failed', err);
   }
 
-  return classifyInboundEmailWithRules(input);
+  const ruleResult = classifyInboundEmailWithRules({
+    subject: classifiedInput.subject,
+    fromEmail: classifiedInput.fromEmail,
+    textBody: classifiedInput.textBody,
+  });
+  return enrichClassificationFromForward(ruleResult, classifiedInput);
+}
+
+function enrichClassificationFromForward(
+  result: EmailClassificationResult,
+  classifiedInput: ReturnType<typeof classificationInputFromEmail>,
+): EmailClassificationResult {
+  const { forwardMetadata } = classifiedInput;
+  if (!forwardMetadata.isForwarded) {
+    return result;
+  }
+
+  return {
+    ...result,
+    companyName:
+      result.companyName ??
+      forwardMetadata.originalCompany ??
+      inferCompanyFromEmail(classifiedInput.fromEmail),
+    recruiterName:
+      result.recruiterName ?? forwardMetadata.originalSenderName ?? null,
+  };
+}
+
+function inferCompanyFromEmail(email: string): string | null {
+  const domain = email.split('@')[1]?.split('.')[0];
+  if (!domain || domain.length < 2) return null;
+  return domain.charAt(0).toUpperCase() + domain.slice(1);
+}
+
+export function persistForwardMetadata(
+  db: Db,
+  emailId: string,
+  input: { subject: string; fromEmail: string; textBody: string },
+): ReturnType<typeof classificationInputFromEmail>['forwardMetadata'] {
+  const classifiedInput = classificationInputFromEmail(input);
+  const { forwardMetadata } = classifiedInput;
+  if (!forwardMetadata.isForwarded) {
+    return forwardMetadata;
+  }
+
+  db.update(inboundEmails)
+    .set({
+      isForwarded: true,
+      originalSenderEmail: forwardMetadata.originalSenderEmail,
+      originalSenderName: forwardMetadata.originalSenderName,
+      originalSubject: forwardMetadata.originalSubject,
+      originalRecipient: forwardMetadata.originalRecipient,
+      originalSentAt: forwardMetadata.originalSentAt,
+      originalCompany: forwardMetadata.originalCompany,
+      updatedAt: nowIso(),
+    })
+    .where(eq(inboundEmails.id, emailId))
+    .run();
+
+  return forwardMetadata;
 }
 
 export async function classifyInboundEmailForUser(
@@ -94,6 +165,11 @@ export async function classifyInboundEmailForUser(
   }
 
   const textBody = extractTextBody(row.payload);
+  persistForwardMetadata(db, row.id, {
+    subject: row.subject,
+    fromEmail: row.fromEmail,
+    textBody,
+  });
   const result = await classifyEmailContent({
     subject: row.subject,
     fromEmail: row.fromEmail,

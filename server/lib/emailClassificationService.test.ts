@@ -31,6 +31,16 @@ describe('classifyEmailContent', () => {
     expect(mockLlm).toHaveBeenCalled();
   });
 
+  it('classifies Thank You for Your Application as Application Confirmation', async () => {
+    const result = await classifyEmailContent({
+      subject: 'Thank You for Your Application!',
+      fromEmail: 'noreply@workday.com',
+      textBody: 'Thank you for your application to the Software Engineer role.',
+    });
+    expect(result.classification).toBe('Application Confirmation');
+    expect(result.classification).not.toBe('Recruiter Outreach');
+  });
+
   it('uses LLM result when available', async () => {
     mockLlm.mockResolvedValue({
       classification: 'Offer',

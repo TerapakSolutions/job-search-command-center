@@ -23,6 +23,7 @@ import type {
 } from './emailAutomationTypes.js';
 import type { AutomationActionType } from './emailAutomationTypes.js';
 import { buildPipelineUpdateProposal } from './emailPipelineAutomation.js';
+import { contactRoleFallback, isMeaningfulContactNextAction } from './emailAutomationMessages.js';
 import {
   getUserEmailContext,
   inboundEmailBelongsToUser,
@@ -176,11 +177,14 @@ export function analyzeEmailAutomation(
   const row = getEmailForUser(db, userId, emailId);
   if (!row) return null;
 
+  const effectiveFromEmail = row.originalSenderEmail ?? row.fromEmail;
+  const effectiveCompany = row.originalCompany ?? row.companyName;
+
   const matches = matchEmailToApplications(db, userId, {
-    fromEmail: row.fromEmail,
-    companyName: row.companyName,
+    fromEmail: effectiveFromEmail,
+    companyName: effectiveCompany,
     positionTitle: row.positionTitle,
-    recruiterName: row.recruiterName,
+    recruiterName: row.recruiterName ?? row.originalSenderName,
   });
 
   const duplicateApplicationId = findDuplicateApplication(
@@ -252,6 +256,12 @@ export function createApplicationFromEmail(
     row.positionTitle,
   );
   if (duplicateId && !options.applicationId) {
+    const dupRows = db
+      .select()
+      .from(applications)
+      .where(and(eq(applications.id, duplicateId), eq(applications.userId, userId)))
+      .all();
+    const dup = dupRows[0];
     return {
       success: false,
       actionType: 'create_application',
@@ -265,14 +275,21 @@ export function createApplicationFromEmail(
         details: { reason: 'duplicate_detected', duplicateApplicationId: duplicateId },
       }),
       changes: { duplicateApplicationId: duplicateId },
-      message: 'An application already exists for this company and role.',
+      message: dup
+        ? `Skipped application creation: duplicate found (${dup.company} / ${dup.roleTitle})`
+        : 'Skipped application creation: duplicate found',
     };
   }
 
   const timestamp = nowIso();
   const appId = createId();
-  const company = row.companyName?.trim() || row.fromEmail.split('@')[1] || 'Unknown';
-  const roleTitle = row.positionTitle?.trim() || 'Unknown role';
+  const company =
+    row.companyName?.trim() ||
+    row.originalCompany?.trim() ||
+    row.originalSenderEmail?.split('@')[1]?.split('.')[0] ||
+    row.fromEmail.split('@')[1]?.split('.')[0] ||
+    'Unknown';
+  const roleTitle = contactRoleFallback(row.positionTitle);
   const status = initialStatusFromClassification(row.classification);
   const dateApplied =
     row.classification === 'Application Confirmation'
@@ -318,7 +335,7 @@ export function createApplicationFromEmail(
     confidence: row.classificationConfidence,
     auditLogId,
     changes: { applicationId: appId, company, roleTitle, status },
-    message: `Created application for ${company} — ${roleTitle}`,
+    message: `Created application: ${company} / ${roleTitle}`,
   };
 }
 
@@ -338,7 +355,7 @@ export function createContactFromEmail(
     .all();
   if (appRows.length === 0) return null;
 
-  const fromEmail = row.fromEmail.trim().toLowerCase();
+  const fromEmail = (row.originalSenderEmail ?? row.fromEmail).trim().toLowerCase();
   const existingContacts = db
     .select()
     .from(contacts)
@@ -366,7 +383,9 @@ export function createContactFromEmail(
         messageNotes: row.aiSummary
           ? `${existing.messageNotes}\n[${row.receivedAt.slice(0, 10)}] ${row.aiSummary}`.trim()
           : existing.messageNotes,
-        nextAction: row.suggestedAction ?? existing.nextAction,
+        nextAction: isMeaningfulContactNextAction(row.suggestedAction ?? '')
+          ? (row.suggestedAction ?? existing.nextAction)
+          : existing.nextAction,
         updatedAt: timestamp,
       })
       .where(eq(contacts.id, existing.id))
@@ -375,19 +394,29 @@ export function createContactFromEmail(
     contactId = createId();
     const name =
       row.recruiterName?.trim() ||
+      row.originalSenderName?.trim() ||
       row.fromEmail.split('@')[0].replace(/[._]/g, ' ') ||
       'Recruiter';
+    const company =
+      row.companyName?.trim() ||
+      row.originalCompany?.trim() ||
+      appRows[0]?.company ||
+      '';
     db.insert(contacts)
       .values({
         id: contactId,
         userId,
         applicationId,
         name,
-        email: row.fromEmail,
+        email: row.originalSenderEmail ?? row.fromEmail,
         linkedIn: '',
+        company,
+        source: row.fromEmail.includes('linkedin') ? 'linkedin' : 'email',
         lastContactDate: row.receivedAt.slice(0, 10),
         messageNotes: row.aiSummary ?? '',
-        nextAction: row.suggestedAction ?? '',
+        nextAction: isMeaningfulContactNextAction(row.suggestedAction ?? '')
+          ? (row.suggestedAction ?? '')
+          : '',
         createdAt: timestamp,
         updatedAt: timestamp,
       })
@@ -433,7 +462,7 @@ export function createContactFromEmail(
     changes: { contactId, applicationId, communicationId: commId, merged },
     message: merged
       ? 'Updated existing contact and logged communication'
-      : 'Created contact and logged communication',
+      : 'Created recruiter contact and logged communication',
   };
 }
 
@@ -481,7 +510,7 @@ export function updatePipelineFromEmail(
         details: { reason: 'no_proposed_status' },
       }),
       changes: {},
-      message: 'No pipeline update suggested for this email.',
+      message: 'Skipped pipeline update: no matched application',
     };
   }
 
@@ -524,7 +553,7 @@ export function updatePipelineFromEmail(
       auditLogId,
       pendingApprovalId: approvalId,
       changes: { pendingApprovalId: approvalId, proposedStatus: targetStatus },
-      message: 'Pipeline update requires approval due to low confidence.',
+      message: `Queued approval: low confidence (${targetStatus.replace(/_/g, ' ')})`,
     };
   }
 
@@ -567,7 +596,7 @@ export function updatePipelineFromEmail(
       previousStatus: app.status,
       newStatus: targetStatus,
     },
-    message: `Updated application status to ${targetStatus}`,
+    message: `Updated pipeline for ${app.company} / ${app.roleTitle} to ${targetStatus.replace(/_/g, ' ')}`,
   };
 }
 

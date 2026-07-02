@@ -15,18 +15,13 @@ export default function ContactsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Contact | null>(null);
 
-  const getCompanyLabel = (applicationId: string) => {
-    const app = applications.find((a) => a.id === applicationId);
-    return app ? `${app.company} — ${app.roleTitle}` : 'Unknown application';
-  };
-
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-semibold text-gray-900">Communications</h2>
           <p className="mt-1 text-gray-600">
-            Track recruiters and contacts linked to each application.
+            Track recruiters and contacts — linked to applications when available.
           </p>
         </div>
         <button
@@ -35,19 +30,12 @@ export default function ContactsPage() {
             setEditing(null);
             setModalOpen(true);
           }}
-          disabled={applications.length === 0}
-          className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
         >
           <FiPlus className="mr-2" />
           Add contact
         </button>
       </div>
-
-      {applications.length === 0 && (
-        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-4">
-          Add an application first before logging contacts.
-        </p>
-      )}
 
       {contacts.length === 0 ? (
         <p className="text-center text-gray-500 py-12 bg-white border rounded-lg">
@@ -59,7 +47,7 @@ export default function ContactsPage() {
             <ContactRow
               key={contact.id}
               contact={contact}
-              companyLabel={getCompanyLabel(contact.applicationId)}
+              applications={applications}
               onEdit={() => {
                 setEditing(contact);
                 setModalOpen(true);

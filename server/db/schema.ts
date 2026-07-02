@@ -35,12 +35,14 @@ export const contacts = sqliteTable('contacts', {
   userId: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
-  applicationId: text('application_id')
-    .notNull()
-    .references(() => applications.id, { onDelete: 'cascade' }),
+  applicationId: text('application_id').references(() => applications.id, {
+    onDelete: 'cascade',
+  }),
   name: text('name').notNull(),
   email: text('email').notNull().default(''),
   linkedIn: text('linked_in').notNull().default(''),
+  company: text('company').notNull().default(''),
+  source: text('source').notNull().default('manual'),
   lastContactDate: text('last_contact_date'),
   messageNotes: text('message_notes').notNull().default(''),
   nextAction: text('next_action').notNull().default(''),
@@ -146,6 +148,14 @@ export const inboundEmails = sqliteTable('inbound_emails', {
   processingError: text('processing_error'),
   lastProcessedAt: text('last_processed_at'),
   processingAttempts: integer('processing_attempts').notNull().default(0),
+  isForwarded: integer('is_forwarded', { mode: 'boolean' }).notNull().default(false),
+  originalSenderEmail: text('original_sender_email'),
+  originalSenderName: text('original_sender_name'),
+  originalSubject: text('original_subject'),
+  originalRecipient: text('original_recipient'),
+  originalSentAt: text('original_sent_at'),
+  originalCompany: text('original_company'),
+  processingTimelineJson: text('processing_timeline_json').notNull().default('{}'),
   deletedAt: text('deleted_at'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),

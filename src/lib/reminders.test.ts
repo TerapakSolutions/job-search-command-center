@@ -43,6 +43,8 @@ describe('computeReminders', () => {
         name: 'Recruiter',
         email: '',
         linkedIn: '',
+        company: 'Acme',
+        source: 'manual',
         lastContactDate: '2026-06-25',
         messageNotes: '',
         nextAction: '',

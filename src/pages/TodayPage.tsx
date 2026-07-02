@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FiAlertCircle, FiCalendar, FiClock } from 'react-icons/fi';
+import { FiAlertCircle, FiCalendar, FiClock, FiRefreshCw } from 'react-icons/fi';
 import { computeReminders } from '../lib/reminders';
 import { computeGoalReminders } from '../lib/goalReminders';
 import { computeLocalActivityMetrics } from '../lib/activityMetrics';
@@ -11,6 +11,10 @@ import { REMINDER_TYPE_LABELS, type Reminder } from '../types/reminder';
 import { DEFAULT_JOB_SEARCH_GOALS } from '../types/activity';
 import type { ActivityMetrics } from '../types/activity';
 import { formatDate } from '../lib/dates';
+import {
+  contactApplicationLabel,
+  isMeaningfulContactNextAction,
+} from '../lib/contactDisplay';
 import DailyBriefingPanel from '../components/DailyBriefingPanel';
 import AutomationDashboardPanel from '../components/AutomationDashboardPanel';
 import GoalsProgressPanel from '../components/GoalsProgressPanel';
@@ -24,30 +28,45 @@ const priorityStyles = {
 export default function TodayPage() {
   const applications = useJobSearchStore((s) => s.applications);
   const contacts = useJobSearchStore((s) => s.contacts);
+  const refreshData = useJobSearchStore((s) => s.refreshData);
   const demoMode = isDemoMode();
   const [activityMetrics, setActivityMetrics] = useState<ActivityMetrics | null>(
     null,
   );
+  const [metricsLoading, setMetricsLoading] = useState(false);
 
   const loadMetrics = useCallback(async () => {
+    setMetricsLoading(true);
     if (demoMode) {
       const stored = localStorage.getItem('job-search-goals');
       const goals = stored
         ? (JSON.parse(stored) as typeof DEFAULT_JOB_SEARCH_GOALS)
         : DEFAULT_JOB_SEARCH_GOALS;
       setActivityMetrics(computeLocalActivityMetrics(applications, goals));
+      setMetricsLoading(false);
       return;
     }
     try {
+      await refreshData();
       const data = await fetchActivityMetrics();
       setActivityMetrics(data);
     } catch {
       setActivityMetrics(null);
+    } finally {
+      setMetricsLoading(false);
     }
-  }, [applications, demoMode]);
+  }, [applications, demoMode, refreshData]);
 
   useEffect(() => {
     void loadMetrics();
+  }, [loadMetrics]);
+
+  useEffect(() => {
+    const onFocus = () => {
+      void loadMetrics();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, [loadMetrics]);
 
   const reminders = useMemo(() => {
@@ -77,19 +96,30 @@ export default function TodayPage() {
   }, [applications]);
 
   const contactsWithNextAction = useMemo(
-    () => contacts.filter((c) => c.nextAction.trim()),
+    () => contacts.filter((c) => isMeaningfulContactNextAction(c.nextAction)),
     [contacts],
   );
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
-      <div>
-        <h2 className="text-2xl font-semibold text-gray-900">
-          What should I do today?
-        </h2>
-        <p className="mt-1 text-gray-600">
-          Follow-ups, interview prep, and applications needing your attention.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-semibold text-gray-900">
+            What should I do today?
+          </h2>
+          <p className="mt-1 text-gray-600">
+            Follow-ups, interview prep, and applications needing your attention.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void loadMetrics()}
+          disabled={metricsLoading}
+          className="inline-flex items-center gap-2 px-3 py-2 text-sm border rounded-lg hover:bg-gray-50 disabled:opacity-60"
+        >
+          <FiRefreshCw size={14} className={metricsLoading ? 'animate-spin' : ''} />
+          Refresh
+        </button>
       </div>
 
       <GoalsProgressPanel />
@@ -160,16 +190,23 @@ export default function TodayPage() {
         ) : (
           <ul className="space-y-2">
             {contactsWithNextAction.map((contact) => {
-              const app = applications.find((a) => a.id === contact.applicationId);
+              const app = contact.applicationId
+                ? applications.find((a) => a.id === contact.applicationId)
+                : null;
+              const label = contactApplicationLabel({
+                applicationId: contact.applicationId,
+                company: contact.company || app?.company || '',
+                roleTitle: app?.roleTitle,
+                source: contact.source,
+                linkedIn: contact.linkedIn,
+              });
               return (
                 <li
                   key={contact.id}
                   className="bg-white border rounded-lg px-4 py-3"
                 >
                   <p className="font-medium text-gray-900">{contact.name}</p>
-                  <p className="text-sm text-gray-600">
-                    {app ? `${app.company} — ${app.roleTitle}` : 'Unknown application'}
-                  </p>
+                  <p className="text-sm text-gray-600">{label}</p>
                   <p className="text-sm text-amber-700 mt-1">{contact.nextAction}</p>
                 </li>
               );

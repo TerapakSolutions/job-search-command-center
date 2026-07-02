@@ -85,25 +85,41 @@ const sampleList = {
   offset: 0,
 };
 
+const detailExtensions = {
+  provider: 'postmark',
+  textBody: 'Hello candidate',
+  htmlBody: '<p>Hello candidate</p>',
+  companyName: 'Acme Corp',
+  positionTitle: 'Engineer',
+  recruiterName: 'Jane',
+  actionDueAt: null,
+  interviewDetected: true,
+  interviewDatetime: null,
+  aiSummary: 'Recruiter wants to schedule an interview.',
+  processingStartedAt: '2026-07-01T10:00:00.000Z',
+  processingCompletedAt: '2026-07-01T10:00:00.000Z',
+  processingAttempts: 1,
+  forwarded: {
+    isForwarded: false,
+    forwardedByEmail: 'recruiter@acme.com',
+    originalSenderEmail: null,
+    originalSenderName: null,
+    originalSubject: null,
+    originalRecipient: null,
+    originalSentAt: null,
+    originalCompany: null,
+  },
+  processingTimeline: null,
+  pendingApprovals: [],
+};
+
 describe('InboundEmailsPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFetchInboundEmails.mockResolvedValue(sampleList);
     mockFetchInboundEmailById.mockResolvedValue({
       ...sampleList.items[0],
-      provider: 'postmark',
-      textBody: 'Hello candidate',
-      htmlBody: '<p>Hello candidate</p>',
-      companyName: 'Acme Corp',
-      positionTitle: 'Engineer',
-      recruiterName: 'Jane',
-      actionDueAt: null,
-      interviewDetected: true,
-      interviewDatetime: null,
-      aiSummary: 'Recruiter wants to schedule an interview.',
-      processingStartedAt: '2026-07-01T10:00:00.000Z',
-      processingCompletedAt: '2026-07-01T10:00:00.000Z',
-      processingAttempts: 1,
+      ...detailExtensions,
     });
     mockMarkInboundEmailProcessed.mockResolvedValue({
       ...sampleList.items[0],
@@ -120,18 +136,7 @@ describe('InboundEmailsPage', () => {
       },
       email: {
         ...sampleList.items[0],
-        provider: 'postmark',
-        textBody: 'Hello candidate',
-        htmlBody: '<p>Hello candidate</p>',
-        companyName: 'Acme Corp',
-        positionTitle: 'Engineer',
-        recruiterName: 'Jane',
-        actionDueAt: null,
-        interviewDetected: true,
-        interviewDatetime: null,
-        aiSummary: 'Recruiter wants to schedule an interview.',
-        processingStartedAt: '2026-07-01T10:00:00.000Z',
-        processingCompletedAt: '2026-07-01T10:00:00.000Z',
+        ...detailExtensions,
         processingAttempts: 2,
       },
     });
@@ -146,20 +151,10 @@ describe('InboundEmailsPage', () => {
       },
       email: {
         ...sampleList.items[0],
+        ...detailExtensions,
         processingStatus: 'processed',
         processingError: null,
-        provider: 'postmark',
-        textBody: 'Hello candidate',
         htmlBody: null,
-        companyName: 'Acme Corp',
-        positionTitle: 'Engineer',
-        recruiterName: 'Jane',
-        actionDueAt: null,
-        interviewDetected: true,
-        interviewDatetime: null,
-        aiSummary: 'Recruiter wants to schedule an interview.',
-        processingStartedAt: '2026-07-01T10:00:00.000Z',
-        processingCompletedAt: '2026-07-01T10:00:00.000Z',
         processingAttempts: 2,
       },
     });
@@ -249,19 +244,8 @@ describe('InboundEmailsPage', () => {
     });
     mockFetchInboundEmailById.mockResolvedValue({
       ...failedItem,
-      provider: 'postmark',
-      textBody: 'Hello candidate',
+      ...detailExtensions,
       htmlBody: null,
-      companyName: 'Acme Corp',
-      positionTitle: 'Engineer',
-      recruiterName: 'Jane',
-      actionDueAt: null,
-      interviewDetected: true,
-      interviewDatetime: null,
-      aiSummary: 'Recruiter wants to schedule an interview.',
-      processingStartedAt: '2026-07-01T10:00:00.000Z',
-      processingCompletedAt: '2026-07-01T10:00:00.000Z',
-      processingAttempts: 1,
     });
 
     render(

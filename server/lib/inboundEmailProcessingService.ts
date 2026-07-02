@@ -1,12 +1,19 @@
 import { eq } from 'drizzle-orm';
 import type { Db } from '../db/index.js';
 import { emailAutomationPendingApprovals, inboundEmails } from '../db/schema.js';
-import { recordEmailAutomationAudit } from './emailAutomationService.js';
-import { classifyEmailContent } from './emailClassificationService.js';
+import {
+  analyzeEmailAutomation,
+  recordEmailAutomationAudit,
+} from './emailAutomationService.js';
+import {
+  classifyEmailContent,
+  persistForwardMetadata,
+} from './emailClassificationService.js';
 import { applySafeAutomationRules } from './emailProcessingAutomation.js';
 import { nowIso } from './id.js';
 import { resolveUserIdForInboundEmail } from './inboundEmailUserResolver.js';
 import { isInboundEmailDeleted } from './inboundEmailService.js';
+import { ProcessingTimelineBuilder } from './processingTimeline.js';
 import type {
   InboundEmailProcessingResult,
   ProcessingStatus,
@@ -19,6 +26,16 @@ function extractTextBody(payloadJson: string): string {
   } catch {
     return '';
   }
+}
+
+function saveTimeline(db: Db, emailId: string, builder: ProcessingTimelineBuilder): void {
+  db.update(inboundEmails)
+    .set({
+      processingTimelineJson: builder.toJson(),
+      updatedAt: nowIso(),
+    })
+    .where(eq(inboundEmails.id, emailId))
+    .run();
 }
 
 function markProcessingStarted(db: Db, emailId: string): void {
@@ -65,8 +82,15 @@ function markProcessingComplete(
 async function classifyInboundEmailRow(
   db: Db,
   row: typeof inboundEmails.$inferSelect,
+  timeline: ProcessingTimelineBuilder,
 ): Promise<boolean> {
   const textBody = extractTextBody(row.payload);
+  persistForwardMetadata(db, row.id, {
+    subject: row.subject,
+    fromEmail: row.fromEmail,
+    textBody,
+  });
+
   const result = await classifyEmailContent({
     subject: row.subject,
     fromEmail: row.fromEmail,
@@ -92,6 +116,13 @@ async function classifyInboundEmailRow(
     })
     .where(eq(inboundEmails.id, row.id))
     .run();
+
+  timeline.complete(
+    'classified',
+    `Classified as "${result.classification}" (${result.classificationConfidence ?? 0}% confidence)`,
+    timestamp,
+  );
+  saveTimeline(db, row.id, timeline);
 
   return true;
 }
@@ -124,6 +155,16 @@ export async function processInboundEmail(
       reason: 'not_found',
     };
   }
+
+  const timeline = new ProcessingTimelineBuilder();
+  const startedAt = nowIso();
+  timeline.complete(
+    'received',
+    `Email received from ${row.fromEmail || 'unknown sender'}`,
+    row.receivedAt,
+  );
+  timeline.complete('persisted', 'Email stored in database', row.createdAt);
+  saveTimeline(db, emailId, timeline);
 
   if (isInboundEmailDeleted(row)) {
     return {
@@ -171,6 +212,14 @@ export async function processInboundEmail(
   const userId = options.userId ?? resolveUserIdForInboundEmail(db, row);
   if (!userId) {
     markProcessingStarted(db, emailId);
+    const failTime = nowIso();
+    timeline.fail(
+      'processing_failed',
+      'Processing failed — no matching user',
+      'No matching user found for inbound email',
+      failTime,
+    );
+    saveTimeline(db, emailId, timeline);
     markProcessingComplete(
       db,
       emailId,
@@ -191,28 +240,113 @@ export async function processInboundEmail(
 
   try {
     await Promise.resolve();
-    await classifyInboundEmailRow(db, row);
+    await classifyInboundEmailRow(db, row, timeline);
+
+    const updatedRow = db
+      .select()
+      .from(inboundEmails)
+      .where(eq(inboundEmails.id, emailId))
+      .limit(1)
+      .all()[0];
+
+    const analysis = analyzeEmailAutomation(db, userId, emailId);
+    const matchTime = nowIso();
+    if (analysis?.matches.bestMatch) {
+      timeline.complete(
+        'application_matched',
+        `Matched existing application: ${analysis.matches.bestMatch.company} / ${analysis.matches.bestMatch.roleTitle}`,
+        matchTime,
+      );
+    } else if (analysis?.duplicateApplicationId) {
+      timeline.skip(
+        'application_matched',
+        'Skipped application creation: duplicate found',
+        matchTime,
+      );
+    } else {
+      timeline.skip(
+        'application_matched',
+        'No matched application for this email',
+        matchTime,
+      );
+    }
+
+    const evalTime = nowIso();
+    if (analysis) {
+      const evalParts: string[] = [];
+      if (analysis.canCreateApplication) evalParts.push('can create application');
+      if (analysis.pipelineProposal) {
+        evalParts.push(
+          `pipeline update to ${analysis.pipelineProposal.proposedStatus}`,
+        );
+      }
+      timeline.complete(
+        'automation_evaluated',
+        evalParts.length > 0
+          ? `Automation evaluated: ${evalParts.join('; ')}`
+          : 'Automation evaluated — no automatic changes suggested',
+        evalTime,
+      );
+    } else {
+      timeline.skip('automation_evaluated', 'Automation analysis unavailable', evalTime);
+    }
+    saveTimeline(db, emailId, timeline);
 
     const automation = applySafeAutomationRules(db, userId, emailId, {
       skipCompletedActions: Boolean(options.reanalysis),
+      timeline,
     });
+
+    const actionTime = nowIso();
+    if (automation.results.length > 0) {
+      const messages = automation.results.map((r) => r.message).join('; ');
+      timeline.complete('safe_actions_applied', messages, actionTime);
+    } else {
+      timeline.skip(
+        'safe_actions_applied',
+        automation.skipSummary ?? 'No safe automation actions applied',
+        actionTime,
+      );
+    }
+
+    if (automation.pendingApprovals > 0) {
+      timeline.complete(
+        'approval_queued',
+        automation.approvalSummary ??
+          `${automation.pendingApprovals} approval(s) queued`,
+        actionTime,
+      );
+    } else {
+      timeline.skip('approval_queued', 'No approvals required', actionTime);
+    }
 
     recordEmailAutomationAudit(db, {
       userId,
       inboundEmailId: emailId,
       actionType: options.reanalysis ? 'reanalyze' : 'auto_process',
-      confidence: null,
+      confidence: updatedRow?.classificationConfidence ?? null,
       details: {
         manual: options.manual ?? false,
         automationActions: automation.results.length,
         pendingApprovals: automation.pendingApprovals,
         riskyReasons: automation.riskyReasons,
+        skipSummary: automation.skipSummary,
       },
       resultingChanges: {
         actions: automation.results.map((r) => r.actionType),
       },
     });
 
+    const auditTime = nowIso();
+    timeline.complete('audit_logged', 'Processing audit log recorded', auditTime);
+
+    const completeTime = nowIso();
+    timeline.complete(
+      'processing_completed',
+      `Processing completed with ${automation.results.length} action(s)`,
+      completeTime,
+    );
+    saveTimeline(db, emailId, timeline);
     markProcessingComplete(db, emailId, 'processed');
 
     return {
@@ -226,6 +360,9 @@ export async function processInboundEmail(
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Processing failed';
     console.error('[inbound-processing] failed', { emailId, err });
+    const failTime = nowIso();
+    timeline.fail('processing_failed', 'Processing failed', message, failTime);
+    saveTimeline(db, emailId, timeline);
     markProcessingComplete(db, emailId, 'failed', message);
     return {
       emailId,

@@ -66,10 +66,12 @@ export function contactsRouter(db: Db) {
     userIdCol: contacts.userId,
     buildCreate: (body, id, timestamp) => ({
       id,
-      applicationId: String(body.applicationId ?? ''),
+      applicationId: body.applicationId ? String(body.applicationId) : null,
       name: String(body.name ?? ''),
       email: String(body.email ?? ''),
       linkedIn: String(body.linkedIn ?? ''),
+      company: String(body.company ?? ''),
+      source: String(body.source ?? 'manual'),
       lastContactDate: body.lastContactDate
         ? String(body.lastContactDate)
         : null,
@@ -80,11 +82,13 @@ export function contactsRouter(db: Db) {
     }),
     buildUpdate: (body, timestamp) => ({
       ...(body.applicationId !== undefined && {
-        applicationId: String(body.applicationId),
+        applicationId: body.applicationId ? String(body.applicationId) : null,
       }),
       ...(body.name !== undefined && { name: String(body.name) }),
       ...(body.email !== undefined && { email: String(body.email) }),
       ...(body.linkedIn !== undefined && { linkedIn: String(body.linkedIn) }),
+      ...(body.company !== undefined && { company: String(body.company) }),
+      ...(body.source !== undefined && { source: String(body.source) }),
       ...(body.lastContactDate !== undefined && {
         lastContactDate: body.lastContactDate
           ? String(body.lastContactDate)

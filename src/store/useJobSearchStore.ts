@@ -23,6 +23,7 @@ interface JobSearchState {
   error: string | null;
   persistenceMode: 'api' | 'demo';
   initialize: () => Promise<void>;
+  refreshData: () => Promise<void>;
   addApplication: (input: ApplicationInput) => Application;
   updateApplication: (id: string, input: Partial<ApplicationInput>) => void;
   deleteApplication: (id: string) => void;
@@ -79,6 +80,20 @@ const storeCreator = (
         error: 'Could not reach the API. Start the server or switch to demo mode.',
         persistenceMode: 'api',
       });
+    }
+  },
+
+  refreshData: async () => {
+    if (isDemoMode()) return;
+    try {
+      const data = await loadAllData();
+      set({
+        applications: data.applications,
+        contacts: data.contacts,
+        error: null,
+      });
+    } catch {
+      set({ error: 'Could not refresh data from the API.' });
     }
   },
 
@@ -271,6 +286,8 @@ const storeCreator = (
               name: contact.name,
               email: contact.email,
               linkedIn: contact.linkedIn,
+              company: contact.company ?? '',
+              source: contact.source ?? 'manual',
               lastContactDate: contact.lastContactDate,
               messageNotes: contact.messageNotes,
               nextAction: contact.nextAction,

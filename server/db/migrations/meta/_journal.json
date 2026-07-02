@@ -64,6 +64,13 @@
       "when": 1820000000000,
       "tag": "0008_inbound_email_soft_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1830000000000,
+      "tag": "0009_pipeline_accuracy_improvements",
+      "breakpoints": true
     }
   ]
 }

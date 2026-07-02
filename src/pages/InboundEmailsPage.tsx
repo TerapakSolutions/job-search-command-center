@@ -27,6 +27,10 @@ import {
   processingStatusBadgeClass,
   processingStatusLabel,
 } from '../lib/inboundEmailProcessing';
+import {
+  PROCESSING_TIMELINE_LABELS,
+  processingTimelineStatusClass,
+} from '../lib/contactDisplay';
 import type {
   InboundEmailDetail,
   InboundEmailListItem,
@@ -637,6 +641,93 @@ export default function InboundEmailsPage() {
                     Processing error: {detail.processingError}
                   </div>
                 )}
+
+                {detail.forwarded?.isForwarded && (
+                  <div className="rounded-lg border bg-white p-4 space-y-2">
+                    <h4 className="text-sm font-semibold text-gray-900">Forwarded email</h4>
+                    <dl className="grid sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
+                      <dt className="font-medium">Forwarded by</dt>
+                      <dd>{detail.forwarded.forwardedByEmail}</dd>
+                      {detail.forwarded.originalSenderEmail && (
+                        <>
+                          <dt className="font-medium">Original sender</dt>
+                          <dd>
+                            {detail.forwarded.originalSenderName
+                              ? `${detail.forwarded.originalSenderName} <${detail.forwarded.originalSenderEmail}>`
+                              : detail.forwarded.originalSenderEmail}
+                          </dd>
+                        </>
+                      )}
+                      {detail.forwarded.originalSubject && (
+                        <>
+                          <dt className="font-medium">Original subject</dt>
+                          <dd>{detail.forwarded.originalSubject}</dd>
+                        </>
+                      )}
+                      {detail.forwarded.originalCompany && (
+                        <>
+                          <dt className="font-medium">Original company</dt>
+                          <dd>{detail.forwarded.originalCompany}</dd>
+                        </>
+                      )}
+                    </dl>
+                  </div>
+                )}
+
+                {detail.needsApproval && detail.pendingApprovals.length > 0 && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-2">
+                    <h4 className="text-sm font-semibold text-amber-900">
+                      Approval needed
+                    </h4>
+                    <ul className="space-y-2">
+                      {detail.pendingApprovals.map((approval) => (
+                        <li key={approval.id} className="text-sm text-amber-900">
+                          <span className="font-medium">{approval.label}</span>
+                          {approval.reason && (
+                            <span className="block text-xs text-amber-800 mt-0.5">
+                              {approval.reason}
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {detail.processingTimeline?.steps &&
+                  detail.processingTimeline.steps.length > 0 && (
+                    <div className="rounded-lg border bg-white p-4 space-y-3">
+                      <h4 className="text-sm font-semibold text-gray-900">
+                        Processing timeline
+                      </h4>
+                      <ul className="space-y-2">
+                        {detail.processingTimeline.steps.map((step) => (
+                          <li
+                            key={step.step}
+                            className={`text-xs border rounded px-3 py-2 ${processingTimelineStatusClass(step.status)}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="font-medium">
+                                {PROCESSING_TIMELINE_LABELS[step.step] ?? step.step}
+                              </span>
+                              <span className="uppercase text-[10px]">{step.status}</span>
+                            </div>
+                            {step.message && (
+                              <p className="mt-1 text-gray-700">{step.message}</p>
+                            )}
+                            {step.timestamp && (
+                              <p className="mt-0.5 text-gray-500">
+                                {formatReceivedAt(step.timestamp)}
+                              </p>
+                            )}
+                            {step.error && (
+                              <p className="mt-1 text-red-700">Error: {step.error}</p>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
                 {showAuditLog && (
                   <div className="rounded-lg border bg-white p-4 space-y-2">

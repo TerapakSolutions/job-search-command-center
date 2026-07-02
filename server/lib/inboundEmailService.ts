@@ -1,7 +1,12 @@
 import { eq } from 'drizzle-orm';
 import type { Db } from '../db/index.js';
 import { contacts, emailAutomationPendingApprovals, inboundEmails, users } from '../db/schema.js';
+import {
+  formatApprovalTypeLabel,
+  formatPipelineApprovalLabel,
+} from './emailAutomationMessages.js';
 import type { ProcessingStatus } from './inboundEmailProcessingTypes.js';
+import { ProcessingTimelineBuilder } from './processingTimeline.js';
 import { nowIso } from './id.js';
 
 export interface InboundEmailListItem {
@@ -20,6 +25,29 @@ export interface InboundEmailListItem {
   processingError: string | null;
   lastProcessedAt: string | null;
   needsApproval: boolean;
+  approvalItems?: PendingApprovalSummary[];
+}
+
+export interface PendingApprovalSummary {
+  id: string;
+  approvalType: string;
+  label: string;
+  reason: string;
+  proposedStatus: string;
+  currentStatus: string | null;
+  company?: string;
+  roleTitle?: string;
+}
+
+export interface ForwardedEmailSummary {
+  isForwarded: boolean;
+  forwardedByEmail: string;
+  originalSenderEmail: string | null;
+  originalSenderName: string | null;
+  originalSubject: string | null;
+  originalRecipient: string | null;
+  originalSentAt: string | null;
+  originalCompany: string | null;
 }
 
 export interface InboundEmailDetail extends InboundEmailListItem {
@@ -36,6 +64,9 @@ export interface InboundEmailDetail extends InboundEmailListItem {
   processingStartedAt: string | null;
   processingCompletedAt: string | null;
   processingAttempts: number;
+  forwarded: ForwardedEmailSummary;
+  processingTimeline: ReturnType<typeof ProcessingTimelineBuilder.parse>;
+  pendingApprovals: PendingApprovalSummary[];
 }
 
 export interface ListInboundEmailsOptions {
@@ -106,10 +137,39 @@ function emailNeedsApproval(
   return rows.some((row) => row.status === 'pending');
 }
 
+function listPendingApprovalsForEmail(
+  db: Db,
+  emailId: string,
+): PendingApprovalSummary[] {
+  const rows = db
+    .select()
+    .from(emailAutomationPendingApprovals)
+    .where(eq(emailAutomationPendingApprovals.inboundEmailId, emailId))
+    .all();
+
+  return rows
+    .filter((row) => row.status === 'pending')
+    .map((row) => {
+      let label = formatApprovalTypeLabel(row.approvalType);
+      if (row.approvalType === 'pipeline_update') {
+        label = formatPipelineApprovalLabel(row.proposedStatus, row.currentStatus);
+      }
+      return {
+        id: row.id,
+        approvalType: row.approvalType,
+        label,
+        reason: row.reason,
+        proposedStatus: row.proposedStatus,
+        currentStatus: row.currentStatus,
+      };
+    });
+}
+
 function toListItem(
   db: Db,
   row: typeof inboundEmails.$inferSelect,
 ): InboundEmailListItem {
+  const needsApproval = emailNeedsApproval(db, row.id, row.processingStatus);
   return {
     id: row.id,
     subject: row.subject,
@@ -125,7 +185,8 @@ function toListItem(
     processingStatus: row.processingStatus as ProcessingStatus,
     processingError: row.processingError,
     lastProcessedAt: row.lastProcessedAt,
-    needsApproval: emailNeedsApproval(db, row.id, row.processingStatus),
+    needsApproval,
+    approvalItems: needsApproval ? listPendingApprovalsForEmail(db, row.id) : undefined,
   };
 }
 
@@ -241,6 +302,18 @@ export function getInboundEmailDetailForUser(
     processingStartedAt: row.processingStartedAt,
     processingCompletedAt: row.processingCompletedAt,
     processingAttempts: row.processingAttempts,
+    forwarded: {
+      isForwarded: row.isForwarded ?? false,
+      forwardedByEmail: row.fromEmail,
+      originalSenderEmail: row.originalSenderEmail,
+      originalSenderName: row.originalSenderName,
+      originalSubject: row.originalSubject,
+      originalRecipient: row.originalRecipient,
+      originalSentAt: row.originalSentAt,
+      originalCompany: row.originalCompany,
+    },
+    processingTimeline: ProcessingTimelineBuilder.parse(row.processingTimelineJson),
+    pendingApprovals: listPendingApprovalsForEmail(db, row.id),
   };
 }
 

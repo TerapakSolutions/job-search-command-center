@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react';
 import type { Contact, ContactInput } from '../types/contact';
 import { useJobSearchStore } from '../store/useJobSearchStore';
 import { formatDate } from '../lib/dates';
+import {
+  contactApplicationLabel,
+  contactSourceLabel,
+  isMeaningfulContactNextAction,
+} from '../lib/contactDisplay';
 
 interface ContactFormProps {
   initial?: Contact | null;
@@ -10,11 +15,13 @@ interface ContactFormProps {
   onCancel: () => void;
 }
 
-const emptyContact = (applicationId = ''): ContactInput => ({
+const emptyContact = (applicationId: string | null = null): ContactInput => ({
   applicationId,
   name: '',
   email: '',
   linkedIn: '',
+  company: '',
+  source: 'manual',
   lastContactDate: null,
   messageNotes: '',
   nextAction: '',
@@ -28,7 +35,7 @@ export default function ContactForm({
 }: ContactFormProps) {
   const applications = useJobSearchStore((s) => s.applications);
   const [form, setForm] = useState<ContactInput>(
-    emptyContact(defaultApplicationId),
+    emptyContact(defaultApplicationId ?? null),
   );
 
   useEffect(() => {
@@ -38,34 +45,45 @@ export default function ContactForm({
         name: initial.name,
         email: initial.email,
         linkedIn: initial.linkedIn,
+        company: initial.company ?? '',
+        source: initial.source ?? 'manual',
         lastContactDate: initial.lastContactDate,
         messageNotes: initial.messageNotes,
         nextAction: initial.nextAction,
       });
     } else {
-      setForm(emptyContact(defaultApplicationId));
+      setForm(emptyContact(defaultApplicationId ?? null));
     }
   }, [initial, defaultApplicationId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.applicationId) return;
+    if (!form.name.trim()) return;
     onSubmit(form);
   };
+
+  const selectedApp = applications.find((a) => a.id === form.applicationId);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <label className="block">
-        <span className="text-sm font-medium text-gray-700">Application *</span>
+        <span className="text-sm font-medium text-gray-700">
+          Linked application (optional)
+        </span>
         <select
-          required
-          value={form.applicationId}
-          onChange={(e) =>
-            setForm((prev) => ({ ...prev, applicationId: e.target.value }))
-          }
+          value={form.applicationId ?? ''}
+          onChange={(e) => {
+            const applicationId = e.target.value || null;
+            const app = applications.find((a) => a.id === applicationId);
+            setForm((prev) => ({
+              ...prev,
+              applicationId,
+              company: app?.company ?? prev.company,
+            }));
+          }}
           className={inputClass}
         >
-          <option value="">Select application...</option>
+          <option value="">No linked application yet</option>
           {applications.map((app) => (
             <option key={app.id} value={app.id}>
               {app.company} — {app.roleTitle}
@@ -86,6 +104,34 @@ export default function ContactForm({
             className={inputClass}
             placeholder="Jane Recruiter"
           />
+        </label>
+        <label className="block">
+          <span className="text-sm font-medium text-gray-700">Company</span>
+          <input
+            value={form.company}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, company: e.target.value }))
+            }
+            className={inputClass}
+            placeholder={selectedApp?.company ?? 'Acme Corp'}
+          />
+        </label>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <label className="block">
+          <span className="text-sm font-medium text-gray-700">Source</span>
+          <select
+            value={form.source}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, source: e.target.value }))
+            }
+            className={inputClass}
+          >
+            <option value="manual">Manual entry</option>
+            <option value="email">Inbound email</option>
+            <option value="linkedin">LinkedIn</option>
+          </select>
         </label>
         <label className="block">
           <span className="text-sm font-medium text-gray-700">Last contact</span>
@@ -175,21 +221,37 @@ export default function ContactForm({
 
 export function ContactRow({
   contact,
-  companyLabel,
+  applications,
   onEdit,
   onDelete,
 }: {
   contact: Contact;
-  companyLabel: string;
+  applications: Array<{ id: string; company: string; roleTitle: string }>;
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const linkedApp = contact.applicationId
+    ? applications.find((a) => a.id === contact.applicationId)
+    : null;
+  const company =
+    contact.company ||
+    linkedApp?.company ||
+    '';
+  const subtitle = contactApplicationLabel({
+    applicationId: contact.applicationId,
+    company,
+    roleTitle: linkedApp?.roleTitle,
+    source: contact.source,
+    linkedIn: contact.linkedIn,
+  });
+
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
       <div className="min-w-0">
         <p className="font-medium text-gray-900">{contact.name}</p>
-        <p className="text-sm text-gray-600">{companyLabel}</p>
+        <p className="text-sm text-gray-600">{subtitle}</p>
         <div className="mt-2 text-sm text-gray-500 space-y-1">
+          <p>Source: {contactSourceLabel(contact.source)}</p>
           {contact.email && <p>{contact.email}</p>}
           {contact.linkedIn && (
             <a
@@ -202,14 +264,22 @@ export function ContactRow({
             </a>
           )}
           {contact.lastContactDate && (
-            <p>Last contact: {formatDate(contact.lastContactDate)}</p>
+            <p>Last interaction: {formatDate(contact.lastContactDate)}</p>
+          )}
+          {linkedApp && (
+            <p>
+              Linked application: {linkedApp.company} — {linkedApp.roleTitle}
+            </p>
+          )}
+          {!linkedApp && contact.applicationId == null && (
+            <p className="text-gray-500">No linked application yet</p>
           )}
           {contact.messageNotes && (
             <p className="text-gray-600">{contact.messageNotes}</p>
           )}
-          {contact.nextAction && (
+          {isMeaningfulContactNextAction(contact.nextAction) && (
             <p className="text-amber-700 font-medium">
-              Next: {contact.nextAction}
+              Next action: {contact.nextAction}
             </p>
           )}
         </div>
