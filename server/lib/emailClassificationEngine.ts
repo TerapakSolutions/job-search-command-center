@@ -1,6 +1,14 @@
 import type { EmailClassificationResult } from './emailClassificationTypes.js';
 import { defaultSuggestedAction, parseClassificationJson } from './emailClassificationParser.js';
 import { isApplicationConfirmationText } from './emailAutomationMessages.js';
+import {
+  extractEmployerFromSubject,
+  extractInterviewDatetime,
+  extractRoleFromInterviewSubject,
+  inferEmployerFromSenderEmail,
+  isAtsPlatformCompany,
+  isInterviewConfirmationText,
+} from './emailContentExtraction.js';
 import { generateLlmCompletion, isLlmConfigured } from './llmClient.js';
 
 const SYSTEM_PROMPT = `You classify inbound job-search emails and extract structured fields for a job seeker's command center.
@@ -64,6 +72,22 @@ export function classifyInboundEmailWithRules(
   input: ClassifyInput,
 ): EmailClassificationResult {
   const text = `${input.subject}\n${input.textBody}`.toLowerCase();
+
+  if (isInterviewConfirmationText(text)) {
+    const extracted = extractClassificationFields(input);
+    const interviewDatetime = extractInterviewDatetime(`${input.subject}\n${input.textBody}`);
+    return buildRuleResult('Scheduling', 88, input, {
+      requiresResponse: false,
+      interviewDetected: true,
+      interviewDatetime,
+      suggestedAction: 'Prepare for your upcoming interview',
+      aiSummary:
+        'Interview confirmation with scheduled or confirmed interview details.',
+      companyName: extracted.companyName,
+      positionTitle: extracted.positionTitle,
+      recruiterName: extracted.recruiterName,
+    });
+  }
 
   if (
     /schedule an interview|want to schedule|interview invitation|move forward with an interview|reviewed your resume and want to schedule/.test(
@@ -137,22 +161,45 @@ export function classifyInboundEmailWithRules(
   });
 }
 
+function extractClassificationFields(input: ClassifyInput): {
+  companyName: string | null;
+  positionTitle: string | null;
+  recruiterName: string | null;
+} {
+  const employerFromSubject = extractEmployerFromSubject(input.subject);
+  const roleFromSubject = extractRoleFromInterviewSubject(input.subject);
+  const employerFromEmail = inferEmployerFromSenderEmail(input.fromEmail);
+  const companyMatch = input.textBody.match(
+    /(?:at|with|from)\s+([A-Z][A-Za-z0-9&.\- ]{2,40})/,
+  );
+  const bodyCompany = companyMatch?.[1]?.trim() ?? null;
+
+  const companyName =
+    employerFromSubject ??
+    (bodyCompany && !isAtsPlatformCompany(bodyCompany) ? bodyCompany : null) ??
+    employerFromEmail;
+
+  return {
+    companyName,
+    positionTitle: roleFromSubject,
+    recruiterName: null,
+  };
+}
+
 function buildRuleResult(
   classification: EmailClassificationResult['classification'],
   confidence: number,
   input: ClassifyInput,
   overrides: Partial<EmailClassificationResult>,
 ): EmailClassificationResult {
-  const companyMatch = input.textBody.match(
-    /(?:at|with|from)\s+([A-Z][A-Za-z0-9&.\- ]{2,40})/,
-  );
+  const extracted = extractClassificationFields(input);
 
   return {
     classification,
     classificationConfidence: confidence,
-    companyName: overrides.companyName ?? companyMatch?.[1]?.trim() ?? null,
-    positionTitle: overrides.positionTitle ?? null,
-    recruiterName: overrides.recruiterName ?? null,
+    companyName: overrides.companyName ?? extracted.companyName,
+    positionTitle: overrides.positionTitle ?? extracted.positionTitle,
+    recruiterName: overrides.recruiterName ?? extracted.recruiterName,
     requiresResponse: overrides.requiresResponse ?? false,
     suggestedAction:
       overrides.suggestedAction ?? defaultSuggestedAction(classification),

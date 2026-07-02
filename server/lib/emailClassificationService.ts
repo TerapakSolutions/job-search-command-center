@@ -10,6 +10,10 @@ import type {
   InboundEmailClassificationFields,
 } from './emailClassificationTypes.js';
 import { classificationInputFromEmail } from './emailForwardedParser.js';
+import {
+  resolveEmployerCompany,
+  resolveRoleTitle,
+} from './emailContentExtraction.js';
 import { nowIso } from './id.js';
 import {
   getUserEmailContext,
@@ -89,25 +93,36 @@ function enrichClassificationFromForward(
   classifiedInput: ReturnType<typeof classificationInputFromEmail>,
 ): EmailClassificationResult {
   const { forwardMetadata } = classifiedInput;
+  const subject = forwardMetadata.originalSubject ?? classifiedInput.subject;
+  const senderEmail = forwardMetadata.originalSenderEmail ?? classifiedInput.fromEmail;
+
+  const resolvedCompany = resolveEmployerCompany({
+    companyName: result.companyName,
+    originalCompany: forwardMetadata.originalCompany,
+    subject,
+    senderEmail,
+  });
+
+  const resolvedRole = resolveRoleTitle({
+    positionTitle: result.positionTitle,
+    subject,
+  });
+
   if (!forwardMetadata.isForwarded) {
-    return result;
+    return {
+      ...result,
+      companyName: resolvedCompany ?? result.companyName,
+      positionTitle: resolvedRole ?? result.positionTitle,
+    };
   }
 
   return {
     ...result,
-    companyName:
-      result.companyName ??
-      forwardMetadata.originalCompany ??
-      inferCompanyFromEmail(classifiedInput.fromEmail),
+    companyName: resolvedCompany ?? result.companyName,
+    positionTitle: resolvedRole ?? result.positionTitle,
     recruiterName:
       result.recruiterName ?? forwardMetadata.originalSenderName ?? null,
   };
-}
-
-function inferCompanyFromEmail(email: string): string | null {
-  const domain = email.split('@')[1]?.split('.')[0];
-  if (!domain || domain.length < 2) return null;
-  return domain.charAt(0).toUpperCase() + domain.slice(1);
 }
 
 export function persistForwardMetadata(

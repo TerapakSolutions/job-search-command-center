@@ -29,6 +29,7 @@ Thank you for your application to Software Engineer at PwC.`;
     expect(result.originalSenderEmail).toBe('noreply@myworkday.com');
     expect(result.originalSubject).toBe('Thank You for Your Application!');
     expect(result.originalBody).toContain('Thank you for your application');
+    expect(result.originalCompany).toBeNull();
   });
 
   it('extracts Outlook-style forwarded headers', () => {

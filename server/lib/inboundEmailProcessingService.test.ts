@@ -19,7 +19,7 @@ import { eq } from 'drizzle-orm';
 
 jest.mock('./emailClassificationEngine.js', () => ({
   classifyInboundEmailWithLlm: jest.fn().mockResolvedValue(null),
-  classifyInboundEmailWithRules: jest.fn().mockImplementation(async (input: {
+  classifyInboundEmailWithRules: jest.fn().mockImplementation((input: {
     subject: string;
     fromEmail: string;
     textBody: string;

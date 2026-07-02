@@ -84,17 +84,25 @@ export default function TodayPage() {
     today.setHours(0, 0, 0, 0);
     return applications
       .filter((app) => {
-        if (!app.interviewDate) return false;
+        if (app.status !== 'interviewing' && app.status !== 'final_round') {
+          return false;
+        }
+        if (!app.interviewDate) return true;
         const d = new Date(app.interviewDate);
         d.setHours(0, 0, 0, 0);
         const diff = (d.getTime() - today.getTime()) / (24 * 60 * 60 * 1000);
         return diff >= 0 && diff <= 14;
       })
-      .sort(
-        (a, b) =>
-          new Date(a.interviewDate!).getTime() -
-          new Date(b.interviewDate!).getTime(),
-      );
+      .sort((a, b) => {
+        if (a.interviewDate && b.interviewDate) {
+          return (
+            new Date(a.interviewDate).getTime() - new Date(b.interviewDate).getTime()
+          );
+        }
+        if (a.interviewDate) return -1;
+        if (b.interviewDate) return 1;
+        return a.company.localeCompare(b.company);
+      });
   }, [applications]);
 
   const contactsWithNextAction = useMemo(
@@ -165,7 +173,9 @@ export default function TodayPage() {
                     {app.company} — {app.roleTitle}
                   </p>
                   <p className="text-sm text-purple-700">
-                    {formatDate(app.interviewDate)}
+                    {app.interviewDate
+                      ? formatDate(app.interviewDate)
+                      : 'Interview scheduled — date pending'}
                   </p>
                 </div>
                 <Link

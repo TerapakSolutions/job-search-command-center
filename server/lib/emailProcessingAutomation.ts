@@ -19,6 +19,7 @@ import {
   hasIdentifiedCompanyAndRole,
   isNoReplyOrApplicationConfirmation,
 } from './emailAutomationMessages.js';
+import { isInterviewConfirmationText } from './emailContentExtraction.js';
 import { formatAutomationActionMessage } from './automationOutcomeMessages.js';
 import { approvalTypeLabel } from './approvalReason.js';
 import type { ProcessingTimelineBuilder } from './processingTimeline.js';
@@ -48,11 +49,12 @@ function isSalaryNegotiation(row: typeof inboundEmails.$inferSelect): boolean {
 }
 
 function isInterviewScheduling(row: typeof inboundEmails.$inferSelect): boolean {
-  return (
-    row.classification === 'Interview Request' ||
-    row.classification === 'Scheduling' ||
-    row.interviewDetected === true
-  );
+  if (row.classification === 'Interview Request') return true;
+  if (row.classification === 'Scheduling') {
+    const haystack = `${row.originalSubject ?? row.subject}\n${row.aiSummary ?? ''}`;
+    return !isInterviewConfirmationText(haystack);
+  }
+  return row.interviewDetected === true && row.classification !== 'Scheduling';
 }
 
 function isHighConfidence(row: typeof inboundEmails.$inferSelect): boolean {
@@ -199,6 +201,8 @@ export function applySafeAutomationRules(
           companyName: row.companyName,
           originalCompany: row.originalCompany,
           positionTitle: row.positionTitle,
+          subject: row.originalSubject ?? row.subject,
+          senderEmail: row.originalSenderEmail ?? row.fromEmail,
         })
       ) {
         const createResult = createApplicationFromEmail(db, userId, emailId);
@@ -261,6 +265,8 @@ export function applySafeAutomationRules(
         companyName: row.companyName,
         originalCompany: row.originalCompany,
         positionTitle: row.positionTitle,
+        subject: row.originalSubject ?? row.subject,
+        senderEmail: row.originalSenderEmail ?? row.fromEmail,
       })
     ) {
       const createResult = createApplicationFromEmail(db, userId, emailId);
@@ -300,6 +306,42 @@ export function applySafeAutomationRules(
     !applicationId
   ) {
     skipReasons.push('Skipped pipeline update: no matched application');
+  }
+
+  if (
+    row.classification === 'Scheduling' &&
+    isHighConfidence(row) &&
+    applicationId &&
+    !analysis.matches.requiresManualSelection &&
+    !shouldSkip('update_pipeline')
+  ) {
+    const match = analysis.matches.bestMatch;
+    const pipelineResult = updatePipelineFromEmail(db, userId, emailId, {
+      applicationId,
+      force: true,
+    });
+    if (pipelineResult) {
+      results.push({
+        ...pipelineResult,
+        message: match
+          ? `Matched existing application: ${match.company} / ${match.roleTitle}`
+          : pipelineResult.message,
+      });
+    }
+  }
+
+  if (
+    (row.classification === 'Scheduling' || row.classification === 'Interview Request') &&
+    isHighConfidence(row) &&
+    applicationId &&
+    !shouldSkip('create_contact')
+  ) {
+    if (hasRecruiterSignal(row)) {
+      const contactResult = createContactFromEmail(db, userId, emailId, applicationId);
+      if (contactResult) results.push(contactResult);
+    } else {
+      skipReasons.push('Skipped contact creation: no recruiter detected');
+    }
   }
 
   if (
