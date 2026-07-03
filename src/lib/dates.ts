@@ -1,7 +1,18 @@
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+// Bare "YYYY-MM-DD" (no time component). The native `Date` constructor parses
+// this form as UTC midnight, which then renders as the PREVIOUS calendar day
+// for any timezone west of UTC once formatted locally. Full timestamps (with a
+// time component and/or "Z"/offset) are unaffected and parsed as before.
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 export function parseDate(value: string | null | undefined): Date | null {
   if (!value) return null;
+  if (DATE_ONLY_PATTERN.test(value)) {
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }

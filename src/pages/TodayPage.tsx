@@ -10,7 +10,7 @@ import { useJobSearchStore } from '../store/useJobSearchStore';
 import { REMINDER_TYPE_LABELS, type Reminder } from '../types/reminder';
 import { DEFAULT_JOB_SEARCH_GOALS } from '../types/activity';
 import type { ActivityMetrics } from '../types/activity';
-import { formatDate } from '../lib/dates';
+import { formatDate, parseDate } from '../lib/dates';
 import {
   contactApplicationLabel,
   isMeaningfulContactNextAction,
@@ -88,7 +88,8 @@ export default function TodayPage() {
           return false;
         }
         if (!app.interviewDate) return true;
-        const d = new Date(app.interviewDate);
+        const d = parseDate(app.interviewDate);
+        if (!d) return true;
         d.setHours(0, 0, 0, 0);
         const diff = (d.getTime() - today.getTime()) / (24 * 60 * 60 * 1000);
         return diff >= 0 && diff <= 14;
@@ -96,7 +97,8 @@ export default function TodayPage() {
       .sort((a, b) => {
         if (a.interviewDate && b.interviewDate) {
           return (
-            new Date(a.interviewDate).getTime() - new Date(b.interviewDate).getTime()
+            (parseDate(a.interviewDate)?.getTime() ?? 0) -
+            (parseDate(b.interviewDate)?.getTime() ?? 0)
           );
         }
         if (a.interviewDate) return -1;
