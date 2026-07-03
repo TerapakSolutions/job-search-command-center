@@ -163,12 +163,16 @@ export function matchEmailToApplications(
 
   return {
     matches,
+    // A single candidate is not exempt from MATCH_CONFIDENCE_THRESHOLD: being
+    // the only application scored above zero does not make a weak match (e.g.
+    // a sender-email-to-linked-contact hit alone, with no company/role
+    // correlation) trustworthy. Requiring the same threshold regardless of
+    // matches.length prevents auto-attaching to an unrelated application just
+    // because it happened to be the only candidate. See issue #14.
     bestMatch:
       bestMatch && bestMatch.confidence >= MATCH_CONFIDENCE_THRESHOLD && !requiresManualSelection
         ? bestMatch
-        : bestMatch && matches.length === 1
-          ? bestMatch
-          : null,
+        : null,
     requiresManualSelection,
   };
 }
