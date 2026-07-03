@@ -329,16 +329,29 @@ export function applySafeAutomationRules(
           : pipelineResult.message,
       });
     }
+  }
 
-    if (row.interviewDatetime && !shouldSkip('create_interview')) {
-      const interviewResult = upsertInterviewFromEmail(
-        db,
-        userId,
-        emailId,
-        applicationId,
-      );
-      if (interviewResult) results.push(interviewResult);
-    }
+  // Gated independently from the update_pipeline check above (own
+  // shouldSkip('create_interview') key), not nested inside it. Nesting this
+  // under update_pipeline's gate meant that once update_pipeline completed on
+  // any prior run, every later reanalysis short-circuited before ever
+  // attempting interview creation -- even after interviewDatetime newly became
+  // available (e.g. from a classification/extraction fix). See issue #11.
+  if (
+    row.classification === 'Scheduling' &&
+    isHighConfidence(row) &&
+    applicationId &&
+    !analysis.matches.requiresManualSelection &&
+    row.interviewDatetime &&
+    !shouldSkip('create_interview')
+  ) {
+    const interviewResult = upsertInterviewFromEmail(
+      db,
+      userId,
+      emailId,
+      applicationId,
+    );
+    if (interviewResult) results.push(interviewResult);
   }
 
   // Interview Request emails create/update an interview record only when they
