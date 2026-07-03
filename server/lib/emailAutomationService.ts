@@ -761,6 +761,19 @@ export function upsertInterviewFromEmail(
   const recruiterLabel = row.recruiterName ?? row.originalSenderName;
   const location = recruiterLabel ? `With ${recruiterLabel}` : '';
 
+  // Keep the application's denormalized interviewDate (read by the Today
+  // dashboard) in sync whenever an interview record is written, independent
+  // of whether a pipeline status transition happens in the same pass.
+  // updatePipelineFromEmail only backfills this field on a transition to
+  // interviewing/final_round, so an application already at that status --
+  // e.g. on a reanalysis where the pipeline update itself is skipped --
+  // would otherwise keep showing "date pending" despite a correct interview
+  // record existing underneath it. See issue #13.
+  db.update(applications)
+    .set({ interviewDate: scheduledDay, updatedAt: timestamp })
+    .where(eq(applications.id, applicationId))
+    .run();
+
   if (existing) {
     db.update(interviews)
       .set({
