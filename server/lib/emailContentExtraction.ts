@@ -181,28 +181,80 @@ function parseTimeToken(token: string): { hour: number; minute: number } | null 
   return { hour, minute };
 }
 
-// Build an ISO instant from calendar components, treating the extracted
-// wall-clock time as UTC. This keeps the interview's calendar DATE stable
-// regardless of the server timezone (the primary product need). It does not
-// resolve the source timezone (EST/EDT/…); the email's own .ics attachment
-// carries an authoritative TZID and would be the precise source — see the
-// deferred follow-up.
-function buildUtcIso(
+// Fixed-offset minutes for common US timezone abbreviations. Literal mapping
+// (EST is -5 even in July): without a tz database an abbreviation cannot be
+// daylight-resolved, and an explicit GMT±hh:mm offset — which Zoom-style
+// "Date/Time:" lines include — is preferred over abbreviations whenever both
+// appear anywhere in the email. The .ics attachment's DTSTART;TZID remains the
+// fully authoritative future source (deferred follow-up from the extraction
+// fix).
+const TZ_ABBREVIATION_OFFSET_MINUTES: Record<string, number> = {
+  utc: 0,
+  gmt: 0,
+  est: -300,
+  edt: -240,
+  cst: -360,
+  cdt: -300,
+  mst: -420,
+  mdt: -360,
+  pst: -480,
+  pdt: -420,
+};
+
+// Reads a timezone signal from the text immediately following a matched time
+// (rest of the same line): an explicit "GMT-04:00"-style offset, or a known
+// abbreviation like "EST". Returns minutes east of UTC, plus whether the
+// signal was an explicit offset (more trustworthy than an abbreviation).
+function extractOffsetMinutes(
+  context: string,
+): { minutes: number; explicit: boolean } | null {
+  const gmt = context.match(/(?:GMT|UTC)\s*([+-])\s*(\d{1,2}):?(\d{2})/i);
+  if (gmt) {
+    const sign = gmt[1] === '-' ? -1 : 1;
+    return {
+      minutes: sign * (Number.parseInt(gmt[2], 10) * 60 + Number.parseInt(gmt[3], 10)),
+      explicit: true,
+    };
+  }
+  const abbr = context.match(/\b(UTC|GMT|EST|EDT|CST|CDT|MST|MDT|PST|PDT)\b/i);
+  if (abbr) {
+    return {
+      minutes: TZ_ABBREVIATION_OFFSET_MINUTES[abbr[1].toLowerCase()],
+      explicit: false,
+    };
+  }
+  return null;
+}
+
+// Build an ISO instant from calendar components. With a timezone offset the
+// result is the true instant; without one the wall-clock time is kept as UTC
+// (previous behavior), which at least holds the calendar DATE stable
+// regardless of the server timezone.
+function buildIso(
   year: number,
   monthIndex: number,
   day: number,
   hour: number,
   minute: number,
+  offsetMinutes: number | null,
 ): string | null {
   if (day < 1 || day > 31) return null;
-  const iso = `${String(year).padStart(4, '0')}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00.000Z`;
-  const parsed = new Date(iso);
+  const utcMs =
+    Date.UTC(year, monthIndex, day, hour, minute) -
+    (offsetMinutes ?? 0) * 60 * 1000;
+  const parsed = new Date(utcMs);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
 export function extractInterviewDatetime(text: string): string | null {
   const yearMatch = text.match(/\b(20\d{2})\b/);
   const fallbackYear = yearMatch ? Number.parseInt(yearMatch[1], 10) : null;
+
+  interface Candidate {
+    iso: string;
+    offset: { minutes: number; explicit: boolean } | null;
+  }
+  const candidates: Candidate[] = [];
 
   DATE_TIME_RE.lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -212,8 +264,27 @@ export function extractInterviewDatetime(text: string): string | null {
     const year = match[3] ? Number.parseInt(match[3], 10) : fallbackYear;
     const time = parseTimeToken(match[4]);
     if (monthIndex === undefined || !year || !time) continue;
-    const iso = buildUtcIso(year, monthIndex, day, time.hour, time.minute);
-    if (iso) return iso;
+
+    // Timezone signal, if any, sits after the time on the same line
+    // ("6:00pm EST - ...", "6:00pm-7:00pm (GMT-04:00) ...").
+    const matchEnd = match.index + match[0].length;
+    const lineEnd = text.indexOf('\n', matchEnd);
+    const context = text.slice(matchEnd, lineEnd === -1 ? matchEnd + 80 : lineEnd);
+    const offset = extractOffsetMinutes(context);
+
+    const iso = buildIso(year, monthIndex, day, time.hour, time.minute, offset?.minutes ?? null);
+    if (iso) candidates.push({ iso, offset });
+  }
+
+  if (candidates.length > 0) {
+    // Prefer the mention with an explicit GMT offset (e.g. the Zoom
+    // "Date/Time:" line) over one with only an abbreviation, over one with no
+    // timezone at all — first occurrence wins within each tier.
+    const preferred =
+      candidates.find((c) => c.offset?.explicit) ??
+      candidates.find((c) => c.offset !== null) ??
+      candidates[0];
+    return preferred.iso;
   }
 
   const dateOnly = DATE_ONLY_RE.exec(text);
@@ -222,7 +293,7 @@ export function extractInterviewDatetime(text: string): string | null {
     const day = Number.parseInt(dateOnly[2], 10);
     const year = Number.parseInt(dateOnly[3], 10);
     if (monthIndex !== undefined) {
-      const iso = buildUtcIso(year, monthIndex, day, 0, 0);
+      const iso = buildIso(year, monthIndex, day, 0, 0, null);
       if (iso) return iso;
     }
   }

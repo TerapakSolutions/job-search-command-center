@@ -101,6 +101,40 @@ describe('emailContentExtraction', () => {
     ).toBeNull();
   });
 
+  // Timezone resolution: the stored value must be the TRUE instant when the
+  // email declares its timezone, so local rendering (toLocaleString) shows the
+  // correct time everywhere (6:00 PM ET == 3:00 PM PT == 22:00Z).
+  it('converts an explicit GMT offset to the true instant', () => {
+    expect(
+      extractInterviewDatetime(
+        'Date/Time: Jul 7, 2026 6:00pm-7:00pm (GMT-04:00) Eastern Time (US & Canada)',
+      ),
+    ).toBe('2026-07-07T22:00:00.000Z');
+  });
+
+  it('prefers the explicit GMT offset over an inline abbreviation elsewhere in the email', () => {
+    // The real body says "6:00pm EST" inline (sloppy recruiter shorthand for
+    // Eastern in July) but the Zoom Date/Time line carries the authoritative
+    // GMT-04:00 offset — that one must win.
+    expect(extractInterviewDatetime(REAL_PATHSTREAM_BODY)).toBe(
+      '2026-07-07T22:00:00.000Z',
+    );
+  });
+
+  it('converts a bare timezone abbreviation using its literal fixed offset', () => {
+    expect(
+      extractInterviewDatetime(
+        'Your interview is confirmed for Tuesday July 7, 2026 at 6:00pm EST',
+      ),
+    ).toBe('2026-07-07T23:00:00.000Z'); // EST is literally UTC-5
+  });
+
+  it('keeps wall-clock-as-UTC behavior when no timezone is present', () => {
+    expect(
+      extractInterviewDatetime('Your interview is confirmed for July 5, 2026 at 2:00 PM.'),
+    ).toBe('2026-07-05T14:00:00.000Z');
+  });
+
   it('resolves role title from interview subject', () => {
     expect(
       resolveRoleTitle({
