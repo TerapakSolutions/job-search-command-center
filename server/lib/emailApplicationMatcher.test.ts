@@ -109,4 +109,51 @@ describe('emailApplicationMatcher', () => {
     expect(result.matches).toHaveLength(0);
     expect(result.bestMatch).toBeNull();
   });
+
+  it('does not accept a single low-confidence candidate as bestMatch just because it is the only one (issue #14, real production shape)', () => {
+    // Reproduces the real terapak.com mismatch: an unrelated application has a
+    // contact whose email happens to match the sender (score +40 from the
+    // contact link alone), but the email's actual company/role ("Pathstream" /
+    // "Engineering Manager") share nothing with the application's
+    // ("terapak.com" / "Unknown role") -- both contribute a 0 company/role
+    // score. Before the fix, being the ONLY candidate with any score exempted
+    // it from MATCH_CONFIDENCE_THRESHOLD entirely.
+    const db = createTestDb();
+    const userId = seedTestUser(db);
+    seedApplication(db, userId, {
+      id: 'app-terapak',
+      company: 'terapak.com',
+      roleTitle: 'Unknown role',
+    });
+
+    const ts = nowIso();
+    db.insert(contacts)
+      .values({
+        id: createId(),
+        userId,
+        applicationId: 'app-terapak',
+        name: 'Jon Hardin',
+        email: 'jhardin@pathstream.com',
+        linkedIn: '',
+        messageNotes: '',
+        nextAction: '',
+        createdAt: ts,
+        updatedAt: ts,
+      })
+      .run();
+
+    const result = matchEmailToApplications(db, userId, {
+      fromEmail: 'jhardin@pathstream.com',
+      companyName: 'Pathstream',
+      positionTitle: 'Engineering Manager',
+      recruiterName: 'Jon Hardin',
+    });
+
+    // The contact-email match still surfaces the app as a low-score candidate...
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0].applicationId).toBe('app-terapak');
+    expect(result.matches[0].confidence).toBeLessThan(70);
+    // ...but it must NOT be accepted as a confident match.
+    expect(result.bestMatch).toBeNull();
+  });
 });
