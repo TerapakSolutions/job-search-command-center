@@ -54,6 +54,53 @@ describe('emailContentExtraction', () => {
     expect(datetime).toMatch(/^2026-07-05/);
   });
 
+  // Real Pathstream Outlook confirmation body (forward-stripped, as the parser
+  // receives it). Contains both the inline weekday-prefixed phrasing and the
+  // labeled Date/Time: line. Captured verbatim from the production email row.
+  const REAL_PATHSTREAM_BODY = [
+    'Hi Steve,',
+    '',
+    'Thank you for sharing your availability for the Engineering Manager position at Pathstream. Your interview is now confirmed for Tuesday July 7, 6:00pm EST - 3:00pm PST with James Peel SVP of Engineering',
+    '',
+    'Please use the Zoom link below to join the meeting:',
+    '',
+    'Date/Time: Jul 7, 2026 6:00pm-7:00pm (GMT-04:00) Eastern Time (US & Canada)',
+    'Interviewers: James Peel',
+  ].join('\n');
+
+  it('extracts datetime from the real Pathstream Outlook confirmation body', () => {
+    expect(extractInterviewDatetime(REAL_PATHSTREAM_BODY)).toMatch(/^2026-07-07/);
+  });
+
+  it('parses inline weekday-prefixed phrasing ("confirmed for Tuesday July 7, ... 6:00pm EST")', () => {
+    // Year is inferred from elsewhere in the email (the labeled line here).
+    const text =
+      'Your interview is now confirmed for Tuesday July 7, 6:00pm EST - 3:00pm PST.\nDate/Time: Jul 7, 2026 6:00pm Eastern Time';
+    expect(extractInterviewDatetime(text)).toMatch(/^2026-07-07/);
+  });
+
+  it('parses a weekday-prefixed phrase with an explicit year', () => {
+    expect(
+      extractInterviewDatetime(
+        'Your interview is confirmed for Tuesday July 7, 2026 at 6:00pm EST',
+      ),
+    ).toMatch(/^2026-07-07/);
+  });
+
+  it('parses labeled "Date/Time:" line phrasing', () => {
+    expect(
+      extractInterviewDatetime(
+        'Date/Time: Jul 7, 2026 6:00pm-7:00pm (GMT-04:00) Eastern Time (US & Canada)',
+      ),
+    ).toMatch(/^2026-07-07/);
+  });
+
+  it('returns null when no interview date/time is present', () => {
+    expect(
+      extractInterviewDatetime("Let's find some time next week to chat."),
+    ).toBeNull();
+  });
+
   it('resolves role title from interview subject', () => {
     expect(
       resolveRoleTitle({
