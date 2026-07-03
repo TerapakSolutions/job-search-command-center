@@ -152,23 +152,82 @@ export function resolveEmployerCompany(input: {
   return null;
 }
 
+const MONTH_INDEX: Record<string, number> = {
+  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+  jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+};
+
+// Optional weekday prefix ("Tuesday "), month name, day, optional year, then a
+// time within the same line. Handles both inline phrasing
+// ("... confirmed for Tuesday July 7, 6:00pm EST ...") and labeled lines
+// ("Date/Time: Jul 7, 2026 6:00pm-7:00pm (GMT-04:00) ..."). The `\d{4}` year is
+// optional because inline phrasing often omits it; it is then inferred from any
+// full year elsewhere in the email.
+const DATE_TIME_RE =
+  /(?:(?:mon|tue|tues|wed|weds|thu|thur|thurs|fri|sat|sun)[a-z]*,?\s+)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?[^\n]{0,40}?(\d{1,2}(?::\d{2})?\s*[ap]\.?m\.?)/gi;
+
+// Date without an accompanying time (year required to avoid spurious matches).
+const DATE_ONLY_RE =
+  /(?:(?:mon|tue|tues|wed|weds|thu|thur|thurs|fri|sat|sun)[a-z]*,?\s+)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})/i;
+
+function parseTimeToken(token: string): { hour: number; minute: number } | null {
+  const m = token.match(/(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\.?/i);
+  if (!m) return null;
+  let hour = Number.parseInt(m[1], 10);
+  const minute = m[2] ? Number.parseInt(m[2], 10) : 0;
+  if (m[3].toLowerCase() === 'p' && hour < 12) hour += 12;
+  if (m[3].toLowerCase() === 'a' && hour === 12) hour = 0;
+  if (hour > 23 || minute > 59) return null;
+  return { hour, minute };
+}
+
+// Build an ISO instant from calendar components, treating the extracted
+// wall-clock time as UTC. This keeps the interview's calendar DATE stable
+// regardless of the server timezone (the primary product need). It does not
+// resolve the source timezone (EST/EDT/…); the email's own .ics attachment
+// carries an authoritative TZID and would be the precise source — see the
+// deferred follow-up.
+function buildUtcIso(
+  year: number,
+  monthIndex: number,
+  day: number,
+  hour: number,
+  minute: number,
+): string | null {
+  if (day < 1 || day > 31) return null;
+  const iso = `${String(year).padStart(4, '0')}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00.000Z`;
+  const parsed = new Date(iso);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
 export function extractInterviewDatetime(text: string): string | null {
-  const match = text.match(
-    /(?:is confirmed for|confirmed for|scheduled for|interview on|on)\s+([A-Za-z]+\s+\d{1,2},?\s+\d{4})(?:\s+at\s+([\d:]+\s*(?:AM|PM)?(?:\s+[A-Z]{2,4})?)?)?/i,
-  );
-  if (!match?.[1]) return null;
+  const yearMatch = text.match(/\b(20\d{2})\b/);
+  const fallbackYear = yearMatch ? Number.parseInt(yearMatch[1], 10) : null;
 
-  const datePart = match[1].replace(/,/g, '');
-  const parsedDate = new Date(datePart);
-  if (Number.isNaN(parsedDate.getTime())) return null;
+  DATE_TIME_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = DATE_TIME_RE.exec(text)) !== null) {
+    const monthIndex = MONTH_INDEX[match[1].slice(0, 3).toLowerCase()];
+    const day = Number.parseInt(match[2], 10);
+    const year = match[3] ? Number.parseInt(match[3], 10) : fallbackYear;
+    const time = parseTimeToken(match[4]);
+    if (monthIndex === undefined || !year || !time) continue;
+    const iso = buildUtcIso(year, monthIndex, day, time.hour, time.minute);
+    if (iso) return iso;
+  }
 
-  const timePart = match[2]?.trim() ?? '';
-  if (!timePart) return parsedDate.toISOString();
+  const dateOnly = DATE_ONLY_RE.exec(text);
+  if (dateOnly) {
+    const monthIndex = MONTH_INDEX[dateOnly[1].slice(0, 3).toLowerCase()];
+    const day = Number.parseInt(dateOnly[2], 10);
+    const year = Number.parseInt(dateOnly[3], 10);
+    if (monthIndex !== undefined) {
+      const iso = buildUtcIso(year, monthIndex, day, 0, 0);
+      if (iso) return iso;
+    }
+  }
 
-  const parsedWithTime = new Date(`${datePart} ${timePart.replace(/\s+[A-Z]{2,4}$/i, '')}`);
-  return Number.isNaN(parsedWithTime.getTime())
-    ? parsedDate.toISOString()
-    : parsedWithTime.toISOString();
+  return null;
 }
 
 export function resolveRoleTitle(input: {
