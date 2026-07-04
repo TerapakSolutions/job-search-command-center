@@ -65,11 +65,12 @@ export async function checkApiHealth(): Promise<boolean> {
 }
 
 export async function loadAllData() {
-  const [applications, contacts] = await Promise.all([
+  const [applications, contacts, interviews] = await Promise.all([
     applicationsApi.list(),
     contactsApi.list(),
+    interviewsApi.list(),
   ]);
-  return { applications, contacts };
+  return { applications, contacts, interviews };
 }
 
 export async function clearAllRemote() {

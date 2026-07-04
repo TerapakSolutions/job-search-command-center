@@ -1,4 +1,4 @@
-import { formatDate, parseDate } from './dates';
+import { formatDate, formatDateTime, parseDate } from './dates';
 
 describe('parseDate / formatDate — date-only strings render the correct calendar day', () => {
   const originalTz = process.env.TZ;
@@ -48,5 +48,31 @@ describe('parseDate / formatDate — date-only strings render the correct calend
     expect(parseDate(undefined)).toBeNull();
     expect(parseDate('not-a-date')).toBeNull();
     expect(formatDate(null)).toBe('—');
+  });
+});
+
+describe('formatDateTime — renders local time for full instants', () => {
+  const originalTz = process.env.TZ;
+
+  afterEach(() => {
+    if (originalTz === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTz;
+  });
+
+  it('renders a full ISO instant with local time (22:00Z = 3:00 PM Pacific)', () => {
+    // Note: Intl caches the process default timezone after first use, so this
+    // suite asserts one timezone only; TZ is set before any Intl call here.
+    process.env.TZ = 'America/Los_Angeles';
+    expect(formatDateTime('2026-07-07T22:00:00.000Z')).toBe('Jul 7, 2026, 3:00 PM');
+  });
+
+  it('falls back to date-only formatting for bare dates instead of fabricating midnight', () => {
+    process.env.TZ = 'America/Los_Angeles';
+    expect(formatDateTime('2026-07-07')).toBe('Jul 7, 2026');
+  });
+
+  it('handles null/invalid input', () => {
+    expect(formatDateTime(null)).toBe('—');
+    expect(formatDateTime('not-a-date')).toBe('—');
   });
 });

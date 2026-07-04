@@ -3,7 +3,9 @@ import {
   PIPELINE_STATUS_LABELS,
   WORK_LOCATION_LABELS,
 } from '../types/application';
-import { formatDate } from '../lib/dates';
+import { formatDate, formatDateTime } from '../lib/dates';
+import { upcomingInterviewAt } from '../lib/interviews';
+import { useJobSearchStore } from '../store/useJobSearchStore';
 
 interface ApplicationCardProps {
   application: Application;
@@ -17,6 +19,7 @@ export default function ApplicationCard({
   compact = false,
   onEdit,
 }: ApplicationCardProps) {
+  const interviews = useJobSearchStore((s) => s.interviews);
   const salary =
     application.salaryMin || application.salaryMax
       ? [
@@ -47,7 +50,15 @@ export default function ApplicationCard({
           )}
           {application.interviewDate && (
             <p className="text-purple-600">
-              Interview {formatDate(application.interviewDate)}
+              Interview{' '}
+              {(() => {
+                // The interview record carries the full instant; the
+                // application's interviewDate field is date-only.
+                const scheduledAt = upcomingInterviewAt(interviews, application.id);
+                return scheduledAt
+                  ? formatDateTime(scheduledAt)
+                  : formatDate(application.interviewDate);
+              })()}
             </p>
           )}
         </div>
