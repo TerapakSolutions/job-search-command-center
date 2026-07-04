@@ -10,7 +10,8 @@ import { useJobSearchStore } from '../store/useJobSearchStore';
 import { REMINDER_TYPE_LABELS, type Reminder } from '../types/reminder';
 import { DEFAULT_JOB_SEARCH_GOALS } from '../types/activity';
 import type { ActivityMetrics } from '../types/activity';
-import { formatDate, parseDate } from '../lib/dates';
+import { formatDate, formatDateTime, parseDate } from '../lib/dates';
+import { upcomingInterviewAt } from '../lib/interviews';
 import {
   contactApplicationLabel,
   isMeaningfulContactNextAction,
@@ -29,6 +30,7 @@ const priorityStyles = {
 export default function TodayPage() {
   const applications = useJobSearchStore((s) => s.applications);
   const contacts = useJobSearchStore((s) => s.contacts);
+  const interviews = useJobSearchStore((s) => s.interviews);
   const refreshData = useJobSearchStore((s) => s.refreshData);
   const demoMode = isDemoMode();
   const [activityMetrics, setActivityMetrics] = useState<ActivityMetrics | null>(
@@ -175,9 +177,16 @@ export default function TodayPage() {
                     {app.company} — {app.roleTitle}
                   </p>
                   <p className="text-sm text-purple-700">
-                    {app.interviewDate
-                      ? formatDate(app.interviewDate)
-                      : 'Interview scheduled — date pending'}
+                    {(() => {
+                      // Prefer the interview record's full instant (renders a
+                      // local time); the application's own interviewDate is
+                      // date-only and cannot carry a time.
+                      const scheduledAt = upcomingInterviewAt(interviews, app.id);
+                      if (scheduledAt) return formatDateTime(scheduledAt);
+                      return app.interviewDate
+                        ? formatDate(app.interviewDate)
+                        : 'Interview scheduled — date pending';
+                    })()}
                   </p>
                 </div>
                 <Link

@@ -66,6 +66,23 @@ export function formatDate(value: string | null): string {
   });
 }
 
+// Date + time in the viewer's local timezone. A bare date-only string has no
+// time to show, so it falls back to formatDate rather than fabricating
+// midnight.
+export function formatDateTime(value: string | null): string {
+  if (!value) return '—';
+  if (DATE_ONLY_PATTERN.test(value)) return formatDate(value);
+  const date = parseDate(value);
+  if (!date) return '—';
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 export function todayIso(): string {
   return startOfDay(new Date()).toISOString();
 }

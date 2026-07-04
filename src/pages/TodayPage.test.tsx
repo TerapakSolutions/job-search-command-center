@@ -65,11 +65,33 @@ const mockApplications: Application[] = [
   },
 ];
 
+// SoonerCo has a full interview record (with a time-of-day); LaterCo has only
+// the date-only interviewDate field on the application.
+function soonerScheduledAt(): string {
+  const at = addDays(now, 2);
+  at.setHours(15, 0, 0, 0); // 3:00 PM local
+  return at.toISOString();
+}
+
+const mockInterviews = [
+  {
+    id: 'interview-sooner',
+    applicationId: 'app-sooner',
+    scheduledAt: soonerScheduledAt(),
+    type: 'video',
+    location: '',
+    notes: '',
+    createdAt: '2026-06-01T00:00:00.000Z',
+    updatedAt: '2026-06-01T00:00:00.000Z',
+  },
+];
+
 jest.mock('../store/useJobSearchStore', () => ({
   useJobSearchStore: (selector: (state: Record<string, unknown>) => unknown) =>
     selector({
       applications: mockApplications,
       contacts: [],
+      interviews: mockInterviews,
       refreshData: jest.fn().mockResolvedValue(undefined),
     }),
 }));
@@ -102,5 +124,21 @@ describe('TodayPage upcoming interviews — date-only sort/filter (west-of-UTC r
     const position = (node: HTMLElement) =>
       Array.from(document.querySelectorAll('li')).indexOf(node.closest('li')!);
     expect(position(sooner)).toBeLessThan(position(later));
+  });
+
+  it('renders the interview time when an interview record exists, date-only otherwise', async () => {
+    render(
+      <MemoryRouter>
+        <TodayPage />
+      </MemoryRouter>,
+    );
+
+    // SoonerCo has an interview record scheduled at 3:00 PM local.
+    const sooner = await screen.findByText('SoonerCo — Engineer');
+    expect(sooner.closest('li')!.textContent).toMatch(/3:00\sPM/);
+
+    // LaterCo only has the date-only application field — no fabricated time.
+    const later = await screen.findByText('LaterCo — Engineer');
+    expect(later.closest('li')!.textContent).not.toMatch(/\d{1,2}:\d{2}\s?(AM|PM)/);
   });
 });

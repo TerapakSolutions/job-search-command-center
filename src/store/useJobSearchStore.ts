@@ -11,6 +11,7 @@ import { createId } from '../lib/id';
 import { computeReminders } from '../lib/reminders';
 import type { Application, ApplicationInput } from '../types/application';
 import type { Contact, ContactInput } from '../types/contact';
+import type { Interview } from '../types/interview';
 import type { Reminder } from '../types/reminder';
 
 const STORAGE_KEY = 'job-search-command-center';
@@ -18,6 +19,7 @@ const STORAGE_KEY = 'job-search-command-center';
 interface JobSearchState {
   applications: Application[];
   contacts: Contact[];
+  interviews: Interview[];
   initialized: boolean;
   loading: boolean;
   error: string | null;
@@ -52,6 +54,7 @@ const storeCreator = (
 ): JobSearchState => ({
   applications: [],
   contacts: [],
+  interviews: [],
   initialized: false,
   loading: false,
   error: null,
@@ -69,6 +72,7 @@ const storeCreator = (
       set({
         applications: data.applications,
         contacts: data.contacts,
+        interviews: data.interviews,
         initialized: true,
         loading: false,
         persistenceMode: 'api',
@@ -90,6 +94,7 @@ const storeCreator = (
       set({
         applications: data.applications,
         contacts: data.contacts,
+        interviews: data.interviews,
         error: null,
       });
     } catch {
@@ -154,15 +159,18 @@ const storeCreator = (
   deleteApplication: (id) => {
     const previousApps = get().applications;
     const previousContacts = get().contacts;
+    const previousInterviews = get().interviews;
     set((state) => ({
       applications: state.applications.filter((app) => app.id !== id),
       contacts: state.contacts.filter((c) => c.applicationId !== id),
+      interviews: state.interviews.filter((i) => i.applicationId !== id),
     }));
     if (!isDemoMode()) {
       applicationsApi.remove(id).catch(() => {
         set({
           applications: previousApps,
           contacts: previousContacts,
+          interviews: previousInterviews,
           error: 'Failed to delete application.',
         });
       });
@@ -306,7 +314,7 @@ const storeCreator = (
   },
 
   clearAll: () => {
-    set({ applications: [], contacts: [] });
+    set({ applications: [], contacts: [], interviews: [] });
     if (!isDemoMode()) {
       clearAllRemote().catch(() => {
         set({ error: 'Failed to clear remote data.' });
