@@ -13,6 +13,13 @@ import type { ActivityMetrics } from '../types/activity';
 import { formatDate, formatDateTime, parseDate } from '../lib/dates';
 import { upcomingInterviewAt } from '../lib/interviews';
 import {
+  currentStatusMap,
+  detectNewMilestones,
+  topMilestone,
+  type LastSeenStatusMap,
+  type Milestone,
+} from '../lib/milestones';
+import {
   contactApplicationLabel,
   isMeaningfulContactNextAction,
   resolveContactCompany,
@@ -20,6 +27,9 @@ import {
 import DailyBriefingPanel from '../components/DailyBriefingPanel';
 import AutomationDashboardPanel from '../components/AutomationDashboardPanel';
 import GoalsProgressPanel from '../components/GoalsProgressPanel';
+import MilestoneCelebration from '../components/MilestoneCelebration';
+
+const MILESTONE_SEEN_KEY = 'milestone-last-seen-status-v1';
 
 const priorityStyles = {
   high: 'border-red-200 bg-red-50',
@@ -37,6 +47,37 @@ export default function TodayPage() {
     null,
   );
   const [metricsLoading, setMetricsLoading] = useState(false);
+  const [celebration, setCelebration] = useState<Milestone | null>(null);
+
+  // Celebrate applications that newly advance into interviewing/final_round/
+  // offer. On the very first run (no stored baseline) we seed silently so we
+  // don't confetti every already-advanced app; only genuine transitions after
+  // that fire. Applications-only for v1 (contacts not tracked here).
+  useEffect(() => {
+    if (applications.length === 0) return;
+    const stored = localStorage.getItem(MILESTONE_SEEN_KEY);
+    const current = currentStatusMap(applications);
+
+    if (stored === null) {
+      localStorage.setItem(MILESTONE_SEEN_KEY, JSON.stringify(current));
+      return;
+    }
+
+    let lastSeen: LastSeenStatusMap = {};
+    try {
+      lastSeen = JSON.parse(stored) as LastSeenStatusMap;
+    } catch {
+      lastSeen = {};
+    }
+
+    const top = topMilestone(detectNewMilestones(applications, lastSeen));
+    if (top) setCelebration(top);
+    // Merge so history for apps not in the current list is preserved.
+    localStorage.setItem(
+      MILESTONE_SEEN_KEY,
+      JSON.stringify({ ...lastSeen, ...current }),
+    );
+  }, [applications]);
 
   const loadMetrics = useCallback(
     async (options?: { refreshStore?: boolean }) => {
@@ -116,6 +157,12 @@ export default function TodayPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
+      {celebration && (
+        <MilestoneCelebration
+          milestone={celebration}
+          onDismiss={() => setCelebration(null)}
+        />
+      )}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-semibold text-gray-900">

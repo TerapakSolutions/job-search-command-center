@@ -1,3 +1,54 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@keyframes milestone-confetti-fall {
+  0% {
+    transform: translateY(-10vh) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(105vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+@keyframes milestone-banner-pop {
+  0% {
+    transform: translateY(-12px) scale(0.96);
+    opacity: 0;
+  }
+  60% {
+    transform: translateY(0) scale(1.02);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.milestone-confetti-piece {
+  position: fixed;
+  top: -10vh;
+  width: 9px;
+  height: 9px;
+  will-change: transform, opacity;
+  animation-name: milestone-confetti-fall;
+  animation-timing-function: ease-in;
+  animation-iteration-count: 1;
+  pointer-events: none;
+}
+
+.milestone-banner {
+  animation: milestone-banner-pop 0.4s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .milestone-confetti-piece {
+    display: none;
+  }
+  .milestone-banner {
+    animation: none;
+  }
+}
