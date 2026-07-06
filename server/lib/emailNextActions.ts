@@ -11,6 +11,7 @@ export function generateNextActions(input: {
   matches: ApplicationMatchResult;
   pipelineProposal: PipelineUpdateProposal | null;
   canOfferApplicationCreation: boolean;
+  company?: string | null;
 }): NextActionSuggestion[] {
   const actions: NextActionSuggestion[] = [];
   const classification = input.classification;
@@ -63,10 +64,13 @@ export function generateNextActions(input: {
   }
 
   if (input.canOfferApplicationCreation && !input.matches.bestMatch) {
+    const company = input.company?.trim();
     actions.push({
       type: 'create_application',
-      label: 'Create application',
-      description: 'Add a new application from this email.',
+      label: company ? `Create application: ${company} (role TBD)` : 'Create application',
+      description: company
+        ? `Add ${company} to your applications with role "not identified".`
+        : 'Add a new application from this email.',
       priority: 'medium',
     });
   }

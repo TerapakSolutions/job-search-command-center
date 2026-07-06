@@ -295,6 +295,7 @@ export function analyzeEmailAutomation(
     matches,
     pipelineProposal,
     canOfferApplicationCreation,
+    company: effectiveCompany,
   });
 
   return {
@@ -932,8 +933,14 @@ export function runEmailAutomation(
     analysis.duplicateApplicationId ??
     undefined;
 
-  if (analysis.canCreateApplication && !applicationId) {
-    const createResult = createApplicationFromEmail(db, userId, emailId);
+  // "Run all" is a deliberate human confirmation, so it may create from a
+  // confidently-identified company even when the role is missing (stored as
+  // "Unknown role"). Background auto-creation elsewhere still uses the strict
+  // canCreateApplication (company AND role) — this path does not weaken it.
+  if (analysis.canOfferApplicationCreation && !applicationId) {
+    const createResult = createApplicationFromEmail(db, userId, emailId, {
+      allowMissingRole: true,
+    });
     if (createResult) {
       results.push(createResult);
       if (createResult.success && createResult.changes.applicationId) {
