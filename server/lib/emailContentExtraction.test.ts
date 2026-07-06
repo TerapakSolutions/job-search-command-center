@@ -1,6 +1,7 @@
 /** @jest-environment node */
 import {
   extractEmployerFromSubject,
+  extractEmployerFromAtsSender,
   extractInterviewDatetime,
   extractRoleFromInterviewSubject,
   inferEmployerFromSenderEmail,
@@ -49,6 +50,26 @@ describe('emailContentExtraction', () => {
         senderEmail: 'no-reply@ashbyhq.com',
       }),
     ).toBe('Valon');
+  });
+
+  it('extracts the tenant employer from Workday ATS senders', () => {
+    expect(extractEmployerFromAtsSender('chamberlain@myworkday.com')).toBe('Chamberlain');
+    expect(extractEmployerFromAtsSender('acme@workday.com')).toBe('Acme');
+    // generic local-parts are not an employer
+    expect(extractEmployerFromAtsSender('noreply@myworkday.com')).toBeNull();
+    // non-Workday senders are unaffected
+    expect(extractEmployerFromAtsSender('recruiter@pathstream.com')).toBeNull();
+  });
+
+  it('resolves Chamberlain from a Workday sender when the subject has no company', () => {
+    expect(
+      resolveEmployerCompany({
+        companyName: 'Workday',
+        originalCompany: null,
+        subject: 'Thank You for Your Application!',
+        senderEmail: 'chamberlain@myworkday.com',
+      }),
+    ).toBe('Chamberlain');
   });
 
   it('resolves employer from subject before ATS platform names', () => {
