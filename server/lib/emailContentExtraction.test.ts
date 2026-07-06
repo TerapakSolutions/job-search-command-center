@@ -26,6 +26,31 @@ describe('emailContentExtraction', () => {
     expect(isInterviewConfirmationText(subject)).toBe(true);
   });
 
+  it('extracts employer from "applying to {Company}" application-confirmation subjects', () => {
+    expect(extractEmployerFromSubject('Thank you for applying to Valon')).toBe('Valon');
+    expect(
+      extractEmployerFromSubject('Thanks for applying to Acme Corp - Software Engineer'),
+    ).toBe('Acme Corp');
+    expect(
+      extractEmployerFromSubject('Your application to Stripe for the Backend Engineer role'),
+    ).toBe('Stripe');
+    // "for" introduces a role, not a company — must not capture it
+    expect(extractEmployerFromSubject('Your application has been received')).toBeNull();
+    // ATS platform name is not a real employer
+    expect(extractEmployerFromSubject('Thank you for applying to Ashby')).toBeNull();
+  });
+
+  it('resolves Valon over the ATS sender for an application confirmation', () => {
+    expect(
+      resolveEmployerCompany({
+        companyName: null,
+        originalCompany: null,
+        subject: 'Thank you for applying to Valon',
+        senderEmail: 'no-reply@ashbyhq.com',
+      }),
+    ).toBe('Valon');
+  });
+
   it('resolves employer from subject before ATS platform names', () => {
     expect(
       resolveEmployerCompany({
