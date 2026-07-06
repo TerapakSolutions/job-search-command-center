@@ -149,6 +149,30 @@ export function extractRoleFromInterviewSubject(subject: string): string | null 
   return null;
 }
 
+// Role from acknowledgement-style subjects where the title sits after the
+// acknowledgement phrase, e.g. "Job Application Acknowledgement - Director,
+// Generative AI & Intelligent Automation, J0526-0580" -> "Director,
+// Generative AI & Intelligent Automation". Used as a fallback when the
+// standard "{Company} | {Role}" / interview patterns don't match.
+export function extractRoleFromAcknowledgementSubject(subject: string): string | null {
+  let s = subject.trim();
+  if (!s) return null;
+  s = s.replace(/^\s*(?:fwd?|re):\s*/i, '').trim();
+
+  const match = s.match(
+    /(?:acknowledgement|acknowledgment|application received|thanks for applying|thank you for your application)\s*[-–—:]\s*(.+)$/i,
+  );
+  let role = match?.[1]?.trim();
+  if (!role) return null;
+
+  // Strip a trailing requisition/job-ID token (e.g. ", J0526-0580",
+  // "REQ-12345") — must contain 2+ digits so plain trailing words like
+  // "Automation" are never eaten.
+  role = role.replace(/[,\s]+[A-Za-z]{0,4}-?\d{2,}[-\w]*$/, '').trim();
+  role = role.replace(/[\s,;:.\-–—]+$/, '').trim();
+  return role || null;
+}
+
 export function inferEmployerFromSenderEmail(email: string | null | undefined): string | null {
   if (!email || isAtsSenderEmail(email)) return null;
   const domain = email.split('@')[1]?.toLowerCase() ?? '';
@@ -356,5 +380,10 @@ export function resolveRoleTitle(input: {
   const subject = input.subject?.trim() ?? '';
   if (!subject) return fromField ?? null;
 
-  return extractRoleFromInterviewSubject(subject) ?? fromField ?? null;
+  return (
+    extractRoleFromInterviewSubject(subject) ??
+    extractRoleFromAcknowledgementSubject(subject) ??
+    fromField ??
+    null
+  );
 }
