@@ -5,6 +5,7 @@ import {
   extractEmployerFromSubject,
   extractInterviewDatetime,
   extractRoleFromInterviewSubject,
+  extractRoleFromAcknowledgementSubject,
   inferEmployerFromSenderEmail,
   isAtsPlatformCompany,
   isInterviewConfirmationText,
@@ -167,7 +168,9 @@ function extractClassificationFields(input: ClassifyInput): {
   recruiterName: string | null;
 } {
   const employerFromSubject = extractEmployerFromSubject(input.subject);
-  const roleFromSubject = extractRoleFromInterviewSubject(input.subject);
+  const roleFromSubject =
+    extractRoleFromInterviewSubject(input.subject) ??
+    extractRoleFromAcknowledgementSubject(input.subject);
   const employerFromEmail = inferEmployerFromSenderEmail(input.fromEmail);
   // Capitalized company token(s) after at/with/from, stopping at sentence
   // boundaries — the old `[A-Za-z0-9&.\- ]{2,40}` swallowed whole sentences

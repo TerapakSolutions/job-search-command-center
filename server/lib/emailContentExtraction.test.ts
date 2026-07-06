@@ -4,6 +4,7 @@ import {
   extractEmployerFromAtsSender,
   extractInterviewDatetime,
   extractRoleFromInterviewSubject,
+  extractRoleFromAcknowledgementSubject,
   inferEmployerFromSenderEmail,
   isAtsPlatformCompany,
   isAtsSenderEmail,
@@ -179,6 +180,32 @@ describe('emailContentExtraction', () => {
     expect(
       extractInterviewDatetime('Your interview is confirmed for July 5, 2026 at 2:00 PM.'),
     ).toBe('2026-07-05T14:00:00.000Z');
+  });
+
+  it('extracts role from acknowledgement subjects and strips the requisition ID', () => {
+    expect(
+      extractRoleFromAcknowledgementSubject(
+        'Job Application Acknowledgement - Director, Generative AI & Intelligent Automation, J0526-0580',
+      ),
+    ).toBe('Director, Generative AI & Intelligent Automation');
+    expect(
+      extractRoleFromAcknowledgementSubject('Application received - Senior Data Engineer, REQ-12345'),
+    ).toBe('Senior Data Engineer');
+    // no role present in the subject -> null (not a wrong guess)
+    expect(extractRoleFromAcknowledgementSubject('Thanks for applying to PrePass')).toBeNull();
+    // never eats a plain trailing word that isn't an ID
+    expect(
+      extractRoleFromAcknowledgementSubject('Acknowledgement - Staff Software Engineer'),
+    ).toBe('Staff Software Engineer');
+  });
+
+  it('resolveRoleTitle falls back to the acknowledgement subject when no positionTitle', () => {
+    expect(
+      resolveRoleTitle({
+        positionTitle: null,
+        subject: 'Job Application Acknowledgement - Director, Generative AI & Intelligent Automation, J0526-0580',
+      }),
+    ).toBe('Director, Generative AI & Intelligent Automation');
   });
 
   it('resolves role title from interview subject', () => {
