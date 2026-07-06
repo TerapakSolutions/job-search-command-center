@@ -34,6 +34,31 @@ export function isAtsSenderEmail(email: string | null | undefined): boolean {
   );
 }
 
+// Generic sender local-parts that are never the employer name.
+const GENERIC_SENDER_LOCAL_PARTS = new Set([
+  'noreply', 'no-reply', 'donotreply', 'do-not-reply', 'notifications',
+  'notification', 'mailer', 'mailer-daemon', 'info', 'hr', 'recruiting',
+  'recruitment', 'careers', 'jobs', 'talent', 'support', 'hello', 'team',
+  'apply', 'applications', 'candidate', 'candidates', 'admin', 'help',
+]);
+
+// Some ATS platforms send from an address whose account tenant IS the
+// employer. Workday notifications come from "{tenant}@myworkday.com"
+// (e.g. chamberlain@myworkday.com => Chamberlain), where the sender domain
+// alone would otherwise be dismissed as an ATS.
+export function extractEmployerFromAtsSender(
+  email: string | null | undefined,
+): string | null {
+  if (!email) return null;
+  const [localRaw, domain] = email.toLowerCase().split('@');
+  const local = (localRaw ?? '').replace(/\+.*$/, '');
+  if (domain !== 'myworkday.com' && domain !== 'workday.com') return null;
+  if (!local || local.length < 2 || GENERIC_SENDER_LOCAL_PARTS.has(local)) {
+    return null;
+  }
+  return local.charAt(0).toUpperCase() + local.slice(1);
+}
+
 export function isInterviewConfirmationText(text: string): boolean {
   const normalized = text.toLowerCase();
   return (
@@ -159,6 +184,10 @@ export function resolveEmployerCompany(input: {
       return trimmed;
     }
   }
+
+  // ATS senders where the tenant is the employer (Workday: {tenant}@myworkday.com).
+  const fromAtsSender = extractEmployerFromAtsSender(input.senderEmail);
+  if (fromAtsSender) return fromAtsSender;
 
   const fromEmail = inferEmployerFromSenderEmail(input.senderEmail);
   if (fromEmail) return fromEmail;
