@@ -209,7 +209,9 @@ export function inboundEmailsRouter(db: Db): Router {
   router.post('/:id/automation/create-application', (req: Request, res: Response) => {
     const userId = req.userId!;
     const id = String(req.params.id);
-    const result = createApplicationFromEmail(db, userId, id);
+    // Human-confirmed creation: a real company is enough; the role is filled
+    // in as "Unknown role" for the user to complete.
+    const result = createApplicationFromEmail(db, userId, id, { allowMissingRole: true });
     if (!result) {
       res.status(404).json({ error: 'Not found' });
       return;

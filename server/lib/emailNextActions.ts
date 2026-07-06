@@ -10,7 +10,7 @@ export function generateNextActions(input: {
   suggestedAction: string | null;
   matches: ApplicationMatchResult;
   pipelineProposal: PipelineUpdateProposal | null;
-  canCreateApplication: boolean;
+  canOfferApplicationCreation: boolean;
 }): NextActionSuggestion[] {
   const actions: NextActionSuggestion[] = [];
   const classification = input.classification;
@@ -62,7 +62,7 @@ export function generateNextActions(input: {
     });
   }
 
-  if (input.canCreateApplication && !input.matches.bestMatch) {
+  if (input.canOfferApplicationCreation && !input.matches.bestMatch) {
     actions.push({
       type: 'create_application',
       label: 'Create application',

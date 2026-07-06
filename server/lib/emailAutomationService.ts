@@ -25,6 +25,7 @@ import type {
 import type { AutomationActionType } from './emailAutomationTypes.js';
 import { buildPipelineUpdateProposal } from './emailPipelineAutomation.js';
 import {
+  hasIdentifiedCompany,
   hasIdentifiedCompanyAndRole,
   isLikelyDomainCompany,
   isMeaningfulContactNextAction,
@@ -238,14 +239,29 @@ export function analyzeEmailAutomation(
     effectiveRole,
   );
 
-  const canCreateApplication =
+  const isCreatableClassification =
     CREATE_APPLICATION_CLASSIFICATIONS.has(row.classification ?? '') &&
     !matches.bestMatch &&
-    !duplicateApplicationId &&
+    !duplicateApplicationId;
+
+  // Strict: drives AUTOMATIC creation (company AND role) — anti-junk guard.
+  const canCreateApplication =
+    isCreatableClassification &&
     hasIdentifiedCompanyAndRole({
       companyName: effectiveCompany,
       originalCompany: row.originalCompany,
       positionTitle: effectiveRole,
+      subject: effectiveSubject,
+      senderEmail: effectiveFromEmail,
+    });
+
+  // Relaxed: drives the HUMAN-confirmed "Create application" offer (company
+  // identified; role optional, filled in on creation as "Unknown role").
+  const canOfferApplicationCreation =
+    isCreatableClassification &&
+    hasIdentifiedCompany({
+      companyName: effectiveCompany,
+      originalCompany: row.originalCompany,
       subject: effectiveSubject,
       senderEmail: effectiveFromEmail,
     });
@@ -278,7 +294,7 @@ export function analyzeEmailAutomation(
     suggestedAction: row.suggestedAction,
     matches,
     pipelineProposal,
-    canCreateApplication,
+    canOfferApplicationCreation,
   });
 
   return {
@@ -287,6 +303,7 @@ export function analyzeEmailAutomation(
     nextActions,
     pipelineProposal,
     canCreateApplication,
+    canOfferApplicationCreation,
     duplicateApplicationId,
   };
 }
@@ -295,21 +312,30 @@ export function createApplicationFromEmail(
   db: Db,
   userId: string,
   emailId: string,
-  options: { applicationId?: string } = {},
+  options: { applicationId?: string; allowMissingRole?: boolean } = {},
 ): AutomationActionResult | null {
   const row = getEmailForUser(db, userId, emailId);
   if (!row) return null;
 
-  if (
-    !options.applicationId &&
-    !hasIdentifiedCompanyAndRole({
-      companyName: row.companyName,
-      originalCompany: row.originalCompany,
-      positionTitle: row.positionTitle,
-      subject: row.originalSubject ?? row.subject,
-      senderEmail: row.originalSenderEmail ?? row.fromEmail,
-    })
-  ) {
+  // Human-confirmed creation (allowMissingRole) needs only a real company —
+  // the role is stored as "Unknown role" and the user fills it in. Automatic
+  // creation stays strict (company AND role) to avoid junk applications.
+  const creationIdentified = options.allowMissingRole
+    ? hasIdentifiedCompany({
+        companyName: row.companyName,
+        originalCompany: row.originalCompany,
+        subject: row.originalSubject ?? row.subject,
+        senderEmail: row.originalSenderEmail ?? row.fromEmail,
+      })
+    : hasIdentifiedCompanyAndRole({
+        companyName: row.companyName,
+        originalCompany: row.originalCompany,
+        positionTitle: row.positionTitle,
+        subject: row.originalSubject ?? row.subject,
+        senderEmail: row.originalSenderEmail ?? row.fromEmail,
+      });
+
+  if (!options.applicationId && !creationIdentified) {
     return {
       success: false,
       actionType: 'create_application',
@@ -326,7 +352,9 @@ export function createApplicationFromEmail(
       message: formatAutomationActionMessage({
         actionType: 'create_application',
         success: false,
-        detail: 'company and role must be identified',
+        detail: options.allowMissingRole
+          ? 'company must be identified'
+          : 'company and role must be identified',
       }),
     };
   }
@@ -1152,7 +1180,9 @@ export function resolvePendingApproval(
   }
 
   if (approval.approvalType === 'create_application_suggestion') {
-    const createResult = createApplicationFromEmail(db, userId, approval.inboundEmailId);
+    const createResult = createApplicationFromEmail(db, userId, approval.inboundEmailId, {
+      allowMissingRole: true,
+    });
     if (!createResult) return null;
     recordAuditLog(db, {
       userId,

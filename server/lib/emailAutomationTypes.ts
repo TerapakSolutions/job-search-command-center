@@ -75,6 +75,7 @@ export interface EmailAutomationAnalysis {
   nextActions: NextActionSuggestion[];
   pipelineProposal: PipelineUpdateProposal | null;
   canCreateApplication: boolean;
+  canOfferApplicationCreation: boolean;
   duplicateApplicationId: string | null;
 }
 
