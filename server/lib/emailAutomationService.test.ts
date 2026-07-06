@@ -33,6 +33,40 @@ describe('emailAutomationService', () => {
     );
   });
 
+  it('offers—but does not auto-create—a confirmation with company but no role', () => {
+    const db = createTestDb();
+    const userId = seedTestUser(db);
+    const emailId = seedInboundEmail(db, {
+      id: 'email-valon',
+      toEmail: 'seeker@example.com',
+      fromEmail: 'no-reply@ashbyhq.com',
+      subject: 'Thank you for applying to Valon',
+      classification: 'Application Confirmation',
+      classificationConfidence: 85,
+      companyName: null,
+      positionTitle: null,
+      processedAt: '2026-07-06T07:44:00.000Z',
+    });
+
+    const analysis = analyzeEmailAutomation(db, userId, emailId)!;
+    // Company (Valon) is identified from the subject, so a human is offered
+    // creation...
+    expect(analysis.canOfferApplicationCreation).toBe(true);
+    // ...but with no role the STRICT auto-create gate stays closed (anti-junk).
+    expect(analysis.canCreateApplication).toBe(false);
+    expect(analysis.nextActions.some((a) => a.type === 'create_application')).toBe(true);
+
+    // Strict (automatic) creation refuses without a role.
+    expect(createApplicationFromEmail(db, userId, emailId)!.success).toBe(false);
+
+    // Human-confirmed creation (allowMissingRole) succeeds as "Valon / Unknown role".
+    const human = createApplicationFromEmail(db, userId, emailId, {
+      allowMissingRole: true,
+    });
+    expect(human!.success).toBe(true);
+    expect(human!.changes.applicationId).toBeTruthy();
+  });
+
   it('creates application and prevents duplicates', () => {
     const db = createTestDb();
     const userId = seedTestUser(db);

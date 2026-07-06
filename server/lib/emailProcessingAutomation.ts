@@ -17,6 +17,7 @@ import type { EmailAutomationAnalysis } from './emailAutomationTypes.js';
 import {
   formatApprovalReason,
   formatPipelineApprovalLabel,
+  hasIdentifiedCompany,
   hasIdentifiedCompanyAndRole,
   isNoReplyOrApplicationConfirmation,
 } from './emailAutomationMessages.js';
@@ -26,6 +27,21 @@ import { approvalTypeLabel } from './approvalReason.js';
 import type { ProcessingTimelineBuilder } from './processingTimeline.js';
 
 const PROTECTED_PIPELINE_STATUSES = new Set(['offer']);
+
+// Precise skip reason: if the company was identified (e.g. "Valon" from an
+// application-confirmation subject) only the role is missing, so don't claim
+// both were unidentified.
+function creationSkipReason(row: typeof inboundEmails.$inferSelect): string {
+  const companyKnown = hasIdentifiedCompany({
+    companyName: row.companyName,
+    originalCompany: row.originalCompany,
+    subject: row.originalSubject ?? row.subject,
+    senderEmail: row.originalSenderEmail ?? row.fromEmail,
+  });
+  return companyKnown
+    ? 'Skipped application creation: role not identified'
+    : 'Skipped application creation: company not identified';
+}
 
 function isLinkedInApplicationConfirmation(
   row: typeof inboundEmails.$inferSelect,
@@ -246,9 +262,7 @@ export function applySafeAutomationRules(
               'Identify the company and role from this confirmation before creating an application',
           },
         });
-        skipReasons.push(
-          'Skipped application creation: company and role not identified',
-        );
+        skipReasons.push(creationSkipReason(row));
       }
     } else {
       skipReasons.push('Skipped application creation: duplicate found');
@@ -283,9 +297,7 @@ export function applySafeAutomationRules(
         }
       }
     } else {
-      skipReasons.push(
-        'Skipped application creation: company and role not identified',
-      );
+      skipReasons.push(creationSkipReason(row));
     }
   }
 

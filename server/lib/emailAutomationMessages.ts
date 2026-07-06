@@ -48,10 +48,9 @@ export function isLikelyDomainCompany(company: string): boolean {
   return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(trimmed) && !trimmed.includes(' ');
 }
 
-export function hasIdentifiedCompanyAndRole(input: {
+export function hasIdentifiedCompany(input: {
   companyName: string | null | undefined;
   originalCompany?: string | null | undefined;
-  positionTitle: string | null | undefined;
   subject?: string | null;
   senderEmail?: string | null;
 }): boolean {
@@ -61,7 +60,17 @@ export function hasIdentifiedCompanyAndRole(input: {
     subject: input.subject,
     senderEmail: input.senderEmail,
   });
-  if (!company || isLikelyDomainCompany(company) || isAtsPlatformCompany(company)) {
+  return !(!company || isLikelyDomainCompany(company) || isAtsPlatformCompany(company));
+}
+
+export function hasIdentifiedCompanyAndRole(input: {
+  companyName: string | null | undefined;
+  originalCompany?: string | null | undefined;
+  positionTitle: string | null | undefined;
+  subject?: string | null;
+  senderEmail?: string | null;
+}): boolean {
+  if (!hasIdentifiedCompany(input)) {
     return false;
   }
   const role = resolveRoleTitle({

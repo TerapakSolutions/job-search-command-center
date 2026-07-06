@@ -996,7 +996,7 @@ export default function InboundEmailsPage() {
                         ) : (
                           <p className="text-xs text-gray-600">
                             No matching applications found.
-                            {automation.canCreateApplication &&
+                            {automation.canOfferApplicationCreation &&
                               ' You can create a new application from this email.'}
                           </p>
                         )}
@@ -1034,7 +1034,7 @@ export default function InboundEmailsPage() {
                         )}
 
                         <div className="flex flex-wrap gap-2 pt-1">
-                          {automation.canCreateApplication && (
+                          {automation.canOfferApplicationCreation && (
                             <button
                               type="button"
                               onClick={() => void handleCreateApplication()}
