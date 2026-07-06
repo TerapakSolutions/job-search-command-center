@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FiChevronDown,
   FiChevronUp,
@@ -14,6 +14,11 @@ import {
 } from '../api/dailyBriefingsClient';
 import type { DailyBriefing } from '../types/dailyBriefing';
 import { isDemoMode } from '../api/persistence';
+import { useJobSearchStore } from '../store/useJobSearchStore';
+import { computeLocalActivityMetrics } from '../lib/activityMetrics';
+import { DEFAULT_JOB_SEARCH_GOALS, type JobSearchGoals } from '../types/activity';
+
+const TERMINAL_STATUSES = new Set(['rejected', 'ghosted']);
 
 export default function DailyBriefingPanel() {
   const demoMode = isDemoMode();
@@ -23,6 +28,28 @@ export default function DailyBriefingPanel() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+
+  // Goal progress + pipeline stats are computed LIVE from current applications
+  // so they never go stale behind the AI-narrative snapshot (which is
+  // point-in-time by design). Mirrors GoalsProgressPanel's source.
+  const applications = useJobSearchStore((s) => s.applications);
+  const liveMetrics = useMemo(() => {
+    let goals: JobSearchGoals = DEFAULT_JOB_SEARCH_GOALS;
+    try {
+      const stored = localStorage.getItem('job-search-goals');
+      if (stored) goals = JSON.parse(stored) as JobSearchGoals;
+    } catch {
+      goals = DEFAULT_JOB_SEARCH_GOALS;
+    }
+    return computeLocalActivityMetrics(applications, goals);
+  }, [applications]);
+  const livePipeline = useMemo(
+    () => ({
+      total: applications.length,
+      active: applications.filter((a) => !TERMINAL_STATUSES.has(a.status)).length,
+    }),
+    [applications],
+  );
 
   const load = useCallback(async () => {
     if (demoMode) return;
@@ -95,8 +122,8 @@ export default function DailyBriefingPanel() {
           {briefing ? (
             <p className="mt-1 text-xs text-indigo-700">
               {formatDate(briefing.briefingDate)} ·{' '}
-              {briefing.data.pipelineStats.active} active ·{' '}
-              {briefing.data.pipelineStats.total} total
+              {livePipeline.active} active ·{' '}
+              {livePipeline.total} total
               {briefing.emailSentAt && (
                 <span className="inline-flex items-center gap-1 ml-2">
                   <FiMail size={12} /> emailed
@@ -129,23 +156,23 @@ export default function DailyBriefingPanel() {
 
       {briefing && (
         <>
-          {briefing.data.goalProgress && (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-900">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-900">
               <p className="font-medium mb-1">Goal progress</p>
               <p>
-                Today: {briefing.data.goalProgress.applicationsToday}/
-                {briefing.data.goalProgress.dailyGoal} · Week:{' '}
-                {briefing.data.goalProgress.applicationsThisWeek}/
-                {briefing.data.goalProgress.weeklyGoal} · Streak:{' '}
-                {briefing.data.goalProgress.currentStreak} days
+                Today: {liveMetrics.applicationsToday}/
+                {liveMetrics.goals.dailyGoal} · Week:{' '}
+                {liveMetrics.applicationsThisWeek}/
+                {liveMetrics.goals.weeklyGoal} · Streak:{' '}
+                {liveMetrics.currentStreak} days
               </p>
-              {briefing.data.goalProgress.goalMessages.slice(0, 2).map((msg) => (
-                <p key={msg} className="mt-1 text-emerald-800">
-                  {msg}
+              {!liveMetrics.progress.daily.met && (
+                <p className="mt-1 text-emerald-800">
+                  {liveMetrics.applicationsToday === 0
+                    ? `No applications logged today — your goal is ${liveMetrics.goals.dailyGoal}.`
+                    : `${liveMetrics.applicationsToday} of ${liveMetrics.goals.dailyGoal} today — keep going.`}
                 </p>
-              ))}
+              )}
             </div>
-          )}
 
           <div className="bg-white/80 rounded-lg p-4 text-sm text-gray-800 whitespace-pre-wrap">
             {briefing.aiSummary}
