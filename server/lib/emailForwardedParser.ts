@@ -1,7 +1,18 @@
 import {
   extractEmployerFromSubject,
   inferEmployerFromSenderEmail,
+  isAtsPlatformCompany,
 } from './emailContentExtraction.js';
+
+// "Njoyn Helpdesk <helpdesk@njoyn.com> on behalf of CGI <...>" — the employer
+// is the "on behalf of" party (CGI), not the ATS that sent the mail (Njoyn).
+function extractOnBehalfOfCompany(fromHeader: string): string | null {
+  const match = fromHeader.match(/on behalf of\s+(.+?)(?:\s*<|$)/i);
+  const company = match?.[1]?.trim().replace(/[.,;]+$/, '');
+  return company && company.length >= 2 && !isAtsPlatformCompany(company)
+    ? company
+    : null;
+}
 
 export interface ForwardedEmailMetadata {
   isForwarded: boolean;
@@ -176,7 +187,30 @@ export function parseForwardedEmail(
     originalBody = lines.slice(headerBlock.bodyStart).join('\n').trim() || null;
   }
 
+  // Double-forward: the first "From:" block is the forwarder re-forwarding
+  // (sender == the address that forwarded to us). Unwrap the nested original
+  // inside its body so we read the true sender/company, not the forwarder.
+  if (
+    originalSenderEmail &&
+    originalBody &&
+    originalSenderEmail.toLowerCase() === fromEmail.toLowerCase()
+  ) {
+    const nested = parseForwardedEmail(
+      originalSubject ?? subject,
+      fromEmail,
+      originalBody,
+    );
+    if (
+      nested.isForwarded &&
+      nested.originalSenderEmail &&
+      nested.originalSenderEmail.toLowerCase() !== fromEmail.toLowerCase()
+    ) {
+      return nested;
+    }
+  }
+
   const originalCompany =
+    extractOnBehalfOfCompany(fromHeader) ??
     (originalSubject ? extractEmployerFromSubject(originalSubject) : null) ??
     inferEmployerFromSenderEmail(originalSenderEmail);
 

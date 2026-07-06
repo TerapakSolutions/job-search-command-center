@@ -134,6 +134,46 @@ Greenhouse application received for Staff Engineer.`;
     expect(result.classification).toBe('Application Confirmation');
   });
 
+  it('unwraps a double-forwarded CGI/Njoyn acknowledgement to sender, company, and class', () => {
+    const textBody = `________________________________
+From: Steve Terapak <steve@terapak.com>
+Sent: Monday, July 6, 2026 12:22 PM
+To: jobinfo@jobs.terapak.com
+Subject: Fw: Job Application Acknowledgement - Director, Generative AI
+
+________________________________
+From: Njoyn Helpdesk <helpdesk@njoyn.com> on behalf of CGI <help.candidate@njoyn.com>
+Sent: Monday, July 6, 2026 12:21 PM
+To: Steve Terapak <steve@terapak.com>
+Subject: Job Application Acknowledgement - Director, Generative AI
+
+Dear Steve Terapak
+Thank you for your interest in a career with CGI. We are pleased to confirm the receipt of your resume.`;
+
+    // Parser: skip the outer forwarder (you), resolve the "on behalf of" employer.
+    const meta = parseForwardedEmail(
+      'Fw: Job Application Acknowledgement',
+      'steve@terapak.com',
+      textBody,
+    );
+    expect(meta.originalSenderEmail).toBe('help.candidate@njoyn.com');
+    expect(meta.originalCompany).toBe('CGI');
+
+    // End-to-end: unwrapped content classifies as a confirmation, company CGI.
+    const classified = classificationInputFromEmail({
+      subject: 'Fw: Job Application Acknowledgement - Director, Generative AI',
+      fromEmail: 'steve@terapak.com',
+      textBody,
+    });
+    const result = classifyInboundEmailWithRules({
+      subject: classified.subject,
+      fromEmail: classified.fromEmail,
+      textBody: classified.textBody,
+    });
+    expect(result.classification).toBe('Application Confirmation');
+    expect(result.companyName).toBe('CGI');
+  });
+
   it('classifies forwarded Pathstream interview confirmation using original sender and body', () => {
     const textBody = `---------- Forwarded message ---------
 From: John Hardin <jhardin@pathstream.com>
