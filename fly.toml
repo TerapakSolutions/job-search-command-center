@@ -21,9 +21,13 @@ primary_region = 'sjc'
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = 'stop'
+  # Keep one machine always running so inbound Postmark webhooks never hit a
+  # cold-start boot window (which the edge proxy reports as "connection
+  # refused", risking dropped/delayed emails). Receiving job-application
+  # email is this service's core job — worth the small always-on cost.
+  auto_stop_machines = 'off'
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
   processes = ['app']
 
 [[vm]]
