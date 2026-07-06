@@ -269,7 +269,11 @@ export default function InboundEmailsPage() {
   };
 
   const showActionResult = (result: AutomationActionResult) => {
-    setActionMessage(result.message);
+    setActionMessage(
+      result.changes?.duplicateApplicationId
+        ? 'Already tracked — an application for this company already exists.'
+        : result.message,
+    );
     void loadAutomation(detail!.id);
   };
 
@@ -888,7 +892,11 @@ export default function InboundEmailsPage() {
                     {detail.aiSummary && (
                       <p className="text-sm text-gray-700">{detail.aiSummary}</p>
                     )}
-                    {detail.suggestedAction && (
+                    {detail.suggestedAction &&
+                      !(
+                        automation?.canOfferApplicationCreation &&
+                        /no action needed/i.test(detail.suggestedAction)
+                      ) && (
                       <p className="text-sm">
                         <span className="font-medium text-gray-800">Suggested action: </span>
                         <span className="text-gray-700">{detail.suggestedAction}</span>

@@ -67,6 +67,36 @@ describe('emailAutomationService', () => {
     expect(human!.changes.applicationId).toBeTruthy();
   });
 
+  it('Run all creates a company-known/role-missing confirmation app, then dedupes', () => {
+    const db = createTestDb();
+    const userId = seedTestUser(db);
+    const emailId = seedInboundEmail(db, {
+      id: 'email-valon-run',
+      toEmail: 'seeker@example.com',
+      fromEmail: 'no-reply@ashbyhq.com',
+      subject: 'Thank you for applying to Valon',
+      classification: 'Application Confirmation',
+      classificationConfidence: 85,
+      companyName: null,
+      positionTitle: null,
+      processedAt: '2026-07-06T07:44:00.000Z',
+    });
+
+    // "Run all" (human-confirmed) creates the Valon application.
+    const run = runEmailAutomation(db, userId, emailId, {});
+    const created = run!.results.find(
+      (r) => r.actionType === 'create_application' && r.success,
+    );
+    expect(created).toBeTruthy();
+    expect(created!.changes.applicationId).toBeTruthy();
+
+    // Re-running does not create a second Valon entry (dedupe).
+    const run2 = runEmailAutomation(db, userId, emailId, {});
+    expect(
+      run2!.results.some((r) => r.actionType === 'create_application' && r.success),
+    ).toBe(false);
+  });
+
   it('creates application and prevents duplicates', () => {
     const db = createTestDb();
     const userId = seedTestUser(db);
