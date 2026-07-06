@@ -21,6 +21,14 @@ const APPLICATION_CONFIRMATION_PHRASES = [
   'lever application',
   'ashby application',
   'thank you for applying',
+  // ATS acknowledgements that avoid the usual "applying" phrasing
+  // (e.g. CGI/Njoyn: "Job Application Acknowledgement" +
+  // "confirm the receipt of your resume").
+  'application acknowledgement',
+  'application acknowledgment',
+  'receipt of your resume',
+  'received your resume',
+  'thank you for your interest in a career',
 ];
 
 export function isApplicationConfirmationText(text: string): boolean {

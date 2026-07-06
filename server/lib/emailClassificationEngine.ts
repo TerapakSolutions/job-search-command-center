@@ -169,8 +169,11 @@ function extractClassificationFields(input: ClassifyInput): {
   const employerFromSubject = extractEmployerFromSubject(input.subject);
   const roleFromSubject = extractRoleFromInterviewSubject(input.subject);
   const employerFromEmail = inferEmployerFromSenderEmail(input.fromEmail);
+  // Capitalized company token(s) after at/with/from, stopping at sentence
+  // boundaries — the old `[A-Za-z0-9&.\- ]{2,40}` swallowed whole sentences
+  // (e.g. "with CGI. We are pleased to confirm…" -> "CGI. We are pleased").
   const companyMatch = input.textBody.match(
-    /(?:at|with|from)\s+([A-Z][A-Za-z0-9&.\- ]{2,40})/,
+    /(?:\bat|\bwith|\bfrom)\s+([A-Z][A-Za-z0-9&\-]*(?:\s+[A-Z][A-Za-z0-9&\-]+){0,3})/,
   );
   const bodyCompany = companyMatch?.[1]?.trim() ?? null;
 
