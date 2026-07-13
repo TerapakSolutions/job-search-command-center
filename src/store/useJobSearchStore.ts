@@ -7,6 +7,7 @@ import {
   loadAllData,
 } from '../api/jobSearchClient';
 import { getPersistenceMode, isDemoMode } from '../api/persistence';
+import { isUnauthorized } from '../api/http';
 import { createId } from '../lib/id';
 import { computeReminders } from '../lib/reminders';
 import type { Application, ApplicationInput } from '../types/application';
@@ -23,6 +24,8 @@ interface JobSearchState {
   initialized: boolean;
   loading: boolean;
   error: string | null;
+  /** True only when the API itself is unreachable/failing — not for auth errors. */
+  apiUnreachable: boolean;
   persistenceMode: 'api' | 'demo';
   initialize: () => Promise<void>;
   refreshData: () => Promise<void>;
@@ -58,6 +61,7 @@ const storeCreator = (
   initialized: false,
   loading: false,
   error: null,
+  apiUnreachable: false,
   persistenceMode: getPersistenceMode(),
 
   initialize: async () => {
@@ -66,7 +70,7 @@ const storeCreator = (
       set({ initialized: true, persistenceMode: 'demo' });
       return;
     }
-    set({ loading: true, error: null });
+    set({ loading: true, error: null, apiUnreachable: false });
     try {
       const data = await loadAllData();
       set({
@@ -76,12 +80,19 @@ const storeCreator = (
         initialized: true,
         loading: false,
         persistenceMode: 'api',
+        apiUnreachable: false,
       });
-    } catch {
+    } catch (err) {
+      // A dead session is not a broken API — AuthGate will route to /login.
+      if (isUnauthorized(err)) {
+        set({ loading: false, initialized: true, persistenceMode: 'api' });
+        return;
+      }
       set({
         loading: false,
         initialized: true,
         error: 'Could not reach the API. Start the server or switch to demo mode.',
+        apiUnreachable: true,
         persistenceMode: 'api',
       });
     }
@@ -96,9 +107,14 @@ const storeCreator = (
         contacts: data.contacts,
         interviews: data.interviews,
         error: null,
+        apiUnreachable: false,
       });
-    } catch {
-      set({ error: 'Could not refresh data from the API.' });
+    } catch (err) {
+      if (isUnauthorized(err)) return;
+      set({
+        error: 'Could not refresh data from the API.',
+        apiUnreachable: true,
+      });
     }
   },
 
