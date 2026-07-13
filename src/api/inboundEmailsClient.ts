@@ -8,26 +8,7 @@ import type {
   InboundEmailListResponse,
   InboundEmailProcessingResponse,
 } from '../types/inboundEmail';
-import { getApiBaseUrl } from './persistence';
-
-async function request<T>(
-  path: string,
-  options: RequestInit = {},
-): Promise<T> {
-  const res = await fetch(`${getApiBaseUrl()}${path}`, {
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-    ...options,
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(body || `Request failed: ${res.status}`);
-  }
-  if (res.status === 204) {
-    return undefined as T;
-  }
-  return res.json() as Promise<T>;
-}
+import { apiRequest as request } from './http';
 
 function buildQuery(filters: InboundEmailFilters = {}): string {
   const params = new URLSearchParams();

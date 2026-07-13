@@ -1,5 +1,6 @@
 import { useSearchParams } from 'react-router-dom';
 import { getGoogleLoginUrl } from '../api/authClient';
+import { useAuthStore } from '../store/useAuthStore';
 
 const errorMessages: Record<string, string> = {
   missing_code: 'Google sign-in was cancelled or incomplete.',
@@ -12,8 +13,13 @@ const errorMessages: Record<string, string> = {
 
 export default function LoginPage() {
   const [searchParams] = useSearchParams();
+  const sessionExpired = useAuthStore((s) => s.sessionExpired);
   const errorKey = searchParams.get('error');
-  const errorMessage = errorKey ? errorMessages[errorKey] : null;
+  const errorMessage = errorKey
+    ? (errorMessages[errorKey] ?? errorMessages.auth_failed)
+    : sessionExpired
+      ? 'Your session expired. Please sign in again.'
+      : null;
 
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">

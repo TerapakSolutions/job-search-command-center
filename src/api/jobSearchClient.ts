@@ -5,25 +5,7 @@ import type { FollowUpTask, FollowUpTaskInput } from '../types/followUpTask';
 import type { Interview, InterviewInput } from '../types/interview';
 import type { Document, DocumentInput } from '../types/document';
 import { getApiBaseUrl } from './persistence';
-
-async function request<T>(
-  path: string,
-  options: RequestInit = {},
-): Promise<T> {
-  const res = await fetch(`${getApiBaseUrl()}${path}`, {
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-    ...options,
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(body || `Request failed: ${res.status}`);
-  }
-  if (res.status === 204) {
-    return undefined as T;
-  }
-  return res.json() as Promise<T>;
-}
+import { apiRequest as request } from './http';
 
 function crud<T, TInput>(resource: string) {
   return {
