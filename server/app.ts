@@ -36,6 +36,10 @@ export function createApp(db: Db) {
       credentials: true,
     }),
   );
+  // Postmark inbound payloads carry base64 attachments (Postmark caps a message
+  // at 35MB); the 100kb default 413'd forwarded emails. Mounted first so the
+  // global parser below skips the already-parsed body.
+  app.use('/webhooks/postmark', express.json({ limit: '35mb' }));
   app.use(express.json());
 
   app.get('/api/health', (_req, res) => {

@@ -73,3 +73,40 @@ describe('postmark inbound webhook', () => {
     await close();
   });
 });
+
+describe('postmark inbound webhook body size', () => {
+  afterEach(() => {
+    resetInboundEmailProcessingScheduler();
+  });
+
+  // Forwarded emails carry base64 attachments and quoted HTML; express.json()'s
+  // 100kb default rejected them with 413 (prod, 2026-10-26).
+  it('accepts a forwarded email with a multi-megabyte attachment', async () => {
+    const db = createTestDb();
+    seedTestUser(db, { email: 'seeker@example.com' });
+    setInboundEmailProcessingScheduler(() => {});
+
+    const { baseUrl, close } = await startServer(db);
+    const res = await fetch(`${baseUrl}/webhooks/postmark/inbound`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        Subject: 'Fwd: Virtual Interview',
+        FromFull: { Email: 'seeker@example.com' },
+        OriginalRecipient: 'seeker@example.com',
+        TextBody: 'See below',
+        Date: '2026-10-26T18:03:00.000Z',
+        Attachments: [
+          {
+            Name: 'invite.pdf',
+            ContentType: 'application/pdf',
+            Content: 'A'.repeat(5 * 1024 * 1024),
+          },
+        ],
+      }),
+    });
+    await close();
+
+    expect(res.status).toBe(200);
+  });
+});
