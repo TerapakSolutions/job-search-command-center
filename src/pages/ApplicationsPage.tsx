@@ -94,7 +94,7 @@ export default function ApplicationsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filtered.map((app) => (
             <div key={app.id} className="relative group">
-              <ApplicationCard application={app} onEdit={openEdit} />
+              <ApplicationCard application={app} onEdit={openEdit} highlightStatus />
               <div className="mt-2 flex items-center justify-between text-xs text-gray-500 px-1">
                 <span>{PIPELINE_STATUS_LABELS[app.status]}</span>
                 <button
