@@ -159,7 +159,9 @@ export default function DailyBriefingPanel() {
               {formatDate(briefing.briefingDate)} ·{' '}
               {generating
                 ? 'Updating…'
-                : `Written ${formatWrittenAt(briefing.updatedAt)}`}{' '}
+                : `Written ${formatWrittenAt(briefing.updatedAt)}${
+                    briefing.data.summarySource === 'rules' ? ' · rules only' : ''
+                  }`}{' '}
               · {livePipeline.active} active ·{' '}
               {livePipeline.total} total
               {briefing.emailSentAt && (

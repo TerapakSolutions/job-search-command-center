@@ -148,4 +148,28 @@ describe('DailyBriefingPanel', () => {
     expect(generateBriefing).toHaveBeenCalledTimes(1);
     expect(generateBriefing).toHaveBeenCalledWith({ force: true });
   });
+  it('says "rules only" when the brief was not written by the AI (#42)', async () => {
+    (fetchLatestBriefing as jest.Mock).mockResolvedValue(
+      briefing({ data: { ...briefing().data, summarySource: 'rules' } }),
+    );
+    render(<DailyBriefingPanel />);
+
+    expect(await screen.findByText(/rules only/)).toBeTruthy();
+  });
+
+  it('does not say "rules only" for an AI-written or older brief', async () => {
+    (fetchLatestBriefing as jest.Mock).mockResolvedValue(
+      briefing({ data: { ...briefing().data, summarySource: 'llm' } }),
+    );
+    const { container, unmount } = render(<DailyBriefingPanel />);
+    await screen.findByText(/Written \d{1,2}:\d{2}/);
+    expect(container.textContent).not.toContain('rules only');
+    unmount();
+
+    (fetchLatestBriefing as jest.Mock).mockResolvedValue(briefing());
+    const second = render(<DailyBriefingPanel />);
+    await screen.findByText(/Written \d{1,2}:\d{2}/);
+    expect(second.container.textContent).not.toContain('rules only');
+  });
 });
+

@@ -94,8 +94,10 @@ export function getBriefingForDate(
   return rows[0] ? rowToRecord(rows[0]) : null;
 }
 
-async function generateAiSummary(data: BriefingData): Promise<string> {
-  const fallback = buildFallbackSummary(data);
+async function generateAiSummary(
+  data: BriefingData,
+): Promise<{ text: string; source: 'llm' | 'rules' }> {
+  const fallback = { text: buildFallbackSummary(data), source: 'rules' as const };
 
   if (!isLlmConfigured()) {
     return fallback;
@@ -106,7 +108,7 @@ async function generateAiSummary(data: BriefingData): Promise<string> {
       systemPrompt: SYSTEM_PROMPT,
       userPrompt: JSON.stringify(data, null, 2),
     });
-    return aiSummary ?? fallback;
+    return aiSummary ? { text: aiSummary, source: 'llm' } : fallback;
   } catch (err) {
     console.error('[daily-briefing] LLM generation failed, using fallback', err);
     return fallback;
@@ -135,7 +137,9 @@ export async function generateDailyBriefingForUser(
 
   try {
     data = aggregateBriefingData(db, userId, now);
-    aiSummary = await generateAiSummary(data);
+    const summary = await generateAiSummary(data);
+    aiSummary = summary.text;
+    data = { ...data, summarySource: summary.source };
   } catch (err) {
     console.error('[daily-briefing] Failed to generate briefing for user', {
       userId,
