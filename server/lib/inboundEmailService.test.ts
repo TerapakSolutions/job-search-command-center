@@ -6,10 +6,9 @@ import {
   markInboundEmailProcessedForUser,
   softDeleteInboundEmailForUser,
 } from './inboundEmailService.js';
-import { createTestDb, seedInboundEmail, seedTestUser } from './testDb.js';
+import { createTestDb, seedInboundEmail, seedTestUser , seedApplication } from './testDb.js';
 import { contacts, inboundEmails } from '../db/schema.js';
 import { createId, nowIso } from './id.js';
-import { seedApplication } from './testDb.js';
 import { eq } from 'drizzle-orm';
 
 describe('inboundEmailBelongsToUser', () => {

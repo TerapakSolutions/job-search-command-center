@@ -186,7 +186,6 @@ function daysBetween(from: Date, to: Date): number {
 export function computeAndStoreOutcomeMetrics(
   db: Db,
   userId: string,
-  now: Date = new Date(),
 ): void {
   const apps = getUserApplications(db, userId);
   const comms = db
@@ -292,7 +291,7 @@ export function getProductivityInsights(
   userId: string,
   now: Date = new Date(),
 ): ProductivityInsights {
-  computeAndStoreOutcomeMetrics(db, userId, now);
+  computeAndStoreOutcomeMetrics(db, userId);
   const apps = getUserApplications(db, userId);
   const outcomeRows = db
     .select()

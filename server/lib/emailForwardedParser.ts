@@ -32,7 +32,6 @@ const FORWARD_MARKERS = [
   /^-{3,}\s*original message\s*-{3,}/im,
 ];
 
-const EMAIL_IN_ANGLE = /<([^>]+@[^>]+)>/;
 const EMAIL_PLAIN = /([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i;
 
 export function parseEmailAddress(value: string): { name: string | null; email: string | null } {

@@ -1,5 +1,13 @@
 import { and, desc, eq } from 'drizzle-orm';
-import type { PipelineStatus } from './emailAutomationTypes.js';
+import type {
+  AuditLogEntry,
+  AutomationActionResult,
+  AutomationActionType,
+  AutomationDashboardSummary,
+  EmailAutomationAnalysis,
+  PendingApprovalEntry,
+  PipelineStatus,
+} from './emailAutomationTypes.js';
 import type { Db } from '../db/index.js';
 import {
   applications,
@@ -15,14 +23,6 @@ import {
   matchEmailToApplications,
 } from './emailApplicationMatcher.js';
 import { buildDraftReply, generateNextActions } from './emailNextActions.js';
-import type {
-  AuditLogEntry,
-  AutomationActionResult,
-  AutomationDashboardSummary,
-  EmailAutomationAnalysis,
-  PendingApprovalEntry,
-} from './emailAutomationTypes.js';
-import type { AutomationActionType } from './emailAutomationTypes.js';
 import { buildPipelineUpdateProposal } from './emailPipelineAutomation.js';
 import {
   hasIdentifiedCompany,

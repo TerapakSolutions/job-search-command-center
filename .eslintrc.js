@@ -47,5 +47,13 @@ module.exports = {
         project: ['./tsconfig.node.json'],
       },
     },
+    {
+      // Server code (and its tests) is typed by tsconfig.server.json, not the
+      // frontend tsconfig; the lint-only variant also includes the tests.
+      files: ['server/**/*.ts'],
+      parserOptions: {
+        project: ['./tsconfig.server.eslint.json'],
+      },
+    },
   ],
 };

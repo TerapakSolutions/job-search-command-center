@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { createTestDb, seedApplication, seedInboundEmail, seedTestUser } from './testDb.js';
+import { createTestDb, seedApplication, seedTestUser } from './testDb.js';
 import { contacts } from '../db/schema.js';
 import { createId, nowIso } from './id.js';
 import {

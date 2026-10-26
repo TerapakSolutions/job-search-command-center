@@ -1,6 +1,5 @@
-import type { PipelineStatus } from './emailAutomationTypes.js';
+import type { PipelineStatus , PipelineUpdateProposal } from './emailAutomationTypes.js';
 import type { EmailClassification } from './emailClassificationTypes.js';
-import type { PipelineUpdateProposal } from './emailAutomationTypes.js';
 import { PIPELINE_AUTO_CONFIDENCE_THRESHOLD } from './emailAutomationTypes.js';
 
 const STATUS_ORDER: PipelineStatus[] = [

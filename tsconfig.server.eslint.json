@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.server.json",
+  "compilerOptions": {
+    "types": ["node", "jest"]
+  },
+  "include": ["server/**/*.ts", "server/types/**/*.d.ts", "drizzle.config.ts"],
+  "exclude": []
+}

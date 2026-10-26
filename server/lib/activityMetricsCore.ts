@@ -202,7 +202,7 @@ function computeStreaks(
   const yesterdayKey = toDateKey(yesterday);
 
   let current = 0;
-  let cursorKey =
+  const cursorKey =
     countsByDate.has(todayKey) && (countsByDate.get(todayKey) ?? 0) > 0
       ? todayKey
       : countsByDate.has(yesterdayKey) && (countsByDate.get(yesterdayKey) ?? 0) > 0
@@ -211,7 +211,7 @@ function computeStreaks(
 
   if (cursorKey) {
     current = 1;
-    let cursor = parseDate(cursorKey)!;
+    const cursor = parseDate(cursorKey)!;
     for (let i = 0; i < 366; i += 1) {
       cursor.setDate(cursor.getDate() - 1);
       const key = toDateKey(cursor);
