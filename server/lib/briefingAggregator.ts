@@ -251,17 +251,8 @@ export function aggregateBriefingData(
           ? new Date(Math.max(...lastContactDates.map((d) => d.getTime())))
           : null;
 
-      if (app.status === 'applied' && app.dateApplied) {
-        const applied = parseDate(app.dateApplied);
-        if (applied && daysBetween(applied, now) >= 7 && !lastContact) {
-          reasons.push({
-            applicationId: app.id,
-            company: app.company,
-            roleTitle: app.roleTitle,
-            reason: 'Applied 7+ days ago with no recruiter contact logged',
-          });
-        }
-      }
+      // Plain applications (applied, waiting) need no follow-up; only
+      // recruiter conversations do (Steve, 2026-10-26).
 
       if (app.status === 'recruiter_screen' && lastContact) {
         const daysSince = daysBetween(lastContact, now);
