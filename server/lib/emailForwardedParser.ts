@@ -61,7 +61,9 @@ export function parseEmailAddress(value: string): { name: string | null; email: 
 }
 
 function parseSentDate(value: string): string | null {
-  const trimmed = value.trim();
+  // Apple Mail ("October 21, 2026 at 8:20 AM PDT") and Gmail ("Mon, Jul 1,
+  // 2026 at 2:00 PM") put " at " before the time, which Date rejects.
+  const trimmed = value.trim().replace(/\s+at\s+(?=\d)/i, ' ');
   if (!trimmed) return null;
   const parsed = new Date(trimmed);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();

@@ -419,9 +419,11 @@ export function createApplicationFromEmail(
     ? 'Unknown role'
     : resolvedRole?.trim() || 'Unknown role';
   const status = initialStatusFromClassification(row.classification);
+  // A forwarded confirmation is dated by when the employer sent it, not when
+  // it was forwarded to us (a batch of old confirmations is not "today").
   const dateApplied =
     row.classification === 'Application Confirmation'
-      ? row.receivedAt.slice(0, 10)
+      ? (row.originalSentAt ?? row.receivedAt).slice(0, 10)
       : null;
 
   db.insert(applications)
@@ -719,7 +721,7 @@ export function updatePipelineFromEmail(
     updates.interviewDate = row.interviewDatetime.slice(0, 10);
   }
   if (targetStatus === 'applied' && !app.dateApplied) {
-    updates.dateApplied = row.receivedAt.slice(0, 10);
+    updates.dateApplied = (row.originalSentAt ?? row.receivedAt).slice(0, 10);
   }
 
   db.update(applications)
