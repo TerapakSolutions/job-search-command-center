@@ -4,6 +4,8 @@ import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/index.js';
 import { createId, nowIso } from './id.js';
 
+// One router serves every table, so the column map is deliberately untyped.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Table = SQLiteTableWithColumns<any>;
 
 interface CrudRouterOptions<TInsert extends Record<string, unknown>> {

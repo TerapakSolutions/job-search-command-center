@@ -1,11 +1,13 @@
 import { and, desc, eq } from 'drizzle-orm';
-import type { PipelineStatus ,
+import type {
   AuditLogEntry,
   AutomationActionResult,
+  AutomationActionType,
   AutomationDashboardSummary,
   EmailAutomationAnalysis,
   PendingApprovalEntry,
-, AutomationActionType } from './emailAutomationTypes.js';
+  PipelineStatus,
+} from './emailAutomationTypes.js';
 import type { Db } from '../db/index.js';
 import {
   applications,

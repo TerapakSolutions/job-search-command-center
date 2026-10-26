@@ -157,7 +157,6 @@ export async function processInboundEmail(
   }
 
   const timeline = new ProcessingTimelineBuilder();
-  const startedAt = nowIso();
   timeline.complete(
     'received',
     `Email received from ${row.fromEmail || 'unknown sender'}`,
