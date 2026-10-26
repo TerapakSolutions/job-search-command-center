@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FiChevronDown,
   FiChevronUp,
@@ -14,11 +14,18 @@ import {
 } from '../api/dailyBriefingsClient';
 import type { DailyBriefing } from '../types/dailyBriefing';
 import { isDemoMode } from '../api/persistence';
+import { fetchJobSearchGoals } from '../api/activityClient';
 import { useJobSearchStore } from '../store/useJobSearchStore';
 import { computeLocalActivityMetrics } from '../lib/activityMetrics';
 import { DEFAULT_JOB_SEARCH_GOALS, type JobSearchGoals } from '../types/activity';
 
 const TERMINAL_STATUSES = new Set(['rejected', 'ghosted']);
+
+function formatWrittenAt(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
 
 export default function DailyBriefingPanel() {
   const demoMode = isDemoMode();
@@ -28,21 +35,27 @@ export default function DailyBriefingPanel() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  // API mode keeps goals on the server (Settings → Job search goals);
+  // localStorage only holds demo-mode goals.
+  const [savedGoals, setSavedGoals] = useState<JobSearchGoals | null>(null);
+  const autoRefreshed = useRef(false);
 
   // Goal progress + pipeline stats are computed LIVE from current applications
   // so they never go stale behind the AI-narrative snapshot (which is
   // point-in-time by design). Mirrors GoalsProgressPanel's source.
   const applications = useJobSearchStore((s) => s.applications);
   const liveMetrics = useMemo(() => {
-    let goals: JobSearchGoals = DEFAULT_JOB_SEARCH_GOALS;
-    try {
-      const stored = localStorage.getItem('job-search-goals');
-      if (stored) goals = JSON.parse(stored) as JobSearchGoals;
-    } catch {
-      goals = DEFAULT_JOB_SEARCH_GOALS;
+    let goals: JobSearchGoals = savedGoals ?? DEFAULT_JOB_SEARCH_GOALS;
+    if (!savedGoals) {
+      try {
+        const stored = localStorage.getItem('job-search-goals');
+        if (stored) goals = JSON.parse(stored) as JobSearchGoals;
+      } catch {
+        goals = DEFAULT_JOB_SEARCH_GOALS;
+      }
     }
     return computeLocalActivityMetrics(applications, goals);
-  }, [applications]);
+  }, [applications, savedGoals]);
   const livePipeline = useMemo(
     () => ({
       total: applications.length,
@@ -56,12 +69,14 @@ export default function DailyBriefingPanel() {
     setLoading(true);
     setError(null);
     try {
-      const [latest, past] = await Promise.all([
+      const [latest, past, goals] = await Promise.all([
         fetchLatestBriefing(),
         fetchBriefingHistory(14),
+        fetchJobSearchGoals().catch(() => null),
       ]);
       setBriefing(latest);
       setHistory(past);
+      setSavedGoals(goals);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load briefing');
     } finally {
@@ -72,6 +87,26 @@ export default function DailyBriefingPanel() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // The brief text is a point-in-time snapshot. If any application changed
+  // after it was written, rewrite it once so it doesn't contradict the live
+  // numbers beside it.
+  useEffect(() => {
+    if (demoMode || loading || generating || !briefing || autoRefreshed.current) {
+      return;
+    }
+    const writtenAt = new Date(briefing.updatedAt).getTime();
+    const goalsChangedSince =
+      savedGoals?.updatedAt !== undefined &&
+      new Date(savedGoals.updatedAt).getTime() > writtenAt;
+    const changedSince =
+      goalsChangedSince ||
+      applications.some((app) => new Date(app.updatedAt).getTime() > writtenAt);
+    if (!changedSince) return;
+    autoRefreshed.current = true;
+    void handleGenerate();
+    // handleGenerate is recreated each render; the ref guards a single run.
+  }, [applications, briefing, demoMode, generating, loading, savedGoals]);
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -122,7 +157,10 @@ export default function DailyBriefingPanel() {
           {briefing ? (
             <p className="mt-1 text-xs text-indigo-700">
               {formatDate(briefing.briefingDate)} ·{' '}
-              {livePipeline.active} active ·{' '}
+              {generating
+                ? 'Updating…'
+                : `Written ${formatWrittenAt(briefing.updatedAt)}`}{' '}
+              · {livePipeline.active} active ·{' '}
               {livePipeline.total} total
               {briefing.emailSentAt && (
                 <span className="inline-flex items-center gap-1 ml-2">
