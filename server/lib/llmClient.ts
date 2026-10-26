@@ -4,14 +4,23 @@ export interface LlmCompletionOptions {
   responseFormat?: 'text' | 'json_object';
 }
 
+// Copy-pasting a key through Notes/Slack can wrap it in smart quotes
+// (‘sk-…’), which makes every request throw before it is sent.
+function readApiKey(): string {
+  return (process.env.OPENAI_API_KEY ?? '')
+    .trim()
+    .replace(/^['"\u2018\u2019\u201c\u201d]+|['"\u2018\u2019\u201c\u201d]+$/g, '')
+    .trim();
+}
+
 export function isLlmConfigured(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY?.trim());
+  return Boolean(readApiKey());
 }
 
 export async function generateLlmCompletion(
   options: LlmCompletionOptions,
 ): Promise<string | null> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  const apiKey = readApiKey();
   if (!apiKey) {
     return null;
   }
