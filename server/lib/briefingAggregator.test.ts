@@ -4,7 +4,7 @@ import {
   getBriefingWindow,
 } from './briefingAggregator.js';
 import { createTestDb, seedApplication, seedTestUser } from './testDb.js';
-import { communications, inboundEmails } from '../db/schema.js';
+import { communications, contacts, inboundEmails } from '../db/schema.js';
 import { createId, nowIso } from './id.js';
 
 describe('getBriefingWindow', () => {
@@ -102,5 +102,43 @@ describe('aggregateBriefingData', () => {
     expect(data.changesSincePrevious).toContain('First daily briefing for this account');
 
     jest.useRealTimers();
+  });
+});
+
+describe('followUpNeeded (Steve, 2026-10-26: reminders are for recruiters)', () => {
+  const now = new Date('2026-10-26T20:00:00.000Z');
+
+  it('lists nothing for a plain application, however long ago', () => {
+    const db = createTestDb();
+    const userId = seedTestUser(db);
+    seedApplication(db, userId, {
+      id: 'app-applied',
+      status: 'applied',
+      dateApplied: '2026-10-10',
+    });
+
+    expect(aggregateBriefingData(db, userId, now).followUpNeeded).toEqual([]);
+  });
+
+  it('still lists a recruiter who has not replied in 3+ days', () => {
+    const db = createTestDb();
+    const userId = seedTestUser(db);
+    seedApplication(db, userId, { id: 'app-recruiter', status: 'recruiter_screen' });
+    const ts = nowIso();
+    db.insert(contacts)
+      .values({
+        id: createId(),
+        userId,
+        applicationId: 'app-recruiter',
+        name: 'Jane Recruiter',
+        lastContactDate: '2026-10-20',
+        createdAt: ts,
+        updatedAt: ts,
+      })
+      .run();
+
+    expect(
+      aggregateBriefingData(db, userId, now).followUpNeeded.map((f) => f.applicationId),
+    ).toEqual(['app-recruiter']);
   });
 });

@@ -23,15 +23,21 @@ const baseApp = (overrides: Partial<Application> = {}): Application => ({
 describe('computeReminders', () => {
   const now = new Date('2026-06-30T12:00:00.000Z');
 
-  it('creates follow-up when applied 7+ days ago with no contacts', () => {
+  // Steve, 2026-10-26: reminders are for recruiters; a plain application
+  // (applied, waiting) has nothing to act on, however long it has been.
+  it.each([
+    ['7+ days', '2026-06-20'],
+    ['30+ days', '2026-05-01'],
+  ])('creates no reminder for an application applied %s ago', (_label, dateApplied) => {
     const apps = [
       baseApp({
         status: 'applied',
-        dateApplied: '2026-06-20',
+        dateApplied,
+        createdAt: `${dateApplied}T00:00:00.000Z`,
+        updatedAt: `${dateApplied}T00:00:00.000Z`,
       }),
     ];
-    const reminders = computeReminders(apps, [], now);
-    expect(reminders.some((r) => r.type === 'follow_up_applied')).toBe(true);
+    expect(computeReminders(apps, [], now)).toEqual([]);
   });
 
   it('creates recruiter ping after 3 business days', () => {

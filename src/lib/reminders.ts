@@ -46,20 +46,8 @@ export function computeReminders(
     const appContacts = getContactsForApplication(contacts, app.id);
     const lastContact = latestContactDate(appContacts);
 
-    if (app.status === 'applied' && app.dateApplied) {
-      const appliedDate = parseDate(app.dateApplied);
-      if (appliedDate && daysBetween(appliedDate, today) >= 7 && !lastContact) {
-        reminders.push({
-          id: `follow_up_applied-${app.id}`,
-          type: 'follow_up_applied',
-          priority: 'high',
-          title: `Follow up: ${app.company}`,
-          description: `Applied ${daysBetween(appliedDate, today)} days ago with no recruiter contact logged.`,
-          applicationId: app.id,
-          dueDate: today.toISOString(),
-        });
-      }
-    }
+    // No reminders for a plain application (applied, waiting): there is
+    // nothing to act on until a recruiter is involved (Steve, 2026-10-26).
 
     if (app.status === 'recruiter_screen' && lastContact) {
       const businessDaysSince = businessDaysBetween(lastContact, today);
@@ -111,13 +99,7 @@ export function computeReminders(
     const daysSinceActivity = referenceDate
       ? daysBetween(referenceDate, today)
       : 0;
-    const hasRecentContact =
-      lastContact && daysBetween(lastContact, today) < 14;
-
-    if (
-      (app.status === 'saved' && daysSinceActivity >= 30) ||
-      (app.status === 'applied' && daysSinceActivity >= 30 && !hasRecentContact)
-    ) {
+    if (app.status === 'saved' && daysSinceActivity >= 30) {
       reminders.push({
         id: `stale_review-${app.id}`,
         type: 'stale_review',
