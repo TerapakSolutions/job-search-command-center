@@ -11,6 +11,10 @@ const APPLICATION_CONFIRMATION_PHRASES = [
   'thanks for applying',
   'application received',
   'we received your application',
+  // Ashby-style ("Hello from X! We have your application." /
+  // "We've received your application for the … role").
+  "we've received your application",
+  'we have your application',
   'your application has been submitted',
   'confirming your application',
   'thank you for applying to',

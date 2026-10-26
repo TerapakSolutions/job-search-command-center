@@ -91,6 +91,41 @@ describe('emailApplicationMatcher', () => {
     expect(duplicateId).toBe('app-dup');
   });
 
+  it('does not treat a different known role at the same company as a duplicate', () => {
+    const db = createTestDb();
+    const userId = seedTestUser(db);
+    seedApplication(db, userId, {
+      id: 'app-em-platform',
+      company: 'Acme',
+      roleTitle: 'Senior Engineering Manager, Platform Engineering',
+    });
+
+    expect(
+      findDuplicateApplication(db, userId, 'Acme', 'Director of Engineering, Data'),
+    ).toBeNull();
+    expect(
+      findDuplicateApplication(
+        db,
+        userId,
+        'Acme',
+        'Senior Engineering Manager, Developer Tooling',
+      ),
+    ).toBeNull();
+  });
+
+  it('still treats an unknown-role email at the same company as a duplicate', () => {
+    const db = createTestDb();
+    const userId = seedTestUser(db);
+    seedApplication(db, userId, {
+      id: 'app-acme',
+      company: 'Acme',
+      roleTitle: 'Senior Engineering Manager, Platform Engineering',
+    });
+
+    expect(findDuplicateApplication(db, userId, 'Acme', null)).toBe('app-acme');
+    expect(findDuplicateApplication(db, userId, 'Acme', 'Unknown role')).toBe('app-acme');
+  });
+
   it('returns no matches for unrelated emails', () => {
     const db = createTestDb();
     const userId = seedTestUser(db);

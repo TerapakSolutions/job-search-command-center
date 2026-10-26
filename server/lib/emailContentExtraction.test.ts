@@ -5,6 +5,7 @@ import {
   extractInterviewDatetime,
   extractRoleFromInterviewSubject,
   extractRoleFromAcknowledgementSubject,
+  extractRoleFromApplicationBody,
   inferEmployerFromSenderEmail,
   isAtsPlatformCompany,
   isAtsSenderEmail,
@@ -215,5 +216,37 @@ describe('emailContentExtraction', () => {
         subject: 'Pathstream | Interview Confirmation for Engineering Manager',
       }),
     ).toBe('Engineering Manager');
+  });
+});
+
+describe('extractRoleFromApplicationBody', () => {
+  it('reads the role from an Ashby-style confirmation body', () => {
+    expect(
+      extractRoleFromApplicationBody(
+        "Hi Alex,\n\nWe've received your application for the Senior Engineering Manager, Platform Engineering role at Acme! Thank you for taking the time to apply.",
+      ),
+    ).toBe('Senior Engineering Manager, Platform Engineering');
+  });
+
+  it('reads "position" phrasing', () => {
+    expect(
+      extractRoleFromApplicationBody(
+        'Thank you for your application for the Data Analyst position.',
+      ),
+    ).toBe('Data Analyst');
+  });
+
+  it('returns null when no role is named', () => {
+    expect(
+      extractRoleFromApplicationBody('Thanks for applying! We will be in touch.'),
+    ).toBeNull();
+  });
+
+  it('ignores an implausibly long capture', () => {
+    expect(
+      extractRoleFromApplicationBody(
+        `your application for the ${'very '.repeat(30)}long role`,
+      ),
+    ).toBeNull();
   });
 });

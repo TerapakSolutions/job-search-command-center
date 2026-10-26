@@ -149,6 +149,17 @@ export function extractRoleFromInterviewSubject(subject: string): string | null 
   return null;
 }
 
+// Role from a confirmation BODY when the subject names none, e.g. Ashby's
+// "We've received your application for the {Role} role at {Company}!".
+export function extractRoleFromApplicationBody(textBody: string): string | null {
+  const match = textBody.match(
+    /\byour application for the\s+(.+?)\s+(?:role|position)\b/i,
+  );
+  const role = match?.[1]?.trim();
+  if (!role || role.length > 80) return null;
+  return role;
+}
+
 // Role from acknowledgement-style subjects where the title sits after the
 // acknowledgement phrase, e.g. "Job Application Acknowledgement - Director,
 // Generative AI & Intelligent Automation, J0526-0580" -> "Director,
