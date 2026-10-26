@@ -17,7 +17,7 @@ jest.mock('./emailClassificationEngine.js', () => {
 // Real shape (prod, 2026-10-26): a loan "payment is due soon" reminder rode
 // along in a batch forward of job emails.
 const BILL_BODY =
-  'Begin forwarded message:\n\nFrom: Service Finance Company <noreply@svcfin.example>\nSubject: A payment is due soon.\nDate: October 20, 2026 at 9:00:00 AM PDT\nTo: seeker@example.com\n\nYour payment of $120.00 is due on 11/01. Log in to pay.';
+  'Begin forwarded message:\n\nFrom: Service Finance Company <billing@svcfin.example>\nSubject: A payment is due soon.\nDate: October 20, 2026 at 9:00:00 AM PDT\nTo: seeker@example.com\n\nYour payment of $120.00 is due on 11/01. Log in to pay.';
 
 describe('Not Job Related emails', () => {
   it('accepts the classification from the model', () => {
@@ -50,7 +50,7 @@ describe('Not Job Related emails', () => {
       payload: JSON.stringify({ TextBody: BILL_BODY }),
     });
 
-    await processInboundEmail(db, id, { userId, manual: true });
+    await processInboundEmail(db, id, { userId, manual: false });
 
     expect(db.select().from(applications).all()).toHaveLength(0);
     expect(db.select().from(contacts).all()).toHaveLength(0);

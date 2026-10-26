@@ -165,6 +165,16 @@ export function applySafeAutomationRules(
     return { results: [], pendingApprovals: 0, riskyReasons: [] };
   }
 
+  // Bills, newsletters etc.: nothing to create, link or reply to.
+  if (row.classification === 'Not Job Related') {
+    return {
+      results: [],
+      pendingApprovals: 0,
+      riskyReasons: [],
+      skipSummary: 'Skipped: not related to your job search',
+    };
+  }
+
   const analysis = analyzeEmailAutomation(db, userId, emailId);
   if (!analysis) {
     return {
