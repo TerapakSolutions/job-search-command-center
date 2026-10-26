@@ -8,6 +8,7 @@ import {
   setInboundEmailProcessingScheduler,
 } from '../lib/inboundEmailProcessingQueue.js';
 import { createTestDb, seedTestUser } from '../lib/testDb.js';
+import { APPLE_MAIL_THREE_FORWARD_BUNDLE_PAYLOAD } from '../lib/__fixtures__/appleMailThreeForwardBundle.js';
 
 function startServer(db: ReturnType<typeof createTestDb>) {
   const app = createApp(db);
@@ -108,5 +109,66 @@ describe('postmark inbound webhook body size', () => {
     await close();
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe('postmark inbound webhook forward bundles', () => {
+  afterEach(() => {
+    resetInboundEmailProcessingScheduler();
+  });
+
+  it('stores and schedules each message of a multi-message forward separately', async () => {
+    const db = createTestDb();
+    seedTestUser(db, { email: 'seeker@example.com' });
+    const scheduled: string[] = [];
+    setInboundEmailProcessingScheduler((_db, emailId) => {
+      scheduled.push(emailId);
+    });
+
+    const { baseUrl, close } = await startServer(db);
+    const res = await fetch(`${baseUrl}/webhooks/postmark/inbound`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(APPLE_MAIL_THREE_FORWARD_BUNDLE_PAYLOAD),
+    });
+    await close();
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; ids: string[] };
+    expect(body.ok).toBe(true);
+    expect(body.ids).toHaveLength(3);
+
+    const rows = db.select().from(inboundEmails).all();
+    expect(rows).toHaveLength(3);
+    expect(rows.map((r) => r.subject)).toEqual([
+      'Fwd: Hello from Acme! We have your application.',
+      'Fwd: Hello from Acme! We have your application.',
+      'Fwd: Hello from Acme! We have your application.',
+    ]);
+    expect(scheduled.sort()).toEqual([...body.ids].sort());
+  });
+
+  it('still stores a single forward as one email', async () => {
+    const db = createTestDb();
+    seedTestUser(db, { email: 'seeker@example.com' });
+    setInboundEmailProcessingScheduler(() => {});
+
+    const { baseUrl, close } = await startServer(db);
+    const res = await fetch(`${baseUrl}/webhooks/postmark/inbound`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        Subject: 'Fwd: Thanks for applying',
+        OriginalRecipient: 'seeker@example.com',
+        TextBody:
+          'Begin forwarded message:\n\nFrom: Acme <jobs@acme.com>\nSubject: Thanks for applying\nDate: October 26, 2026 at 8:00:00 AM PDT\nTo: seeker@example.com\n\nThanks!',
+      }),
+    });
+    await close();
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; id: string };
+    expect(typeof body.id).toBe('string');
+    expect(db.select().from(inboundEmails).all()).toHaveLength(1);
   });
 });
