@@ -7,9 +7,20 @@ import { formatDate, formatDateTime } from '../lib/dates';
 import { upcomingInterviewAt } from '../lib/interviews';
 import { useJobSearchStore } from '../store/useJobSearchStore';
 
+// Applications page: green once interviewing, yellow at the recruiter stage,
+// plain for everything else (just applied, saved, closed).
+function statusCardClass(status: Application['status']): string {
+  if (status === 'interviewing' || status === 'final_round') {
+    return 'bg-green-50 border-green-300';
+  }
+  if (status === 'recruiter_screen') return 'bg-yellow-50 border-yellow-300';
+  return 'bg-white border-gray-200';
+}
+
 interface ApplicationCardProps {
   application: Application;
   compact?: boolean;
+  highlightStatus?: boolean;
   onEdit?: (app: Application) => void;
   onMove?: (app: Application, status: Application['status']) => void;
 }
@@ -17,6 +28,7 @@ interface ApplicationCardProps {
 export default function ApplicationCard({
   application,
   compact = false,
+  highlightStatus = false,
   onEdit,
 }: ApplicationCardProps) {
   const interviews = useJobSearchStore((s) => s.interviews);
@@ -34,7 +46,9 @@ export default function ApplicationCard({
     <button
       type="button"
       onClick={() => onEdit?.(application)}
-      className="w-full text-left bg-white border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md hover:border-blue-300 transition"
+      className={`w-full text-left border rounded-lg p-3 shadow-sm hover:shadow-md hover:border-blue-300 transition ${
+        highlightStatus ? statusCardClass(application.status) : 'bg-white border-gray-200'
+      }`}
     >
       <p className="font-medium text-gray-900 truncate">{application.roleTitle}</p>
       <p className="text-sm text-gray-600 truncate">{application.company}</p>
