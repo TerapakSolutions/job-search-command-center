@@ -65,7 +65,18 @@ export function createApp(db: Db) {
 
   const distPath = path.join(process.cwd(), 'dist');
 
-  app.use(express.static(distPath, { index: false }));
+  // index.html names the hashed bundle, so it must always be revalidated;
+  // hashed /assets/* keep express.static's default caching.
+  app.use(
+    express.static(distPath, {
+      index: false,
+      setHeaders: (res, filePath) => {
+        if (path.basename(filePath) === 'index.html') {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      },
+    }),
+  );
   app.use((req, res, next) => {
     if (
       req.path.startsWith('/api') ||
@@ -84,7 +95,7 @@ export function createApp(db: Db) {
       res.status(404).end();
       return;
     }
-    res.sendFile(path.join(distPath, 'index.html'), (err) => {
+    res.sendFile(path.join(distPath, 'index.html'), { headers: { 'Cache-Control': 'no-cache' } }, (err) => {
       if (err) next();
     });
   });
