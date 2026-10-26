@@ -35,7 +35,7 @@ const FORWARD_MARKERS = [
 const EMAIL_IN_ANGLE = /<([^>]+@[^>]+)>/;
 const EMAIL_PLAIN = /([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i;
 
-function parseEmailAddress(value: string): { name: string | null; email: string | null } {
+export function parseEmailAddress(value: string): { name: string | null; email: string | null } {
   const trimmed = value.trim();
   if (!trimmed) return { name: null, email: null };
 
@@ -83,7 +83,7 @@ function findForwardBlockStart(text: string): number {
   return -1;
 }
 
-function extractHeaderBlock(text: string): {
+export function extractHeaderBlock(text: string): {
   headers: Record<string, string>;
   bodyStart: number;
 } | null {

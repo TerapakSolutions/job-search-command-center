@@ -7,6 +7,7 @@ import {
   type PostmarkInboundPayload,
 } from '../lib/postmarkInbound.js';
 import { scheduleInboundEmailProcessing } from '../lib/inboundEmailProcessingQueue.js';
+import { splitForwardBundle } from '../lib/forwardBundleSplitter.js';
 import { postmarkWebhookAuth } from '../lib/postmarkWebhookAuth.js';
 
 export function postmarkInboundRouter(db: Db): Router {
@@ -26,9 +27,26 @@ export function postmarkInboundRouter(db: Db): Router {
       });
 
       try {
-        const id = await saveInboundEmail(db, payload);
-        scheduleInboundEmailProcessing(db, id);
-        res.status(200).json({ ok: true, id });
+        const parts = splitForwardBundle(payload);
+        if (parts.length === 1) {
+          const id = await saveInboundEmail(db, payload);
+          scheduleInboundEmailProcessing(db, id);
+          res.status(200).json({ ok: true, id });
+          return;
+        }
+
+        console.log('[postmark/inbound] split bundle into', parts.length, {
+          messageId: payload.MessageID,
+        });
+        const ids: string[] = [];
+        // Schedule each part as soon as it is saved, so a later save failure
+        // never leaves earlier parts stored but unprocessed.
+        for (const part of parts) {
+          const id = await saveInboundEmail(db, part);
+          scheduleInboundEmailProcessing(db, id);
+          ids.push(id);
+        }
+        res.status(200).json({ ok: true, ids });
       } catch (err) {
         console.error('[postmark/inbound] failed to save inbound email', err);
         res.status(200).json({ ok: true, saved: false });
