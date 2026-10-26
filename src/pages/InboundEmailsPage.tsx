@@ -62,6 +62,8 @@ export default function InboundEmailsPage() {
   const demoMode = isDemoMode();
   const [emails, setEmails] = useState<InboundEmailListItem[]>([]);
   const [total, setTotal] = useState(0);
+  const [hiddenCount, setHiddenCount] = useState(0);
+  const [showHidden, setShowHidden] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<InboundEmailDetail | null>(null);
   const [loading, setLoading] = useState(!demoMode);
@@ -97,8 +99,9 @@ export default function InboundEmailsPage() {
     if (subjectFilter.trim()) filters.subject = subjectFilter.trim();
     if (fromDate) filters.fromDate = fromDate;
     if (toDate) filters.toDate = toDate;
+    if (showHidden) filters.includeHidden = true;
     return filters;
-  }, [statusFilter, senderFilter, subjectFilter, fromDate, toDate]);
+  }, [statusFilter, senderFilter, subjectFilter, fromDate, toDate, showHidden]);
 
   const loadList = useCallback(async () => {
     if (demoMode) return;
@@ -108,6 +111,7 @@ export default function InboundEmailsPage() {
       const result = await fetchInboundEmails(listFilters);
       setEmails(result.items);
       setTotal(result.total);
+      setHiddenCount(result.hiddenCount ?? 0);
       if (selectedId && !result.items.some((e) => e.id === selectedId)) {
         setSelectedId(null);
         setDetail(null);
@@ -497,6 +501,17 @@ export default function InboundEmailsPage() {
               <FiMail size={14} />
               {total} email{total === 1 ? '' : 's'}
             </span>
+            {(hiddenCount > 0 || showHidden) && (
+              <button
+                type="button"
+                onClick={() => setShowHidden((v) => !v)}
+                className="text-xs text-blue-600 hover:text-blue-800"
+              >
+                {showHidden
+                  ? 'Hide non-job emails'
+                  : `Show ${hiddenCount} hidden non-job email${hiddenCount === 1 ? '' : 's'}`}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void loadList()}

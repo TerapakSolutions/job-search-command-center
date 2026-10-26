@@ -43,6 +43,8 @@ export function defaultSuggestedAction(
       return 'Confirm or propose interview times';
     case 'Recruiter Outreach':
       return 'Review opportunity and respond if interested';
+    case 'Not Job Related':
+      return 'No action needed — not related to your job search';
     default:
       return 'Review email and decide next steps';
   }

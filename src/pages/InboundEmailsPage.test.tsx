@@ -278,6 +278,35 @@ describe('InboundEmailsPage', () => {
     expect(await screen.findByText('auto_process')).toBeTruthy();
   });
 
+  it('hides non-job emails behind a "Show N hidden" toggle', async () => {
+    mockFetchInboundEmails.mockResolvedValue({
+      items: [],
+      total: 0,
+      hiddenCount: 2,
+      limit: 100,
+      offset: 0,
+    });
+
+    render(
+      <MemoryRouter>
+        <InboundEmailsPage />
+      </MemoryRouter>,
+    );
+
+    const toggle = await screen.findByRole('button', { name: 'Show 2 hidden non-job emails' });
+    expect(mockFetchInboundEmails).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ includeHidden: true }),
+    );
+
+    await userEvent.click(toggle);
+
+    await waitFor(() =>
+      expect(mockFetchInboundEmails).toHaveBeenLastCalledWith(
+        expect.objectContaining({ includeHidden: true }),
+      ),
+    );
+  });
+
   it('shows empty state when no emails', async () => {
     mockFetchInboundEmails.mockResolvedValue({
       items: [],

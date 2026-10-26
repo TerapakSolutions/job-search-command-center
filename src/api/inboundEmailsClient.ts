@@ -21,6 +21,7 @@ function buildQuery(filters: InboundEmailFilters = {}): string {
   if (filters.subject) params.set('subject', filters.subject);
   if (filters.fromDate) params.set('fromDate', filters.fromDate);
   if (filters.toDate) params.set('toDate', filters.toDate);
+  if (filters.includeHidden) params.set('includeHidden', 'true');
   const qs = params.toString();
   return qs ? `?${qs}` : '';
 }

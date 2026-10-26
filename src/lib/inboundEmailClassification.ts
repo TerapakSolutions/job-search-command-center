@@ -7,6 +7,7 @@ const CLASSIFICATION_STYLES: Record<string, string> = {
   Offer: 'bg-green-100 text-green-800 border-green-200',
   Scheduling: 'bg-purple-50 text-purple-700 border-purple-200',
   'General Update': 'bg-slate-100 text-slate-700 border-slate-200',
+  'Not Job Related': 'bg-gray-50 text-gray-400 border-gray-200',
   Other: 'bg-slate-100 text-slate-600 border-slate-200',
 };
 
