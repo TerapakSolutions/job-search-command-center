@@ -5,16 +5,15 @@ import {
   classifyInboundEmailWithLlm,
   classifyInboundEmailWithRules,
 } from './emailClassificationEngine.js';
-import { isInterviewConfirmationText } from './emailContentExtraction.js';
+import { isInterviewConfirmationText ,
+  resolveEmployerCompany,
+  resolveRoleTitle,
+} from './emailContentExtraction.js';
 import type {
   EmailClassificationResult,
   InboundEmailClassificationFields,
 } from './emailClassificationTypes.js';
 import { classificationInputFromEmail } from './emailForwardedParser.js';
-import {
-  resolveEmployerCompany,
-  resolveRoleTitle,
-} from './emailContentExtraction.js';
 import { nowIso } from './id.js';
 import {
   getUserEmailContext,

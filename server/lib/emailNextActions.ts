@@ -1,7 +1,5 @@
 import type { EmailClassification } from './emailClassificationTypes.js';
-import type { NextActionSuggestion } from './emailAutomationTypes.js';
-import type { ApplicationMatchResult } from './emailAutomationTypes.js';
-import type { PipelineUpdateProposal } from './emailAutomationTypes.js';
+import type { NextActionSuggestion , ApplicationMatchResult , PipelineUpdateProposal } from './emailAutomationTypes.js';
 
 export function generateNextActions(input: {
   classification: EmailClassification | string | null;

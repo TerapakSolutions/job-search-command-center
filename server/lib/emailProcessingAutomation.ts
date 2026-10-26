@@ -11,9 +11,8 @@ import {
   updatePipelineFromEmail,
   upsertInterviewFromEmail,
 } from './emailAutomationService.js';
-import type { AutomationActionResult } from './emailAutomationTypes.js';
+import type { AutomationActionResult , EmailAutomationAnalysis } from './emailAutomationTypes.js';
 import { PIPELINE_AUTO_CONFIDENCE_THRESHOLD } from './emailAutomationTypes.js';
-import type { EmailAutomationAnalysis } from './emailAutomationTypes.js';
 import {
   formatApprovalReason,
   formatPipelineApprovalLabel,
