@@ -66,7 +66,14 @@ export function isInterviewConfirmationText(text: string): boolean {
     /confirmed for (?:your )?interview/.test(normalized) ||
     /your interview (?:has been |is )?confirmed/.test(normalized) ||
     /interview has been confirmed/.test(normalized) ||
-    /interview is confirmed/.test(normalized)
+    /interview is confirmed/.test(normalized) ||
+    // A calendar invite for a meeting that is titled as an interview
+    // (e.g. "Virtual Interview - …" + Zoom's "inviting you to a scheduled Zoom
+    // meeting"). Only invite boilerplate counts: a bare meeting link also
+    // appears in "want to schedule an interview" requests that need a reply.
+    // Add Teams/Meet wording when a real invite of theirs arrives.
+    (/\binterview\b/.test(normalized) &&
+      /is inviting you to a scheduled zoom meeting/.test(normalized))
   );
 }
 
