@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import type { Db } from '../db/index.js';
 import { inboundEmails } from '../db/schema.js';
 import { createId, nowIso } from './id.js';
@@ -68,4 +69,21 @@ export async function saveInboundEmail(
   });
 
   return id;
+}
+
+// Postmark retries a webhook when it doesn't get our response in time (e.g.
+// a stalled or restarting machine) and keeps the same MessageID. Return the
+// row already saved for it so a retry isn't stored and processed twice (#34).
+export function findInboundEmailIdByMessageId(
+  db: Db,
+  messageId: unknown,
+): string | null {
+  if (typeof messageId !== 'string' || messageId.trim() === '') return null;
+  const row = db
+    .select({ id: inboundEmails.id })
+    .from(inboundEmails)
+    .where(sql`json_extract(${inboundEmails.payload}, '$.MessageID') = ${messageId}`)
+    .limit(1)
+    .all()[0];
+  return row?.id ?? null;
 }
