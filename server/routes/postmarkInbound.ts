@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import type { Db } from '../db/index.js';
 import { inboundEmails } from '../db/schema.js';
 import {
+  findInboundEmailIdByMessageId,
   saveInboundEmail,
   type PostmarkInboundPayload,
 } from '../lib/postmarkInbound.js';
@@ -29,6 +30,14 @@ export function postmarkInboundRouter(db: Db): Router {
       try {
         const parts = splitForwardBundle(payload);
         if (parts.length === 1) {
+          const existingId = findInboundEmailIdByMessageId(db, payload.MessageID);
+          if (existingId) {
+            console.log('[postmark/inbound] duplicate delivery ignored', {
+              messageId: payload.MessageID,
+            });
+            res.status(200).json({ ok: true, id: existingId, duplicate: true });
+            return;
+          }
           const id = await saveInboundEmail(db, payload);
           scheduleInboundEmailProcessing(db, id);
           res.status(200).json({ ok: true, id });
@@ -42,6 +51,11 @@ export function postmarkInboundRouter(db: Db): Router {
         // Schedule each part as soon as it is saved, so a later save failure
         // never leaves earlier parts stored but unprocessed.
         for (const part of parts) {
+          const existingId = findInboundEmailIdByMessageId(db, part.MessageID);
+          if (existingId) {
+            ids.push(existingId);
+            continue;
+          }
           const id = await saveInboundEmail(db, part);
           scheduleInboundEmailProcessing(db, id);
           ids.push(id);
