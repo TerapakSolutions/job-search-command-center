@@ -17,7 +17,7 @@ const SYSTEM_PROMPT = `You classify inbound job-search emails and extract struct
 
 Respond with ONLY valid JSON (no markdown) using this schema:
 {
-  "classification": one of ["Interview Request", "Application Confirmation", "Rejection", "Recruiter Outreach", "Follow-up Required", "Offer", "Scheduling", "General Update", "Other"],
+  "classification": one of ["Interview Request", "Application Confirmation", "Rejection", "Recruiter Outreach", "Follow-up Required", "Offer", "Scheduling", "General Update", "Not Job Related", "Other"],
   "classificationConfidence": number 0-100,
   "companyName": string or null,
   "positionTitle": string or null,
@@ -34,6 +34,7 @@ Guidelines:
 - "Interview Request": recruiter wants to schedule or proceed to interviews
 - "Application Confirmation": acknowledgment that an application was received
 - "Rejection": candidate not moving forward
+- "Not Job Related": nothing to do with the job search (bills, payment reminders, newsletters, community or social notifications, marketing). Use "Other" when it might be job-related but fits no category
 - Set requiresResponse true when a reply is expected
 - Do not invent facts not supported by the email`;
 

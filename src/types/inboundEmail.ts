@@ -104,6 +104,8 @@ export interface InboundEmailClassification {
 export interface InboundEmailListResponse {
   items: InboundEmailListItem[];
   total: number;
+  // 'Not Job Related' emails left out of this page (absent from older servers).
+  hiddenCount?: number;
   limit: number;
   offset: number;
 }
@@ -116,6 +118,7 @@ export interface InboundEmailFilters {
   subject?: string;
   fromDate?: string;
   toDate?: string;
+  includeHidden?: boolean;
 }
 
 export interface ClassifyInboundEmailResponse {

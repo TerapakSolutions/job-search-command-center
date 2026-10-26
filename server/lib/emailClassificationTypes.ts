@@ -7,6 +7,7 @@ export const EMAIL_CLASSIFICATIONS = [
   'Offer',
   'Scheduling',
   'General Update',
+  'Not Job Related',
   'Other',
 ] as const;
 

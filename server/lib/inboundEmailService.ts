@@ -95,11 +95,14 @@ export interface ListInboundEmailsOptions {
   subject?: string;
   fromDate?: string;
   toDate?: string;
+  // 'Not Job Related' emails (bills, newsletters) are hidden unless asked for.
+  includeNotJobRelated?: boolean;
 }
 
 export interface ListInboundEmailsResult {
   items: InboundEmailListItem[];
   total: number;
+  hiddenCount: number;
   limit: number;
   offset: number;
 }
@@ -294,13 +297,18 @@ export function listInboundEmailsForUser(
   const offset = Math.max(options.offset ?? 0, 0);
   const { userEmail, contactEmails } = getUserEmailContext(db, userId);
 
-  const matched = db
+  const filtered = db
     .select()
     .from(inboundEmails)
     .all()
     .filter((row) => !isInboundEmailDeleted(row))
     .filter((row) => inboundEmailBelongsToUser(row, userEmail, contactEmails))
-    .filter((row) => matchesFilters(row, options))
+    .filter((row) => matchesFilters(row, options));
+  const isHidden = (row: typeof inboundEmails.$inferSelect) =>
+    !options.includeNotJobRelated && row.classification === 'Not Job Related';
+  const hiddenCount = filtered.filter(isHidden).length;
+  const matched = filtered
+    .filter((row) => !isHidden(row))
     .sort(
       (a, b) =>
         new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime(),
@@ -309,7 +317,7 @@ export function listInboundEmailsForUser(
   const total = matched.length;
   const items = matched.slice(offset, offset + limit).map((row) => toListItem(db, row));
 
-  return { items, total, limit, offset };
+  return { items, total, hiddenCount, limit, offset };
 }
 
 export function getInboundEmailDetailForUser(

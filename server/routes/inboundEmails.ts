@@ -58,6 +58,7 @@ export function inboundEmailsRouter(db: Db): Router {
       subject: typeof req.query.subject === 'string' ? req.query.subject : undefined,
       fromDate: typeof req.query.fromDate === 'string' ? req.query.fromDate : undefined,
       toDate: typeof req.query.toDate === 'string' ? req.query.toDate : undefined,
+      includeNotJobRelated: req.query.includeHidden === 'true',
     });
     res.json(result);
   });
