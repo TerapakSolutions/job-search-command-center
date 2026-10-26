@@ -68,3 +68,46 @@ describe('generateDailyBriefingForUser', () => {
     jest.useRealTimers();
   });
 });
+
+describe('briefing summary source (#42)', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+    global.fetch = originalFetch;
+  });
+
+  async function generate() {
+    const db = createTestDb();
+    const userId = seedTestUser(db);
+    seedApplication(db, userId);
+    return generateDailyBriefingForUser(db, userId, new Date('2026-10-26T20:00:00.000Z'));
+  }
+
+  it('records rules when no LLM key is set', async () => {
+    delete process.env.OPENAI_API_KEY;
+    expect((await generate())?.data.summarySource).toBe('rules');
+  });
+
+  it('records llm when the model wrote the summary', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: 'Written by the model.' } }] }),
+    }) as unknown as typeof fetch;
+
+    const briefing = await generate();
+    expect(briefing?.aiSummary).toBe('Written by the model.');
+    expect(briefing?.data.summarySource).toBe('llm');
+  });
+
+  it('records rules when the LLM call fails (e.g. a malformed key)', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test';
+    global.fetch = jest
+      .fn()
+      .mockRejectedValue(new TypeError('Cannot convert argument to a ByteString')) as unknown as typeof fetch;
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect((await generate())?.data.summarySource).toBe('rules');
+  });
+});
