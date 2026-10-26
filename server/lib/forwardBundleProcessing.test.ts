@@ -1,5 +1,9 @@
 /** @jest-environment node */
-import { inboundEmails } from '../db/schema.js';
+import { applications, inboundEmails } from '../db/schema.js';
+import {
+  listPendingApprovalsForUser,
+  resolvePendingApproval,
+} from './emailAutomationService.js';
 import { APPLE_MAIL_THREE_FORWARD_BUNDLE_PAYLOAD } from './__fixtures__/appleMailThreeForwardBundle.js';
 import { splitForwardBundle } from './forwardBundleSplitter.js';
 import { processInboundEmail } from './inboundEmailProcessingService.js';
@@ -36,5 +40,34 @@ describe('Apple Mail multi-message forward, end to end', () => {
       expect(row.originalSenderEmail).toBe('no-reply@ashbyhq.com');
       expect(row.companyName).toBe('Acme');
     }
+  });
+});
+
+describe('Apple Mail multi-message forward of 3 application confirmations', () => {
+  it('ends with 3 separate applied applications once approvals are resolved', async () => {
+    const db = createTestDb();
+    const userId = seedTestUser(db, { email: 'seeker@example.com' });
+
+    for (const part of splitForwardBundle(APPLE_MAIL_THREE_FORWARD_BUNDLE_PAYLOAD)) {
+      const id = await saveInboundEmail(db, part);
+      await processInboundEmail(db, id, { userId, manual: true });
+      for (const approval of listPendingApprovalsForUser(db, userId)) {
+        resolvePendingApproval(db, userId, approval.id, 'approved');
+      }
+    }
+
+    const rows = db.select().from(inboundEmails).all();
+    expect(rows.map((r) => r.classification)).toEqual([
+      'Application Confirmation',
+      'Application Confirmation',
+      'Application Confirmation',
+    ]);
+
+    const apps = db.select().from(applications).all();
+    expect(apps).toHaveLength(3);
+    expect(apps.every((a) => a.status === 'applied')).toBe(true);
+    expect(new Set(apps.map((a) => a.roleTitle))).toEqual(
+      new Set(['Role One', 'Role Two', 'Role Three']),
+    );
   });
 });

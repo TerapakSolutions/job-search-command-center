@@ -197,6 +197,9 @@ export function findDuplicateApplication(
     if (positionTitle && !isUnknownRole(positionTitle)) {
       const roleScore = roleMatchScore(positionTitle, app.roleTitle);
       if (roleScore >= 15) return app.id;
+      // Both roles known and different: a second application at the same
+      // company (e.g. 3 confirmations from one employer), not a duplicate.
+      if (!isUnknownRole(app.roleTitle)) continue;
     }
     if (normalize(app.company) === normalizedCompany) {
       return app.id;
