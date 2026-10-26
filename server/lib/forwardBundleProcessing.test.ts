@@ -71,3 +71,28 @@ describe('Apple Mail multi-message forward of 3 application confirmations', () =
     );
   });
 });
+
+describe('applied date of a forwarded confirmation', () => {
+  it('uses the original email date, not the day it was forwarded', async () => {
+    const db = createTestDb();
+    const userId = seedTestUser(db, { email: 'seeker@example.com' });
+
+    const id = await saveInboundEmail(db, {
+      Subject: 'Fwd: Thank you for applying to Acme!',
+      FromFull: { Email: 'seeker@example.com' },
+      OriginalRecipient: 'seeker@example.com',
+      MessageID: 'dated-1',
+      Date: 'Mon, 26 Oct 2026 20:38:27 +0000',
+      TextBody:
+        "Begin forwarded message:\n\nFrom: Acme Hiring <no-reply@ashbyhq.com>\nSubject: Thank you for applying to Acme!\nDate: October 21, 2026 at 8:20:08 AM PDT\nTo: seeker@example.com\n\nHi Alex,\n\nWe've received your application for the Platform Engineer role at Acme!",
+    });
+    await processInboundEmail(db, id, { userId, manual: true });
+    for (const approval of listPendingApprovalsForUser(db, userId)) {
+      resolvePendingApproval(db, userId, approval.id, 'approved');
+    }
+
+    const apps = db.select().from(applications).all();
+    expect(apps).toHaveLength(1);
+    expect(apps[0].dateApplied).toBe('2026-10-21');
+  });
+});
