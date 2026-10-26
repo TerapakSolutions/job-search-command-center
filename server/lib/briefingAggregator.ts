@@ -25,6 +25,13 @@ const ACTIVE_STATUSES = new Set([
 
 const INACTIVE_DAYS = 14;
 const OVERNIGHT_HOURS = 12;
+const RECRUITER_CLASSIFICATIONS = new Set([
+  'Recruiter Outreach',
+  'Interview Request',
+  'Scheduling',
+  'Follow-up Required',
+  'Offer',
+]);
 
 function parseDate(value: string | null | undefined): Date | null {
   if (!value) return null;
@@ -150,6 +157,9 @@ export function aggregateBriefingData(
   const matchedInboundEmails = inboundEmailRows.filter((email) => {
     if (isInboundEmailDeleted(email)) return false;
     if (!isInWindow(email.receivedAt, start, end)) return false;
+    // Only mail from a recruiter or hiring team counts: a batch of forwarded
+    // confirmations, rejections and bills is not "new recruiter emails".
+    if (!RECRUITER_CLASSIFICATIONS.has(email.classification ?? '')) return false;
     const to = email.toEmail.toLowerCase();
     const from = email.fromEmail.toLowerCase();
     if (userEmail && (to.includes(userEmail) || from === userEmail)) {

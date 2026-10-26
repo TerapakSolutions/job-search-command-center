@@ -3,7 +3,12 @@ import {
   aggregateBriefingData,
   getBriefingWindow,
 } from './briefingAggregator.js';
-import { createTestDb, seedApplication, seedTestUser } from './testDb.js';
+import {
+  createTestDb,
+  seedApplication,
+  seedInboundEmail,
+  seedTestUser,
+} from './testDb.js';
 import { communications, contacts, inboundEmails } from '../db/schema.js';
 import { createId, nowIso } from './id.js';
 
@@ -84,6 +89,8 @@ describe('aggregateBriefingData', () => {
         toEmail: 'seeker@example.com',
         receivedAt: '2026-07-01T09:00:00.000Z',
         payload: '{}',
+        // Only classified recruiter mail counts as a new recruiter email.
+        classification: 'Interview Request',
         processed: false,
         createdAt: ts,
         updatedAt: ts,
@@ -140,5 +147,35 @@ describe('followUpNeeded (Steve, 2026-10-26: reminders are for recruiters)', () 
     expect(
       aggregateBriefingData(db, userId, now).followUpNeeded.map((f) => f.applicationId),
     ).toEqual(['app-recruiter']);
+  });
+});
+
+describe('newRecruiterEmails counts recruiter mail only (prod, 2026-10-26)', () => {
+  // A batch forward of confirmations, rejections and a bill was reported as
+  // "30 new recruiter emails overnight".
+  it('leaves out confirmations, rejections, non-job and unplaced mail', () => {
+    const now = new Date('2026-10-26T21:00:00.000Z');
+    const db = createTestDb();
+    const userId = seedTestUser(db, { email: 'seeker@example.com' });
+    const seed = (id: string, classification: string | null) =>
+      seedInboundEmail(db, {
+        id,
+        toEmail: 'seeker@example.com',
+        receivedAt: '2026-10-26T20:38:00.000Z',
+        classification,
+      });
+    seed('outreach', 'Recruiter Outreach');
+    seed('interview', 'Interview Request');
+    seed('scheduling', 'Scheduling');
+    seed('confirmation', 'Application Confirmation');
+    seed('rejection', 'Rejection');
+    seed('bill', 'Not Job Related');
+    seed('other', 'Other');
+    seed('unclassified', null);
+
+    const ids = aggregateBriefingData(db, userId, now)
+      .newRecruiterEmails.map((e) => e.id)
+      .sort();
+    expect(ids).toEqual(['interview', 'outreach', 'scheduling']);
   });
 });
