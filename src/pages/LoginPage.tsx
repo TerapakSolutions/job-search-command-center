@@ -66,7 +66,7 @@ export default function LoginPage() {
         </a>
 
         <p className="mt-6 text-center text-xs text-gray-500">
-          Invite-only beta. Before you sign in, read how your data is handled:{' '}
+          Free beta. Before you sign in, read how your data is handled:{' '}
           <Link to="/privacy" className="text-blue-600 hover:underline">
             Privacy
           </Link>

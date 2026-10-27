@@ -17,7 +17,7 @@ export default function PrivacyPage() {
         <div>
           <h2 className="text-2xl font-semibold text-gray-900">Privacy</h2>
           <p className="mt-1 text-sm text-gray-600">
-            Job Search Command Center is a small, invite-only beta run by one person. This page
+            Job Search Command Center is a free beta run by one person. This page
             says plainly what happens to your information.
           </p>
         </div>
@@ -80,6 +80,14 @@ export default function PrivacyPage() {
               openai.com/policies
             </a>
             .
+          </p>
+        </Section>
+
+        <Section title="If the AI limit is reached">
+          <p>
+            The app is free, and its AI runs on a monthly budget. If that budget is used up, the
+            AI pauses until the next month. Your forwarded emails are still saved and sorted by
+            simpler built-in rules, and the daily brief is written without AI until then.
           </p>
         </Section>
 

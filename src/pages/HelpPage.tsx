@@ -37,7 +37,7 @@ export default function HelpPage() {
         <h2 className="text-2xl font-semibold text-gray-900">Help</h2>
         <p className="mt-1 text-gray-600">How to get the most out of Job Search Command Center.</p>
         <p className="mt-2 text-sm text-gray-600">
-          This is an invite-only beta. See{' '}
+          This is a free beta. See{' '}
           <Link to="/privacy" className="text-blue-600 hover:underline">
             Privacy
           </Link>{' '}

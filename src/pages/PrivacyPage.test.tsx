@@ -42,7 +42,7 @@ describe('Privacy page', () => {
     expect((await screen.findAllByRole('link', { name: 'help@example.com' })).length).toBeGreaterThan(0);
   });
 
-  it('points to the person who invited you when no support address is set', async () => {
+  it('points to the app owner when no support address is set', async () => {
     mockSupportEmail(null);
     render(
       <MemoryRouter initialEntries={['/privacy']}>
@@ -51,7 +51,7 @@ describe('Privacy page', () => {
         </AuthGate>
       </MemoryRouter>,
     );
-    expect((await screen.findAllByText(/contact the person who invited you/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/contact the app owner/)).length).toBeGreaterThan(0);
   });
 
   it('is linked from the login page', () => {
