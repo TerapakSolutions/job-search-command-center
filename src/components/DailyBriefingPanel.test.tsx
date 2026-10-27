@@ -113,6 +113,20 @@ describe('DailyBriefingPanel', () => {
     );
   });
 
+  it('shows counts without targets until the user sets goals', async () => {
+    (fetchJobSearchGoals as jest.Mock).mockResolvedValue({
+      dailyGoal: 5,
+      weeklyGoal: 25,
+      monthlyGoal: 100,
+      goalsSetAt: null,
+    });
+    const { container } = render(<DailyBriefingPanel />);
+
+    await waitFor(() => expect(container.textContent).toContain('Set your goals in Settings'));
+    expect(container.textContent).toContain('Today: 0 · Week: 0 · Streak:');
+    expect(container.textContent).not.toMatch(/\/5|\/25|your goal is|keep going/);
+  });
+
   it('says when the brief was written', async () => {
     render(<DailyBriefingPanel />);
 

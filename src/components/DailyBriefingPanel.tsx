@@ -57,6 +57,8 @@ export default function DailyBriefingPanel() {
     }
     return computeLocalActivityMetrics(applications, goals);
   }, [applications, savedGoals]);
+  // Placeholder goals the user never chose: show counts, not targets.
+  const goalsUnset = savedGoals?.goalsSetAt === null;
   const livePipeline = useMemo(
     () => ({
       total: applications.length,
@@ -202,6 +204,17 @@ export default function DailyBriefingPanel() {
         <>
           <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-900">
               <p className="font-medium mb-1">Goal progress</p>
+              {goalsUnset ? (
+                <>
+                  <p>
+                    Today: {liveMetrics.applicationsToday} · Week:{' '}
+                    {liveMetrics.applicationsThisWeek} · Streak: {liveMetrics.currentStreak} days
+                  </p>
+                  <p className="mt-1 text-emerald-800">
+                    Set your goals in Settings to track your pace.
+                  </p>
+                </>
+              ) : (
               <p>
                 Today: {liveMetrics.applicationsToday}/
                 {liveMetrics.goals.dailyGoal} · Week:{' '}
@@ -209,7 +222,8 @@ export default function DailyBriefingPanel() {
                 {liveMetrics.goals.weeklyGoal} · Streak:{' '}
                 {liveMetrics.currentStreak} days
               </p>
-              {!liveMetrics.progress.daily.met && (
+              )}
+              {!goalsUnset && !liveMetrics.progress.daily.met && (
                 <p className="mt-1 text-emerald-800">
                   {liveMetrics.applicationsToday === 0
                     ? `No applications logged today — your goal is ${liveMetrics.goals.dailyGoal}.`

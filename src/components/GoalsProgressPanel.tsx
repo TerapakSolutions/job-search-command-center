@@ -122,6 +122,21 @@ export default function GoalsProgressPanel() {
         </Link>
       </div>
 
+      {metrics.goalsSetByUser === false ? (
+        <div className="space-y-2 text-sm text-gray-700">
+          <p>
+            Today: <strong>{metrics.applicationsToday}</strong> · This week:{' '}
+            <strong>{metrics.applicationsThisWeek}</strong> · This month:{' '}
+            <strong>{metrics.applicationsThisMonth}</strong>
+          </p>
+          <p>
+            <Link to="/settings" className="text-blue-600 hover:underline">
+              Set your goals
+            </Link>{' '}
+            to track your daily, weekly and monthly pace.
+          </p>
+        </div>
+      ) : (
       <div className="space-y-3">
         <ProgressBar
           label="Today"
@@ -145,6 +160,7 @@ export default function GoalsProgressPanel() {
           met={progress.monthly.met}
         />
       </div>
+      )}
 
       <div className="flex flex-wrap gap-4 text-sm">
         <div className="flex items-center gap-1.5 text-orange-700">
