@@ -47,6 +47,13 @@ import {
 } from './inboundEmailService.js';
 import { createId, nowIso } from './id.js';
 
+// The calendar day an ISO timestamp falls on in server local time (Pacific in
+// prod), so an evening application counts toward that day's goal.
+function localDateKey(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 const CREATE_APPLICATION_CLASSIFICATIONS = new Set([
   'Recruiter Outreach',
   'Application Confirmation',
@@ -423,7 +430,7 @@ export function createApplicationFromEmail(
   // it was forwarded to us (a batch of old confirmations is not "today").
   const dateApplied =
     row.classification === 'Application Confirmation'
-      ? (row.originalSentAt ?? row.receivedAt).slice(0, 10)
+      ? localDateKey(row.originalSentAt ?? row.receivedAt)
       : null;
 
   db.insert(applications)
@@ -721,7 +728,7 @@ export function updatePipelineFromEmail(
     updates.interviewDate = row.interviewDatetime.slice(0, 10);
   }
   if (targetStatus === 'applied' && !app.dateApplied) {
-    updates.dateApplied = (row.originalSentAt ?? row.receivedAt).slice(0, 10);
+    updates.dateApplied = localDateKey(row.originalSentAt ?? row.receivedAt);
   }
 
   db.update(applications)
