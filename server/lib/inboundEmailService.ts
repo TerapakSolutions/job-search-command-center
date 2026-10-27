@@ -257,6 +257,12 @@ function parseDate(value: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+// A date-only filter value means that calendar day in server local time;
+// `new Date('YYYY-MM-DD')` would read it as UTC midnight instead.
+function parseFilterDate(value: string): Date | null {
+  return parseDate(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
+}
+
 function matchesFilters(
   row: typeof inboundEmails.$inferSelect,
   options: ListInboundEmailsOptions,
@@ -274,12 +280,12 @@ function matchesFilters(
   }
   if (options.fromDate) {
     const received = parseDate(row.receivedAt);
-    const from = parseDate(options.fromDate);
+    const from = parseFilterDate(options.fromDate);
     if (!received || !from || received < from) return false;
   }
   if (options.toDate) {
     const received = parseDate(row.receivedAt);
-    const to = parseDate(options.toDate);
+    const to = parseFilterDate(options.toDate);
     if (!received || !to) return false;
     const endOfDay = new Date(to);
     endOfDay.setHours(23, 59, 59, 999);
