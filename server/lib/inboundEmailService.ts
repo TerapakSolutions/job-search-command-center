@@ -151,7 +151,7 @@ export function inboundEmailBelongsToUser(
   contactEmails: Set<string>,
   otherUserEmails: Set<string>,
 ): boolean {
-  const from = email.fromEmail.trim().toLowerCase();
+  const from = emailAddressesIn(email.fromEmail)[0] ?? '';
   const to = emailAddressesIn(email.toEmail);
   if (userEmail && (from === userEmail || to.includes(userEmail))) {
     return true;

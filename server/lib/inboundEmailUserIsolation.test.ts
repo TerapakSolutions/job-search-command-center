@@ -52,6 +52,18 @@ describe('inbound email isolation between users', () => {
     expect(resolveUserIdForInboundEmail(db, row)).toBe(blair);
   });
 
+  it('applies the same rule when the sender carries a display name', () => {
+    const db = createTestDb();
+    const alex = seedTestUser(db, { id: 'alex', email: 'alex@example.com' });
+    const blair = seedTestUser(db, { id: 'blair', email: 'blair@example.com' });
+    seedContact(db, alex, 'blair@example.com');
+    const row = seedRow(db, { id: 'named', fromEmail: 'Blair <blair@example.com>', toEmail: INBOUND });
+
+    expect(listedIds(db, alex)).toEqual([]);
+    expect(listedIds(db, blair)).toEqual(['named']);
+    expect(resolveUserIdForInboundEmail(db, row)).toBe(blair);
+  });
+
   it('matches a recipient address exactly, not as a substring', () => {
     const db = createTestDb();
     const an = seedTestUser(db, { id: 'an', email: 'an@example.com' });

@@ -8,7 +8,7 @@ export function resolveUserIdForInboundEmail(
   email: typeof inboundEmails.$inferSelect,
 ): string | null {
   const to = emailAddressesIn(email.toEmail);
-  const from = email.fromEmail.trim().toLowerCase();
+  const from = emailAddressesIn(email.fromEmail)[0] ?? '';
 
   const allUsers = db.select().from(users).all();
   for (const user of allUsers) {
