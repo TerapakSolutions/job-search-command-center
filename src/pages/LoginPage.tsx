@@ -1,4 +1,4 @@
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { getGoogleLoginUrl } from '../api/authClient';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -9,6 +9,7 @@ const errorMessages: Record<string, string> = {
   profile_fetch_failed: 'Could not load your Google profile.',
   invalid_profile: 'Your Google profile is missing required information.',
   auth_failed: 'Sign-in failed. Please try again.',
+  unverified_email: 'Your Google account email is not verified. Verify it with Google, then try again.',
 };
 
 export default function LoginPage() {
@@ -64,6 +65,14 @@ export default function LoginPage() {
           </svg>
           Continue with Google
         </a>
+
+        <p className="mt-6 text-center text-xs text-gray-500">
+          Free beta. Before you sign in, read how your data is handled:{' '}
+          <Link to="/privacy" className="text-blue-600 hover:underline">
+            Privacy
+          </Link>
+          .
+        </p>
       </div>
     </div>
   );

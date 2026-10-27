@@ -106,10 +106,18 @@ export function authRouter(db: Db): Router {
         email?: string;
         name?: string;
         picture?: string;
+        verified_email?: boolean;
       };
 
       if (!profile.id || !profile.email) {
         res.redirect(`${getFrontendUrl()}/login?error=invalid_profile`);
+        return;
+      }
+
+      // Accounts are matched by email, so it must be one Google
+      // has verified.
+      if (profile.verified_email !== true) {
+        res.redirect(`${getFrontendUrl()}/login?error=unverified_email`);
         return;
       }
 
@@ -162,6 +170,11 @@ export function authRouter(db: Db): Router {
     } catch {
       res.redirect(`${getFrontendUrl()}/login?error=auth_failed`);
     }
+  });
+
+  // Public settings the login, Help and privacy pages need before sign-in.
+  router.get('/config', (_req: Request, res: Response) => {
+    res.json({ supportEmail: process.env.SUPPORT_EMAIL?.trim() || null });
   });
 
   router.get('/me', (req: Request, res: Response) => {
