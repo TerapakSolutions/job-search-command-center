@@ -1,4 +1,13 @@
+/** Which feature is calling, so each can use its own model. */
+export type LlmPurpose = 'extract' | 'brief';
+
+const MODEL_ENV: Record<LlmPurpose, string> = {
+  extract: 'LLM_MODEL_EXTRACT',
+  brief: 'LLM_MODEL_BRIEF',
+};
+
 export interface LlmCompletionOptions {
+  purpose: LlmPurpose;
   systemPrompt: string;
   userPrompt: string;
   responseFormat?: 'text' | 'json_object';
@@ -12,6 +21,21 @@ function readApiKey(): string {
     .replace(/^['"\u2018\u2019\u201c\u201d]+|['"\u2018\u2019\u201c\u201d]+$/g, '')
     .trim();
 }
+
+/**
+ * OpenAI said no because the monthly budget is spent (insufficient_quota) or
+ * we're sending too fast (rate_limited). Callers fall back to rules and say
+ * the AI is paused rather than treating it as a failure.
+ */
+export class LlmQuotaError extends Error {
+  constructor(readonly reason: 'insufficient_quota' | 'rate_limited') {
+    super(`AI paused: ${reason}`);
+    this.name = 'LlmQuotaError';
+  }
+}
+
+// One warning per incident: set on the first 429, cleared by the next success.
+let quotaIncidentOpen = false;
 
 export function isLlmConfigured(): boolean {
   return Boolean(readApiKey());
@@ -28,7 +52,10 @@ export async function generateLlmCompletion(
   const baseUrl = (
     process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1'
   ).replace(/\/$/, '');
-  const model = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
+  const model =
+    process.env[MODEL_ENV[options.purpose]]?.trim() ||
+    process.env.OPENAI_MODEL?.trim() ||
+    'gpt-4o-mini';
 
   const body: Record<string, unknown> = {
     model,
@@ -53,10 +80,21 @@ export async function generateLlmCompletion(
     body: JSON.stringify(body),
   });
 
+  if (res.status === 429) {
+    const body = await res.text();
+    if (!quotaIncidentOpen) {
+      quotaIncidentOpen = true;
+      console.warn(`[llm] AI paused: budget or rate limit reached (429): ${body.slice(0, 200)}`);
+    }
+    throw new LlmQuotaError(body.includes('insufficient_quota') ? 'insufficient_quota' : 'rate_limited');
+  }
+
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`LLM request failed (${res.status}): ${body.slice(0, 200)}`);
   }
+
+  quotaIncidentOpen = false;
 
   const json = (await res.json()) as {
     choices?: Array<{ message?: { content?: string } }>;

@@ -171,5 +171,17 @@ describe('DailyBriefingPanel', () => {
     await screen.findByText(/Written \d{1,2}:\d{2}/);
     expect(second.container.textContent).not.toContain('rules only');
   });
-});
 
+  it('says the AI is paused when the monthly AI budget was used up', async () => {
+    (fetchLatestBriefing as jest.Mock).mockResolvedValue(
+      briefing({ data: { ...briefing().data, summarySource: 'paused' } }),
+    );
+    render(<DailyBriefingPanel />);
+
+    expect(
+      await screen.findByText(
+        'AI features are paused until the monthly limit resets. This brief was written without AI.',
+      ),
+    ).toBeTruthy();
+  });
+});

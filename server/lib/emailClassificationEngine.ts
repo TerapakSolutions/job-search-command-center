@@ -62,6 +62,7 @@ export async function classifyInboundEmailWithLlm(
   );
 
   const raw = await generateLlmCompletion({
+    purpose: 'extract',
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     responseFormat: 'json_object',

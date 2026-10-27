@@ -34,7 +34,7 @@ describe('llmClient API key', () => {
   ])('strips wrapping %s from the key', async (_label, value) => {
     process.env.OPENAI_API_KEY = value;
 
-    await generateLlmCompletion({ systemPrompt: 's', userPrompt: 'u' });
+    await generateLlmCompletion({ purpose: 'extract', systemPrompt: 's', userPrompt: 'u' });
 
     expect(sentAuthorization()).toBe('Bearer sk-test-123');
   });

@@ -31,6 +31,7 @@ export {
   defaultSuggestedAction,
   parseClassificationJson,
 } from './emailClassificationParser.js';
+import { LlmQuotaError } from './llmClient.js';
 
 function extractTextBody(payloadJson: string): string {
   try {
@@ -101,7 +102,10 @@ export async function classifyEmailContent(input: {
       return applyKnownPatternRuleOverrides(llmResult, classifiedInput);
     }
   } catch (err) {
-    console.error('[email-classification] LLM classification failed', err);
+    // A spent budget is expected, not an error; the client warned once.
+    if (!(err instanceof LlmQuotaError)) {
+      console.error('[email-classification] LLM classification failed', err);
+    }
   }
 
   const ruleResult = classifyInboundEmailWithRules({
