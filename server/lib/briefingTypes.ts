@@ -120,7 +120,10 @@ export function parseBriefingData(json: string): BriefingData {
   }
 }
 
+/** The server's local (Pacific) calendar day, so a brief's date matches the user's day. */
 export function toBriefingDate(iso: string | Date): string {
   const d = typeof iso === 'string' ? new Date(iso) : iso;
-  return d.toISOString().slice(0, 10);
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${month}-${day}`;
 }

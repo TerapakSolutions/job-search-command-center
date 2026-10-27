@@ -266,7 +266,7 @@ Each authenticated user receives at most **one briefing per calendar day (UTC)**
 | `POST /api/daily-briefings/generate` | Session | Generate today's briefing (`{ "force": true }` to regenerate) |
 | `POST /api/cron/daily-briefings` | `CRON_SECRET` | Batch-generate for all users (external cron) |
 
-**Automated generation:** On server start, an hourly scheduler runs once per day after `DAILY_BRIEFING_HOUR_UTC` (default `6`). Set `DAILY_BRIEFING_AUTO_SCHEDULE=false` to disable. For production, prefer an external cron hitting `POST /api/cron/daily-briefings` with `Authorization: Bearer $CRON_SECRET`.
+**Automated generation:** On server start, an hourly scheduler runs once per day after `DAILY_BRIEFING_HOUR` in the server's local time (default `6`; production runs in Pacific time, see `TZ` in `fly.toml`). Set `DAILY_BRIEFING_AUTO_SCHEDULE=false` to disable. For production, prefer an external cron hitting `POST /api/cron/daily-briefings` with `Authorization: Bearer $CRON_SECRET`.
 
 **Optional env vars:**
 
@@ -278,7 +278,7 @@ OPENAI_BASE_URL=https://api.openai.com/v1  # optional
 
 # Scheduling
 DAILY_BRIEFING_AUTO_SCHEDULE=true  # set false to disable in-process scheduler
-DAILY_BRIEFING_HOUR_UTC=6
+DAILY_BRIEFING_HOUR=6
 CRON_SECRET=long-random-string     # for POST /api/cron/daily-briefings
 
 # Optional email delivery via Postmark

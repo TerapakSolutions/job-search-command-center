@@ -6,12 +6,17 @@ let lastRunDate: string | null = null;
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let running = false;
 
-function getScheduledHourUtc(): number {
-  const raw = process.env.DAILY_BRIEFING_HOUR_UTC;
+// Server local time (Pacific on Fly), so the brief is ready each morning.
+function getScheduledHour(): number {
+  const raw = process.env.DAILY_BRIEFING_HOUR;
   if (!raw) return 6;
   const hour = Number(raw);
   if (!Number.isInteger(hour) || hour < 0 || hour > 23) return 6;
   return hour;
+}
+
+export function isBriefingDue(now: Date, lastRun: string | null): boolean {
+  return lastRun !== toBriefingDate(now) && now.getHours() >= getScheduledHour();
 }
 
 export function isAutoScheduleEnabled(): boolean {
@@ -47,16 +52,13 @@ export function startDailyBriefingScheduler(db: Db): void {
 
   if (intervalHandle) return;
 
-  const hourUtc = getScheduledHourUtc();
   console.log(
-    `[daily-briefing] Scheduler active — checks hourly, runs once daily after ${hourUtc}:00 UTC`,
+    `[daily-briefing] Scheduler active — checks hourly, runs once daily after ${getScheduledHour()}:00 local time`,
   );
 
   const tick = () => {
     const now = new Date();
-    const today = toBriefingDate(now);
-    if (lastRunDate === today) return;
-    if (now.getUTCHours() < hourUtc) return;
+    if (!isBriefingDue(now, lastRunDate)) return;
 
     void runDailyBriefingJob(db, now).catch((err) => {
       console.error('[daily-briefing] Scheduler run failed', err);
