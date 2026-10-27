@@ -9,6 +9,7 @@ const errorMessages: Record<string, string> = {
   profile_fetch_failed: 'Could not load your Google profile.',
   invalid_profile: 'Your Google profile is missing required information.',
   auth_failed: 'Sign-in failed. Please try again.',
+  unverified_email: 'Your Google account email is not verified. Verify it with Google, then try again.',
 };
 
 export default function LoginPage() {
