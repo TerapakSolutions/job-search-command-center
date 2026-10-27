@@ -6,7 +6,7 @@ export const CLASSIFICATION_GLOSSARY: Record<string, string> = {
   'Application Confirmation':
     'An employer confirming it received your application. Creates an Applied application when the company and role are clear.',
   'Recruiter Outreach':
-    'A recruiter contacting you about a role. Creates or updates an application at Recruiter screen.',
+    'A recruiter contacting you about a role. Creates or updates an application at Recruiter screen when the company and role are clear.',
   'Interview Request': 'An invitation to interview. Moves the application to Interviewing, sometimes after your approval.',
   Scheduling: 'Booking or confirming an interview time. Moves the application to Interviewing, sometimes after your approval.',
   'Follow-up Required': 'Someone is waiting on a reply or an action from you.',
@@ -42,8 +42,9 @@ export default function HelpPage() {
         <p>
           Forward the email to <code className="font-mono text-xs">{INBOUND_ADDRESS}</code> from
           Outlook, Gmail, Apple Mail, or your phone. Use plain Forward and don&apos;t edit the
-          body; attachments are fine. You can select several emails and forward them together:
-          each one becomes its own entry.
+          body; attachments are fine. In Apple Mail you can select several emails and forward
+          them together, and each becomes its own entry. In other mail apps, forward one at a
+          time.
         </p>
         <p>
           Forward outreach, application confirmations, interview invites, scheduling emails, and
@@ -82,7 +83,7 @@ export default function HelpPage() {
         {/* screenshot: Upcoming interviews on Today */}
         <p>
           <strong>Upcoming interviews</strong> lists applications at Interviewing or Final round
-          with an interview in the next two weeks. The date comes from the invite or scheduling
+          with an interview in the next two weeks, or with no date set yet. The date comes from the invite or scheduling
           email. If it&apos;s wrong or missing, click the application on Applications and set{' '}
           <strong>Interview date</strong> and <strong>Pipeline status</strong>.
         </p>
