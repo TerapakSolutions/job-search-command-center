@@ -183,7 +183,7 @@ export async function classifyInboundEmailForUser(
   emailId: string,
   options: { force?: boolean } = {},
 ): Promise<InboundEmailClassificationFields | null> {
-  const { userEmail, contactEmails } = getUserEmailContext(db, userId);
+  const { userEmail, contactEmails, otherUserEmails } = getUserEmailContext(db, userId);
   const rows = db
     .select()
     .from(inboundEmails)
@@ -194,7 +194,7 @@ export async function classifyInboundEmailForUser(
   if (
     !row ||
     isInboundEmailDeleted(row) ||
-    !inboundEmailBelongsToUser(row, userEmail, contactEmails)
+    !inboundEmailBelongsToUser(row, userEmail, contactEmails, otherUserEmails)
   ) {
     return null;
   }
@@ -257,13 +257,13 @@ export async function classifyUnprocessedInboundEmailsForUser(
   options: { limit?: number } = {},
 ): Promise<{ classified: number; failed: number; skipped: number }> {
   const limit = Math.min(Math.max(options.limit ?? 20, 1), 50);
-  const { userEmail, contactEmails } = getUserEmailContext(db, userId);
+  const { userEmail, contactEmails, otherUserEmails } = getUserEmailContext(db, userId);
 
   const candidates = db
     .select()
     .from(inboundEmails)
     .all()
-    .filter((row) => inboundEmailBelongsToUser(row, userEmail, contactEmails))
+    .filter((row) => inboundEmailBelongsToUser(row, userEmail, contactEmails, otherUserEmails))
     .filter((row) => !isInboundEmailDeleted(row))
     .filter((row) => !row.processedAt)
     .sort(
