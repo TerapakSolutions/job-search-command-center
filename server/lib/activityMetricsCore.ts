@@ -30,6 +30,8 @@ export interface ActivityMetrics {
     weekly: GoalProgress;
     monthly: GoalProgress;
   };
+  /** False while the goals are the untouched defaults; absent means unknown. */
+  goalsSetByUser?: boolean;
 }
 
 export interface DailyActivityEntry {
@@ -463,6 +465,14 @@ export function buildGoalBriefingMessages(
 ): string[] {
   const messages: string[] = [];
   const { progress, currentStreak, applicationsToday, goals } = metrics;
+
+  // Placeholder goals the user never chose: don't call them behind.
+  if (metrics.goalsSetByUser === false) {
+    return [
+      `You applied to ${applicationsToday} job${applicationsToday === 1 ? '' : 's'} today.`,
+      'Set your own daily, weekly and monthly goals in Settings so your brief can track your pace.',
+    ];
+  }
 
   messages.push(
     `You applied to ${applicationsToday} job${applicationsToday === 1 ? '' : 's'} today. Your goal is ${goals.dailyGoal}.`,

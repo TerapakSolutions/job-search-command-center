@@ -236,6 +236,8 @@ export const jobSearchGoals = sqliteTable(
     dailyGoal: integer('daily_goal').notNull().default(5),
     weeklyGoal: integer('weekly_goal').notNull().default(25),
     monthlyGoal: integer('monthly_goal').notNull().default(100),
+    // Null until the user saves goals; until then the targets are placeholders.
+    goalsSetAt: text('goals_set_at'),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
   },

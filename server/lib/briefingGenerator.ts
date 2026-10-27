@@ -17,7 +17,22 @@ import {
 } from './llmClient.js';
 import { createId, nowIso } from './id.js';
 
-const SYSTEM_PROMPT = `You are an executive assistant for a job seeker. Write a concise daily executive briefing (3-5 short paragraphs max) based on the structured data provided. Cover: job search goal progress (daily/weekly/monthly targets and streaks), pipeline health, new recruiter activity, applications submitted, upcoming interviews, follow-ups needed, and top recommended actions. Include congratulatory messages for streaks and highlight when falling behind on goals. Be direct, actionable, and encouraging. Do not invent facts not present in the data.`;
+const SYSTEM_PROMPT = `You are an executive assistant for a job seeker. Write a concise daily executive briefing (3-5 short paragraphs max) based on the structured data provided. Cover: job search goal progress (daily/weekly/monthly targets and streaks), pipeline health, new recruiter activity, applications submitted, upcoming interviews, follow-ups needed, and top recommended actions. Include congratulatory messages for streaks and highlight when falling behind on goals. Be direct, actionable, and encouraging. Do not invent facts not present in the data. If goalProgress has no targets, the user has not set goals yet: do not say they are behind or at risk; suggest they set their own goals in Settings.`;
+
+// Until the user saves goals, the targets are placeholders, so the AI never
+// sees them and cannot call the user behind.
+function promptData(data: BriefingData): unknown {
+  const progress = data.goalProgress;
+  if (progress?.goalsSetByUser !== false) return data;
+  const counts: Partial<typeof progress> = { ...progress };
+  for (const key of ['dailyGoal', 'weeklyGoal', 'monthlyGoal', 'dailyMet', 'weeklyMet', 'monthlyMet'] as const) {
+    delete counts[key];
+  }
+  return {
+    ...data,
+    goalProgress: { ...counts, note: 'Goals not set yet; suggest setting them in Settings.' },
+  };
+}
 
 function rowToRecord(row: typeof dailyBriefings.$inferSelect): DailyBriefingRecord {
   return {
@@ -108,7 +123,7 @@ async function generateAiSummary(
     const aiSummary = await generateLlmCompletion({
       purpose: 'brief',
       systemPrompt: SYSTEM_PROMPT,
-      userPrompt: JSON.stringify(data, null, 2),
+      userPrompt: JSON.stringify(promptData(data), null, 2),
     });
     return aiSummary ? { text: aiSummary, source: 'llm' } : fallback;
   } catch (err) {

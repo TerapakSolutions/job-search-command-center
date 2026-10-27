@@ -340,6 +340,7 @@ export function aggregateBriefingData(
     weeklyMet: activityMetrics.progress.weekly.met,
     monthlyMet: activityMetrics.progress.monthly.met,
     goalMessages,
+    goalsSetByUser: activityMetrics.goalsSetByUser,
   };
 
   const allRecommendations = [...goalMessages.slice(0, 2), ...recommendations];
