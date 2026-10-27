@@ -1,17 +1,23 @@
 /** @jest-environment node */
 import { generateDailyBriefingForUser } from './briefingGenerator.js';
 import { classifyEmailContent } from './emailClassificationService.js';
+import { processInboundEmail } from './inboundEmailProcessingService.js';
+import { saveInboundEmail } from './postmarkInbound.js';
 import { createTestDb, seedTestUser } from './testDb.js';
 
 // OpenAI answers 429 when the monthly budget is spent or we send too fast.
 const saved = { ...process.env };
-beforeEach(() => {
-  process.env = { ...saved, OPENAI_API_KEY: 'sk-test' };
+function openAiAnswers429(code: string) {
   global.fetch = jest.fn().mockResolvedValue({
     ok: false,
     status: 429,
-    text: async () => JSON.stringify({ error: { code: 'insufficient_quota' } }),
+    text: async () => JSON.stringify({ error: { code } }),
   }) as unknown as typeof fetch;
+}
+
+beforeEach(() => {
+  process.env = { ...saved, OPENAI_API_KEY: 'sk-test' };
+  openAiAnswers429('insufficient_quota');
   jest.spyOn(console, 'warn').mockImplementation(() => {});
 });
 afterEach(() => {
@@ -40,5 +46,30 @@ describe('when the AI budget is used up', () => {
     });
     expect(result.classification).toBe('Interview Request');
     expect(error).not.toHaveBeenCalled();
+  });
+
+  it('saves and processes a forwarded email', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    const db = createTestDb();
+    const userId = seedTestUser(db, { email: 'seeker@example.com' });
+    const id = await saveInboundEmail(db, {
+      Subject: 'Interview invitation',
+      FromFull: { Email: 'seeker@example.com' },
+      OriginalRecipient: 'jobinfo@jobs.example.com',
+      MessageID: 'quota-1',
+      TextBody: 'We reviewed your resume and want to schedule an interview.',
+    });
+    const result = await processInboundEmail(db, id, { userId });
+    expect(result.processingStatus).toBe('processed');
+  });
+});
+
+describe('when OpenAI is only rate limiting for a moment', () => {
+  it('writes an ordinary rules-only brief, not a "paused until next month" one', async () => {
+    openAiAnswers429('rate_limit_exceeded');
+    const db = createTestDb();
+    const userId = seedTestUser(db);
+    const briefing = await generateDailyBriefingForUser(db, userId, new Date(), { force: true });
+    expect(briefing?.data.summarySource).toBe('rules');
   });
 });

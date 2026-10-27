@@ -112,8 +112,12 @@ async function generateAiSummary(
     });
     return aiSummary ? { text: aiSummary, source: 'llm' } : fallback;
   } catch (err) {
-    // The client already warned once for this incident.
-    if (err instanceof LlmQuotaError) return { ...fallback, source: 'paused' };
+    // The client already warned once for this incident. Only a spent budget
+    // is "paused"; a rate limit clears in seconds, so it's an ordinary
+    // rules-only brief.
+    if (err instanceof LlmQuotaError) {
+      return err.reason === 'insufficient_quota' ? { ...fallback, source: 'paused' } : fallback;
+    }
     console.error('[daily-briefing] LLM generation failed, using fallback', err);
     return fallback;
   }
