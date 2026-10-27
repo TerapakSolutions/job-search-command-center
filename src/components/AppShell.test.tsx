@@ -26,4 +26,16 @@ describe('AppShell', () => {
     expect(screen.getByRole('link', { name: /Pipeline/i })).toBeTruthy();
     expect(screen.getByRole('link', { name: /Settings/i })).toBeTruthy();
   });
+
+  it('shows a Help link in the header on every page', () => {
+    render(
+      <MemoryRouter initialEntries={['/applications']}>
+        <AppShell>
+          <div />
+        </AppShell>
+      </MemoryRouter>,
+    );
+    const help = screen.getByRole('link', { name: 'Help' });
+    expect(help.getAttribute('href')).toBe('/help');
+  });
 });

@@ -28,6 +28,7 @@ import DailyBriefingPanel from '../components/DailyBriefingPanel';
 import AutomationDashboardPanel from '../components/AutomationDashboardPanel';
 import GoalsProgressPanel from '../components/GoalsProgressPanel';
 import MilestoneCelebration from '../components/MilestoneCelebration';
+import QuickStartPanel from '../components/QuickStartPanel';
 
 const MILESTONE_SEEN_KEY = 'milestone-last-seen-status-v1';
 
@@ -182,6 +183,8 @@ export default function TodayPage() {
           Refresh
         </button>
       </div>
+
+      {applications.length === 0 && <QuickStartPanel />}
 
       <GoalsProgressPanel />
 

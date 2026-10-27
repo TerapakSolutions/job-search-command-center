@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
   FiCalendar,
   FiColumns,
@@ -10,6 +10,7 @@ import {
   FiLogOut,
   FiInbox,
   FiActivity,
+  FiHelpCircle,
 } from 'react-icons/fi';
 import { isDemoMode } from '../api/persistence';
 import { computeReminders } from '../lib/reminders';
@@ -38,6 +39,7 @@ const pageTitles: Record<string, string> = {
   '/inbound-emails': 'Inbound Emails',
   '/activity': 'Activity History',
   '/settings': 'Settings',
+  '/help': 'Help',
 };
 
 export default function AppShell({ children }: AppShellProps) {
@@ -128,6 +130,14 @@ export default function AppShell({ children }: AppShellProps) {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-16 bg-white border-b px-6 flex items-center shadow-sm shrink-0">
           <h1 className="text-xl font-semibold text-gray-800">{title}</h1>
+          <Link
+            to="/help"
+            aria-label="Help"
+            title="Help"
+            className="ml-auto text-gray-500 hover:text-blue-600"
+          >
+            <FiHelpCircle size={22} />
+          </Link>
         </header>
         <main className="p-6 flex-1 overflow-auto">{children}</main>
       </div>

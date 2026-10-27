@@ -8,6 +8,7 @@ import ContactsPage from './pages/ContactsPage';
 import InboundEmailsPage from './pages/InboundEmailsPage';
 import SettingsPage from './pages/SettingsPage';
 import ActivityHistoryPage from './pages/ActivityHistoryPage';
+import HelpPage from './pages/HelpPage';
 import LoginPage from './pages/LoginPage';
 import { isDemoMode } from './api/persistence';
 import { SESSION_EXPIRED_EVENT } from './api/http';
@@ -123,6 +124,7 @@ export default function App() {
               <Route path="/inbound-emails" element={<InboundEmailsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/activity" element={<ActivityHistoryPage />} />
+              <Route path="/help" element={<HelpPage />} />
               <Route path="/login" element={<Navigate to="/today" replace />} />
               <Route path="/dashboard" element={<Navigate to="/today" replace />} />
             </Routes>
