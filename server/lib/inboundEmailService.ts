@@ -121,7 +121,22 @@ export function getUserEmailContext(db: Db, userId: string) {
     userContacts.map((c) => c.email.trim().toLowerCase()).filter(Boolean),
   );
 
-  return { userEmail, contactEmails };
+  const otherUserEmails = new Set(
+    db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .all()
+      .filter((u) => u.id !== userId)
+      .map((u) => u.email.trim().toLowerCase())
+      .filter(Boolean),
+  );
+
+  return { userEmail, contactEmails, otherUserEmails };
+}
+
+/** Every address in a header value such as `Dan <dan@x.com>, a@y.com`, lowercased. */
+export function emailAddressesIn(header: string): string[] {
+  return (header.toLowerCase().match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/g) ?? []);
 }
 
 export function isInboundEmailDeleted(
@@ -134,14 +149,19 @@ export function inboundEmailBelongsToUser(
   email: typeof inboundEmails.$inferSelect,
   userEmail: string,
   contactEmails: Set<string>,
+  otherUserEmails: Set<string>,
 ): boolean {
-  const to = email.toEmail.toLowerCase();
-  const from = email.fromEmail.toLowerCase();
-  if (userEmail && (to.includes(userEmail) || from === userEmail)) {
+  const from = emailAddressesIn(email.fromEmail)[0] ?? '';
+  const to = emailAddressesIn(email.toEmail);
+  if (userEmail && (from === userEmail || to.includes(userEmail))) {
     return true;
   }
-  if (contactEmails.has(from)) return true;
-  return false;
+  // Several people share the inbound address: an email carrying another
+  // user's address is theirs, even if this user saved them as a contact.
+  if (otherUserEmails.has(from) || to.some((a) => otherUserEmails.has(a))) {
+    return false;
+  }
+  return contactEmails.has(from);
 }
 
 function emailNeedsApproval(
@@ -301,14 +321,14 @@ export function listInboundEmailsForUser(
 ): ListInboundEmailsResult {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 100);
   const offset = Math.max(options.offset ?? 0, 0);
-  const { userEmail, contactEmails } = getUserEmailContext(db, userId);
+  const { userEmail, contactEmails, otherUserEmails } = getUserEmailContext(db, userId);
 
   const filtered = db
     .select()
     .from(inboundEmails)
     .all()
     .filter((row) => !isInboundEmailDeleted(row))
-    .filter((row) => inboundEmailBelongsToUser(row, userEmail, contactEmails))
+    .filter((row) => inboundEmailBelongsToUser(row, userEmail, contactEmails, otherUserEmails))
     .filter((row) => matchesFilters(row, options));
   const isHidden = (row: typeof inboundEmails.$inferSelect) =>
     !options.includeNotJobRelated && row.classification === 'Not Job Related';
@@ -331,7 +351,7 @@ export function getInboundEmailDetailForUser(
   userId: string,
   id: string,
 ): InboundEmailDetail | null {
-  const { userEmail, contactEmails } = getUserEmailContext(db, userId);
+  const { userEmail, contactEmails, otherUserEmails } = getUserEmailContext(db, userId);
   const rows = db
     .select()
     .from(inboundEmails)
@@ -342,7 +362,7 @@ export function getInboundEmailDetailForUser(
   if (
     !row ||
     isInboundEmailDeleted(row) ||
-    !inboundEmailBelongsToUser(row, userEmail, contactEmails)
+    !inboundEmailBelongsToUser(row, userEmail, contactEmails, otherUserEmails)
   ) {
     return null;
   }
@@ -384,7 +404,7 @@ export function markInboundEmailProcessedForUser(
   id: string,
   processed: boolean,
 ): InboundEmailListItem | null {
-  const { userEmail, contactEmails } = getUserEmailContext(db, userId);
+  const { userEmail, contactEmails, otherUserEmails } = getUserEmailContext(db, userId);
   const rows = db
     .select()
     .from(inboundEmails)
@@ -395,7 +415,7 @@ export function markInboundEmailProcessedForUser(
   if (
     !row ||
     isInboundEmailDeleted(row) ||
-    !inboundEmailBelongsToUser(row, userEmail, contactEmails)
+    !inboundEmailBelongsToUser(row, userEmail, contactEmails, otherUserEmails)
   ) {
     return null;
   }
@@ -414,7 +434,7 @@ export function softDeleteInboundEmailForUser(
   userId: string,
   id: string,
 ): boolean {
-  const { userEmail, contactEmails } = getUserEmailContext(db, userId);
+  const { userEmail, contactEmails, otherUserEmails } = getUserEmailContext(db, userId);
   const rows = db
     .select()
     .from(inboundEmails)
@@ -425,7 +445,7 @@ export function softDeleteInboundEmailForUser(
   if (
     !row ||
     isInboundEmailDeleted(row) ||
-    !inboundEmailBelongsToUser(row, userEmail, contactEmails)
+    !inboundEmailBelongsToUser(row, userEmail, contactEmails, otherUserEmails)
   ) {
     return false;
   }

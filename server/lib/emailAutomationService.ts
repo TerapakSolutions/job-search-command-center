@@ -62,7 +62,7 @@ const CREATE_APPLICATION_CLASSIFICATIONS = new Set([
 ]);
 
 function getEmailForUser(db: Db, userId: string, emailId: string) {
-  const { userEmail, contactEmails } = getUserEmailContext(db, userId);
+  const { userEmail, contactEmails, otherUserEmails } = getUserEmailContext(db, userId);
   const rows = db
     .select()
     .from(inboundEmails)
@@ -73,7 +73,7 @@ function getEmailForUser(db: Db, userId: string, emailId: string) {
   if (
     !row ||
     isInboundEmailDeleted(row) ||
-    !inboundEmailBelongsToUser(row, userEmail, contactEmails)
+    !inboundEmailBelongsToUser(row, userEmail, contactEmails, otherUserEmails)
   ) {
     return null;
   }
