@@ -114,6 +114,28 @@ describe('goals the user has not set', () => {
     expect(prompt()).toMatch(/"dailyGoal": 3/);
   });
 
+  it('tells the AI never to mention targets while goals are unset', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test';
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: 'Brief.' } }] }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const systemPrompt = () => {
+      const body = JSON.parse(fetchMock.mock.calls.at(-1)[1].body as string);
+      return body.messages.find((m: { role: string }) => m.role === 'system').content as string;
+    };
+
+    const { db, userId } = newUserWithOneApplication();
+    await generateDailyBriefingForUser(db, userId, NOW, { force: true });
+    expect(systemPrompt()).not.toMatch(/daily\/weekly\/monthly targets|falling behind/);
+    expect(systemPrompt()).toMatch(/Never mention targets/);
+
+    updateJobSearchGoals(db, userId, { dailyGoal: 3 });
+    await generateDailyBriefingForUser(db, userId, NOW, { force: true });
+    expect(systemPrompt()).toMatch(/falling behind/);
+  });
+
   it('leaves the stored goals row untouched by reading it', () => {
     const { db, userId } = newUserWithOneApplication();
     getActivityMetrics(db, userId, NOW);

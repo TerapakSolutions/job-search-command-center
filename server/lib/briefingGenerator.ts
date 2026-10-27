@@ -17,7 +17,10 @@ import {
 } from './llmClient.js';
 import { createId, nowIso } from './id.js';
 
-const SYSTEM_PROMPT = `You are an executive assistant for a job seeker. Write a concise daily executive briefing (3-5 short paragraphs max) based on the structured data provided. Cover: job search goal progress (daily/weekly/monthly targets and streaks), pipeline health, new recruiter activity, applications submitted, upcoming interviews, follow-ups needed, and top recommended actions. Include congratulatory messages for streaks and highlight when falling behind on goals. Be direct, actionable, and encouraging. Do not invent facts not present in the data. If goalProgress has no targets, the user has not set goals yet: do not say they are behind or at risk; suggest they set their own goals in Settings.`;
+const SYSTEM_PROMPT = `You are an executive assistant for a job seeker. Write a concise daily executive briefing (3-5 short paragraphs max) based on the structured data provided. Cover: job search goal progress (daily/weekly/monthly targets and streaks), pipeline health, new recruiter activity, applications submitted, upcoming interviews, follow-ups needed, and top recommended actions. Include congratulatory messages for streaks and highlight when falling behind on goals. Be direct, actionable, and encouraging. Do not invent facts not present in the data.`;
+
+// For a user who hasn't set goals: no targets to cover, so none to invent.
+const SYSTEM_PROMPT_GOALS_UNSET = `You are an executive assistant for a job seeker. Write a concise daily executive briefing (3-5 short paragraphs max) based on the structured data provided. Cover: applications submitted (today, this week, this month) and streaks, pipeline health, new recruiter activity, upcoming interviews, follow-ups needed, and top recommended actions. Include congratulatory messages for streaks. Be direct, actionable, and encouraging. Do not invent facts not present in the data. The user has not set goals yet. Never mention targets, goals being met, or pace; suggest once that they set their own daily, weekly and monthly goals in Settings.`;
 
 // Until the user saves goals, the targets are placeholders, so the AI never
 // sees them and cannot call the user behind.
@@ -122,7 +125,8 @@ async function generateAiSummary(
   try {
     const aiSummary = await generateLlmCompletion({
       purpose: 'brief',
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt:
+        data.goalProgress?.goalsSetByUser === false ? SYSTEM_PROMPT_GOALS_UNSET : SYSTEM_PROMPT,
       userPrompt: JSON.stringify(promptData(data), null, 2),
     });
     return aiSummary ? { text: aiSummary, source: 'llm' } : fallback;
