@@ -4,6 +4,8 @@ export interface JobSearchGoals {
   dailyGoal: number;
   weeklyGoal: number;
   monthlyGoal: number;
+  /** Null until the user saves goals; until then the targets are placeholders. */
+  goalsSetAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
