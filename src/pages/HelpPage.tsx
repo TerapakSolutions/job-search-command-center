@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom';
 import ContactLine from '../components/ContactLine';
-import DonationCard from '../components/DonationCard';
 import QuickStartPanel, { INBOUND_ADDRESS } from '../components/QuickStartPanel';
 
 // One line per classification the email pipeline emits. HelpPage.test.tsx
@@ -116,8 +115,6 @@ export default function HelpPage() {
           <strong>New application</strong>.
         </p>
       </Section>
-
-      <DonationCard />
 
       <Section title="Email classifications">
         <dl className="space-y-2">
