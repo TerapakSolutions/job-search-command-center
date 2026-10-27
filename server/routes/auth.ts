@@ -186,7 +186,9 @@ export function authRouter(db: Db): Router {
     }
 
     const rows = db.select().from(users).where(eq(users.id, userId)).all();
-    if (rows.length === 0) {
+    // Someone taken off the invite list is signed out on their next page
+    // load rather than when their 7-day session runs out.
+    if (rows.length === 0 || !isEmailInvited(rows[0].email)) {
       clearSessionCookie(res);
       res.status(401).json({ error: 'Unauthorized' });
       return;

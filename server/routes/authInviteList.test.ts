@@ -3,7 +3,8 @@ import http from 'node:http';
 import { createApp } from '../app.js';
 import { users } from '../db/schema.js';
 import { isEmailInvited } from '../lib/inviteList.js';
-import { createTestDb } from '../lib/testDb.js';
+import { createSessionToken } from '../lib/session.js';
+import { createTestDb, seedTestUser } from '../lib/testDb.js';
 
 describe('isEmailInvited', () => {
   it('matches the list case-insensitively, comma or space separated', () => {
@@ -36,23 +37,31 @@ function stubGoogle(profile: Record<string, unknown>) {
   });
 }
 
-async function callback(db: ReturnType<typeof createTestDb>): Promise<string> {
+async function get(
+  db: ReturnType<typeof createTestDb>,
+  path: string,
+  cookie?: string,
+): Promise<http.IncomingMessage> {
   const server = http.createServer(createApp(db));
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const addr = server.address();
   const port = typeof addr === 'object' && addr ? addr.port : 0;
   try {
-    return await new Promise<string>((resolve, reject) => {
+    return await new Promise<http.IncomingMessage>((resolve, reject) => {
       http
-        .get(`http://127.0.0.1:${port}/auth/google/callback?code=abc`, (res) => {
+        .get(`http://127.0.0.1:${port}${path}`, { headers: cookie ? { cookie } : {} }, (res) => {
           res.resume();
-          resolve(res.headers.location ?? '');
+          resolve(res);
         })
         .on('error', reject);
     });
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
+}
+
+async function callback(db: ReturnType<typeof createTestDb>): Promise<string> {
+  return (await get(db, '/auth/google/callback?code=abc')).headers.location ?? '';
 }
 
 describe('Google sign-in with an invite list', () => {
@@ -89,5 +98,13 @@ describe('Google sign-in with an invite list', () => {
     stubGoogle({ id: 'g-fake', email: 'alex@example.com', verified_email: false, name: 'Not Alex' });
     expect(await callback(db)).toBe('https://app.example.com/login?error=unverified_email');
     expect(db.select().from(users).all()).toEqual([]);
+  });
+
+  it('signs out a person removed from the list on their next page load', async () => {
+    const db = createTestDb();
+    const alex = seedTestUser(db, { id: 'alex', email: 'alex@example.com' });
+    const dana = seedTestUser(db, { id: 'dana', email: 'dana@example.com' });
+    expect((await get(db, '/auth/me', `session=${createSessionToken(alex)}`)).statusCode).toBe(200);
+    expect((await get(db, '/auth/me', `session=${createSessionToken(dana)}`)).statusCode).toBe(401);
   });
 });
