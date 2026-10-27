@@ -56,7 +56,7 @@ export interface BriefingData {
   recommendations: string[];
   changesSincePrevious: string[];
   goalProgress?: BriefingGoalProgress;
-  summarySource?: 'llm' | 'rules';
+  summarySource?: 'llm' | 'rules' | 'paused';
 }
 
 export interface BriefingGoalProgress {

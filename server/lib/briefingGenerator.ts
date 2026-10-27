@@ -13,6 +13,7 @@ import {
   buildFallbackSummary,
   generateLlmCompletion,
   isLlmConfigured,
+  LlmQuotaError,
 } from './llmClient.js';
 import { createId, nowIso } from './id.js';
 
@@ -96,7 +97,7 @@ export function getBriefingForDate(
 
 async function generateAiSummary(
   data: BriefingData,
-): Promise<{ text: string; source: 'llm' | 'rules' }> {
+): Promise<{ text: string; source: 'llm' | 'rules' | 'paused' }> {
   const fallback = { text: buildFallbackSummary(data), source: 'rules' as const };
 
   if (!isLlmConfigured()) {
@@ -105,11 +106,18 @@ async function generateAiSummary(
 
   try {
     const aiSummary = await generateLlmCompletion({
+      purpose: 'brief',
       systemPrompt: SYSTEM_PROMPT,
       userPrompt: JSON.stringify(data, null, 2),
     });
     return aiSummary ? { text: aiSummary, source: 'llm' } : fallback;
   } catch (err) {
+    // The client already warned once for this incident. Only a spent budget
+    // is "paused"; a rate limit clears in seconds, so it's an ordinary
+    // rules-only brief.
+    if (err instanceof LlmQuotaError) {
+      return err.reason === 'insufficient_quota' ? { ...fallback, source: 'paused' } : fallback;
+    }
     console.error('[daily-briefing] LLM generation failed, using fallback', err);
     return fallback;
   }

@@ -73,7 +73,7 @@ export interface BriefingData {
   goalProgress?: BriefingGoalProgress;
   // Who wrote aiSummary: the LLM, or the rule-based fallback (no key, or the
   // call failed). Absent on briefs written before this was recorded.
-  summarySource?: 'llm' | 'rules';
+  summarySource?: 'llm' | 'rules' | 'paused';
 }
 
 export interface DailyBriefingRecord {
