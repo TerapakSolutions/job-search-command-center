@@ -1,19 +1,20 @@
 import { eq } from 'drizzle-orm';
 import type { Db } from '../db/index.js';
 import { contacts, inboundEmails, users } from '../db/schema.js';
+import { emailAddressesIn } from './inboundEmailService.js';
 
 export function resolveUserIdForInboundEmail(
   db: Db,
   email: typeof inboundEmails.$inferSelect,
 ): string | null {
-  const to = email.toEmail.trim().toLowerCase();
-  const from = email.fromEmail.trim().toLowerCase();
+  const to = emailAddressesIn(email.toEmail);
+  const from = emailAddressesIn(email.fromEmail)[0] ?? '';
 
   const allUsers = db.select().from(users).all();
   for (const user of allUsers) {
     const userEmail = user.email.trim().toLowerCase();
     if (!userEmail) continue;
-    if (to.includes(userEmail) || from === userEmail) {
+    if (from === userEmail || to.includes(userEmail)) {
       return user.id;
     }
   }

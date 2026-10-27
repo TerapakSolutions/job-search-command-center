@@ -7,13 +7,16 @@ import {
   dailyBriefings,
   inboundEmails,
   interviews,
-  users,
 } from '../db/schema.js';
 import type { BriefingData, BriefingPipelineStats } from './briefingTypes.js';
 import { toBriefingDate } from './briefingTypes.js';
 import { getActivityMetrics } from './activityMetrics.js';
 import { buildGoalBriefingMessages } from './activityMetricsCore.js';
-import { isInboundEmailDeleted } from './inboundEmailService.js';
+import {
+  getUserEmailContext,
+  inboundEmailBelongsToUser,
+  isInboundEmailDeleted,
+} from './inboundEmailService.js';
 
 const ACTIVE_STATUSES = new Set([
   'saved',
@@ -121,8 +124,7 @@ export function aggregateBriefingData(
     now,
   );
 
-  const userRows = db.select().from(users).where(eq(users.id, userId)).all();
-  const userEmail = userRows[0]?.email?.toLowerCase() ?? '';
+  const { userEmail, contactEmails, otherUserEmails } = getUserEmailContext(db, userId);
 
   const apps = db
     .select()
@@ -135,12 +137,6 @@ export function aggregateBriefingData(
     .from(contacts)
     .where(eq(contacts.userId, userId))
     .all();
-
-  const contactEmails = new Set(
-    userContacts
-      .map((c) => c.email.trim().toLowerCase())
-      .filter(Boolean),
-  );
 
   const comms = db
     .select()
@@ -160,13 +156,7 @@ export function aggregateBriefingData(
     // Only mail from a recruiter or hiring team counts: a batch of forwarded
     // confirmations, rejections and bills is not "new recruiter emails".
     if (!RECRUITER_CLASSIFICATIONS.has(email.classification ?? '')) return false;
-    const to = email.toEmail.toLowerCase();
-    const from = email.fromEmail.toLowerCase();
-    if (userEmail && (to.includes(userEmail) || from === userEmail)) {
-      return true;
-    }
-    if (contactEmails.has(from)) return true;
-    return false;
+    return inboundEmailBelongsToUser(email, userEmail, contactEmails, otherUserEmails);
   });
 
   const newRecruiterEmails = [

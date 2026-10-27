@@ -27,20 +27,21 @@ describe('inboundEmailBelongsToUser', () => {
     };
 
     expect(
-      inboundEmailBelongsToUser(email, 'seeker@example.com', new Set()),
+      inboundEmailBelongsToUser(email, 'seeker@example.com', new Set(), new Set()),
     ).toBe(true);
     expect(
       inboundEmailBelongsToUser(
         { ...email, fromEmail: 'seeker@example.com', toEmail: 'x@y.com' },
         'seeker@example.com',
         new Set(),
+        new Set(),
       ),
     ).toBe(true);
     expect(
-      inboundEmailBelongsToUser(email, 'seeker@example.com', new Set(['recruiter@acme.com'])),
+      inboundEmailBelongsToUser(email, 'seeker@example.com', new Set(['recruiter@acme.com']), new Set()),
     ).toBe(true);
     expect(
-      inboundEmailBelongsToUser(email, 'other@example.com', new Set()),
+      inboundEmailBelongsToUser(email, 'other@example.com', new Set(), new Set()),
     ).toBe(false);
   });
 });
