@@ -18,6 +18,7 @@ import { fetchJobSearchGoals } from '../api/activityClient';
 import { useJobSearchStore } from '../store/useJobSearchStore';
 import { computeLocalActivityMetrics } from '../lib/activityMetrics';
 import { DEFAULT_JOB_SEARCH_GOALS, type JobSearchGoals } from '../types/activity';
+import ContactLine from './ContactLine';
 
 const TERMINAL_STATUSES = new Set(['rejected', 'ghosted']);
 
@@ -220,7 +221,7 @@ export default function DailyBriefingPanel() {
           {briefing.data.summarySource === 'paused' && (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
               AI features are paused until the monthly limit resets. This brief was written without
-              AI.
+              AI. Questions? <ContactLine />.
             </p>
           )}
 
