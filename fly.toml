@@ -13,6 +13,8 @@ primary_region = 'sjc'
   DATABASE_PATH = '/data/jobsearch.sqlite'
   NODE_ENV = 'production'
   PORT = '8080'
+  # Goal days/weeks/months use server local time; the user is in Pacific.
+  TZ = 'America/Los_Angeles'
 
 [[mounts]]
   source = 'jobsearch_data'
