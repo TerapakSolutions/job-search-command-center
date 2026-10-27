@@ -24,6 +24,7 @@ import {
   isMeaningfulContactNextAction,
   resolveContactCompany,
 } from '../lib/contactDisplay';
+import DonationCard from '../components/DonationCard';
 import DailyBriefingPanel from '../components/DailyBriefingPanel';
 import AutomationDashboardPanel from '../components/AutomationDashboardPanel';
 import GoalsProgressPanel from '../components/GoalsProgressPanel';
@@ -185,6 +186,8 @@ export default function TodayPage() {
       </div>
 
       {applications.length === 0 && <QuickStartPanel />}
+
+      <DonationCard />
 
       <GoalsProgressPanel />
 
