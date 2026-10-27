@@ -164,6 +164,11 @@ export function authRouter(db: Db): Router {
     }
   });
 
+  // Public settings the login, Help and privacy pages need before sign-in.
+  router.get('/config', (_req: Request, res: Response) => {
+    res.json({ supportEmail: process.env.SUPPORT_EMAIL?.trim() || null });
+  });
+
   router.get('/me', (req: Request, res: Response) => {
     const userId = getUserIdFromRequest(req);
     if (!userId) {

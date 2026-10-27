@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+import ContactLine from '../components/ContactLine';
 import QuickStartPanel, { INBOUND_ADDRESS } from '../components/QuickStartPanel';
 
 // One line per classification the email pipeline emits. HelpPage.test.tsx
@@ -33,6 +35,13 @@ export default function HelpPage() {
       <div>
         <h2 className="text-2xl font-semibold text-gray-900">Help</h2>
         <p className="mt-1 text-gray-600">How to get the most out of Job Search Command Center.</p>
+        <p className="mt-2 text-sm text-gray-600">
+          This is an invite-only beta. See{' '}
+          <Link to="/privacy" className="text-blue-600 hover:underline">
+            Privacy
+          </Link>{' '}
+          for what is stored and who can see it.
+        </p>
       </div>
 
       <QuickStartPanel />
@@ -41,7 +50,8 @@ export default function HelpPage() {
         {/* screenshot: forwarding an email to the inbound address */}
         <p>
           Forward the email to <code className="font-mono text-xs">{INBOUND_ADDRESS}</code> from
-          Outlook, Gmail, Apple Mail, or your phone. Use plain Forward and don&apos;t edit the
+          Outlook, Gmail, Apple Mail, or your phone, using the same address you sign in with:
+          that is how the app knows the email is yours. Use plain Forward and don&apos;t edit the
           body; attachments are fine. In Apple Mail you can select several emails and forward
           them together, and each becomes its own entry. In other mail apps, forward one at a
           time.
@@ -92,8 +102,8 @@ export default function HelpPage() {
       <Section title="Troubleshooting">
         <p>
           <strong>Nothing showed up.</strong> Wait 1–2 minutes and refresh. Check Spam for a
-          bounce, and make sure you forwarded rather than replied. If it still isn&apos;t there,
-          email Steve.
+          bounce. Make sure you forwarded rather than replied, and that you forwarded from the
+          address you sign in with. If it still isn&apos;t there, <ContactLine />.
         </p>
         <p>
           <strong>Wrong company or role.</strong> Click the application on Applications and fix

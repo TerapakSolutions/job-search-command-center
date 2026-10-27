@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import AppShell from './components/AppShell';
 import TodayPage from './pages/TodayPage';
 import PipelinePage from './pages/PipelinePage';
@@ -10,6 +10,7 @@ import SettingsPage from './pages/SettingsPage';
 import ActivityHistoryPage from './pages/ActivityHistoryPage';
 import HelpPage from './pages/HelpPage';
 import LoginPage from './pages/LoginPage';
+import PrivacyPage from './pages/PrivacyPage';
 import { isDemoMode } from './api/persistence';
 import { SESSION_EXPIRED_EVENT } from './api/http';
 import { useAuthStore } from './store/useAuthStore';
@@ -70,7 +71,8 @@ function AppBootstrap({ children }: { children: React.ReactNode }) {
   );
 }
 
-function AuthGate({ children }: { children: React.ReactNode }) {
+export function AuthGate({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
   const demoMode = isDemoMode();
   const user = useAuthStore((s) => s.user);
   const loading = useAuthStore((s) => s.loading);
@@ -82,6 +84,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       void checkAuth();
     }
   }, [checkAuth, demoMode]);
+
+  // The privacy page must be readable before anyone signs in.
+  if (location.pathname === '/privacy') {
+    return <PrivacyPage />;
+  }
 
   if (demoMode) {
     return <>{children}</>;
