@@ -195,6 +195,26 @@ describe('InboundEmailsPage', () => {
     expect(screen.getByRole('button', { name: /Re-analyze/i })).toBeTruthy();
   });
 
+  it('shows when a forwarded email was originally sent, not just when it was forwarded', async () => {
+    mockFetchInboundEmailById.mockResolvedValue({
+      ...sampleList.items[0],
+      ...detailExtensions,
+      forwarded: {
+        ...detailExtensions.forwarded,
+        isForwarded: true,
+        originalSentAt: '2026-10-15T23:00:03.000Z',
+      },
+    });
+    render(
+      <MemoryRouter>
+        <InboundEmailsPage />
+      </MemoryRouter>,
+    );
+    await userEvent.click(await screen.findByRole('button', { name: /recruiter@acme.com/i }));
+
+    expect(await screen.findByText(/Originally sent Oct 15, 2026/)).toBeTruthy();
+  });
+
   it('marks email as reviewed', async () => {
     render(
       <MemoryRouter>

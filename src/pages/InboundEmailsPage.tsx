@@ -613,6 +613,8 @@ export default function InboundEmailsPage() {
                     <p className="text-xs text-gray-500 mt-1">
                       Received {formatDate(detail.receivedAt)} (
                       {formatReceivedAt(detail.receivedAt)})
+                      {detail.forwarded?.originalSentAt &&
+                        ` · Originally sent ${formatReceivedAt(detail.forwarded.originalSentAt)}`}
                     </p>
                   </div>
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-end gap-2 shrink-0">
