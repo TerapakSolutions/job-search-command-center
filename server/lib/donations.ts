@@ -37,6 +37,7 @@ export async function createDonationCheckout(
   // be pointed at another site.
   const baseUrl = (env.FRONTEND_URL ?? 'http://localhost:5173').trim().replace(/\/$/, '');
   const stripe = options.stripe ?? new Stripe(secretKey);
+  const supportEmail = env.SUPPORT_EMAIL?.trim();
 
   try {
     const session = await stripe.checkout.sessions.create({
@@ -51,6 +52,11 @@ export async function createDonationCheckout(
           },
         },
       ],
+      ...(supportEmail && {
+        custom_text: {
+          submit: { message: `Questions about your donation? Email ${supportEmail}` },
+        },
+      }),
       success_url: `${baseUrl}/donation-success`,
       cancel_url: `${baseUrl}/donation-cancel`,
     });

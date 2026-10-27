@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { FiCheckCircle } from 'react-icons/fi';
+import ContactLine from '../components/ContactLine';
 
 // Stripe sends people back here; it renders without a session so a donor
 // whose session lapsed during checkout still sees the result.
@@ -23,6 +24,9 @@ export default function DonationResultPage({ outcome }: { outcome: 'success' | '
             </p>
           </>
         )}
+        <p className="text-sm text-gray-500">
+          Questions about your donation? <ContactLine />.
+        </p>
         <Link
           to="/today"
           className="inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"

@@ -1,4 +1,5 @@
 import { Link, useSearchParams } from 'react-router-dom';
+import ContactLine from '../components/ContactLine';
 import { getGoogleLoginUrl } from '../api/authClient';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -72,6 +73,9 @@ export default function LoginPage() {
             Privacy
           </Link>
           .
+        </p>
+        <p className="mt-2 text-center text-xs text-gray-500">
+          Questions? <ContactLine />.
         </p>
       </div>
     </div>

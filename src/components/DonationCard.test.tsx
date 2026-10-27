@@ -62,4 +62,20 @@ describe('donation result pages', () => {
     expect(screen.getByRole('heading', { name: heading })).toBeTruthy();
     expect(screen.queryByText('signed-in app')).toBeNull();
   });
+
+  it('gives donors the support address on the result pages', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ supportEmail: 'help@terapak.com' }),
+    }) as unknown as typeof fetch;
+    render(
+      <MemoryRouter initialEntries={['/donation-success']}>
+        <AuthGate>
+          <div />
+        </AuthGate>
+      </MemoryRouter>,
+    );
+    const link = await screen.findByRole('link', { name: 'help@terapak.com' });
+    expect(link.getAttribute('href')).toBe('mailto:help@terapak.com');
+  });
 });

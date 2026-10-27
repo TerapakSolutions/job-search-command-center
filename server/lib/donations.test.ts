@@ -44,8 +44,17 @@ describe('createDonationCheckout', () => {
         },
       },
     ]);
+    expect(params.custom_text).toBeUndefined();
     expect(params.success_url).toBe('https://jobs.example.com/donation-success');
     expect(params.cancel_url).toBe('https://jobs.example.com/donation-cancel');
+  });
+
+  it('shows the support address on the Stripe Checkout page when one is set', async () => {
+    const { client, create } = fakeStripe();
+    await createDonationCheckout({ amount: 5 }, { env: { ...ENV, SUPPORT_EMAIL: 'help@terapak.com' }, stripe: client });
+    expect(create.mock.calls[0][0].custom_text).toEqual({
+      submit: { message: 'Questions about your donation? Email help@terapak.com' },
+    });
   });
 
   it('reports a provider failure without leaking its message', async () => {
@@ -78,5 +87,14 @@ describe('POST /api/donate', () => {
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+});
+
+describe('production config', () => {
+  it('publishes help@terapak.com as the support contact', () => {
+    const { readFileSync } = jest.requireActual('node:fs') as typeof import('node:fs');
+    const { join } = jest.requireActual('node:path') as typeof import('node:path');
+    const flyToml = readFileSync(join(__dirname, '..', '..', 'fly.toml'), 'utf8');
+    expect(flyToml).toMatch(/^\s*SUPPORT_EMAIL\s*=\s*'help@terapak\.com'\s*$/m);
   });
 });
