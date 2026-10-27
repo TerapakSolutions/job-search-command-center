@@ -106,10 +106,18 @@ export function authRouter(db: Db): Router {
         email?: string;
         name?: string;
         picture?: string;
+        verified_email?: boolean;
       };
 
       if (!profile.id || !profile.email) {
         res.redirect(`${getFrontendUrl()}/login?error=invalid_profile`);
+        return;
+      }
+
+      // Accounts are matched by email, so it must be one Google
+      // has verified.
+      if (profile.verified_email !== true) {
+        res.redirect(`${getFrontendUrl()}/login?error=unverified_email`);
         return;
       }
 
