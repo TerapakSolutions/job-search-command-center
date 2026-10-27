@@ -3,7 +3,6 @@ import { Router, type Request, type Response } from 'express';
 import type { Db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { createId, nowIso } from '../lib/id.js';
-import { isEmailInvited } from '../lib/inviteList.js';
 import {
   clearSessionCookie,
   getUserIdFromRequest,
@@ -115,15 +114,10 @@ export function authRouter(db: Db): Router {
         return;
       }
 
-      // Accounts are matched and invited by email, so it must be one Google
+      // Accounts are matched by email, so it must be one Google
       // has verified.
       if (profile.verified_email !== true) {
         res.redirect(`${getFrontendUrl()}/login?error=unverified_email`);
-        return;
-      }
-
-      if (!isEmailInvited(profile.email)) {
-        res.redirect(`${getFrontendUrl()}/login?error=not_invited`);
         return;
       }
 
@@ -186,9 +180,7 @@ export function authRouter(db: Db): Router {
     }
 
     const rows = db.select().from(users).where(eq(users.id, userId)).all();
-    // Someone taken off the invite list is signed out on their next page
-    // load rather than when their 7-day session runs out.
-    if (rows.length === 0 || !isEmailInvited(rows[0].email)) {
+    if (rows.length === 0) {
       clearSessionCookie(res);
       res.status(401).json({ error: 'Unauthorized' });
       return;

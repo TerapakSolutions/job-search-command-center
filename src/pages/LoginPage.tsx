@@ -10,8 +10,6 @@ const errorMessages: Record<string, string> = {
   invalid_profile: 'Your Google profile is missing required information.',
   auth_failed: 'Sign-in failed. Please try again.',
   unverified_email: 'Your Google account email is not verified. Verify it with Google, then try again.',
-  not_invited:
-    'This app is invite-only for now. Ask the person who shared it with you to add your Google email.',
 };
 
 export default function LoginPage() {
