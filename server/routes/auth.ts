@@ -3,6 +3,7 @@ import { Router, type Request, type Response } from 'express';
 import type { Db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { createId, nowIso } from '../lib/id.js';
+import { isEmailInvited } from '../lib/inviteList.js';
 import {
   clearSessionCookie,
   getUserIdFromRequest,
@@ -106,10 +107,23 @@ export function authRouter(db: Db): Router {
         email?: string;
         name?: string;
         picture?: string;
+        verified_email?: boolean;
       };
 
       if (!profile.id || !profile.email) {
         res.redirect(`${getFrontendUrl()}/login?error=invalid_profile`);
+        return;
+      }
+
+      // Accounts are matched and invited by email, so it must be one Google
+      // has verified.
+      if (profile.verified_email !== true) {
+        res.redirect(`${getFrontendUrl()}/login?error=unverified_email`);
+        return;
+      }
+
+      if (!isEmailInvited(profile.email)) {
+        res.redirect(`${getFrontendUrl()}/login?error=not_invited`);
         return;
       }
 
