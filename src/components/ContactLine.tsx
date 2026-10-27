@@ -1,9 +1,9 @@
 import { useSupportEmail } from '../lib/useSupportEmail';
 
-/** "email support@…" when a support address is set, else the person who invited you. */
+/** "email support@…" when a support address is set, else a general pointer to the owner. */
 export default function ContactLine() {
   const supportEmail = useSupportEmail();
-  if (!supportEmail) return <>contact the person who invited you</>;
+  if (!supportEmail) return <>contact the app owner</>;
   return (
     <>
       email{' '}
