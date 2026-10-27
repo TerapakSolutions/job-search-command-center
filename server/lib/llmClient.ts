@@ -115,13 +115,18 @@ export function buildFallbackSummary(data: {
     dailyGoal: number;
     currentStreak: number;
     goalMessages: string[];
+    goalsSetByUser?: boolean;
   };
 }): string {
   const parts: string[] = [];
 
   if (data.goalProgress) {
+    const goal =
+      data.goalProgress.goalsSetByUser === false
+        ? ''
+        : ` Your goal is ${data.goalProgress.dailyGoal}.`;
     parts.push(
-      `You applied to ${data.goalProgress.applicationsToday} job${data.goalProgress.applicationsToday === 1 ? '' : 's'} today. Your goal is ${data.goalProgress.dailyGoal}.`,
+      `You applied to ${data.goalProgress.applicationsToday} job${data.goalProgress.applicationsToday === 1 ? '' : 's'} today.${goal}`,
     );
     if (data.goalProgress.currentStreak >= 3) {
       parts.push(

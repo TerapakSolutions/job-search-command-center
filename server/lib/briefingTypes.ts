@@ -53,6 +53,7 @@ export interface BriefingGoalProgress {
   weeklyMet: boolean;
   monthlyMet: boolean;
   goalMessages: string[];
+  goalsSetByUser?: boolean;
 }
 
 export interface BriefingData {

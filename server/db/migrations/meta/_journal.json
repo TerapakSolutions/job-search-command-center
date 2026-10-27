@@ -78,6 +78,13 @@
       "when": 1840000000000,
       "tag": "0010_approval_reason_details",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1850000000000,
+      "tag": "0011_job_search_goals_set_at",
+      "breakpoints": true
     }
   ]
 }

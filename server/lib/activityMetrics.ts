@@ -31,6 +31,7 @@ export { DEFAULT_JOB_SEARCH_GOALS } from './activityMetricsCore.js';
 export interface JobSearchGoalsRecord extends JobSearchGoals {
   id: string;
   userId: string;
+  goalsSetAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -42,6 +43,7 @@ function rowToGoals(row: typeof jobSearchGoals.$inferSelect): JobSearchGoalsReco
     dailyGoal: row.dailyGoal,
     weeklyGoal: row.weeklyGoal,
     monthlyGoal: row.monthlyGoal,
+    goalsSetAt: row.goalsSetAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -79,6 +81,7 @@ export function getJobSearchGoals(
     id,
     userId,
     ...DEFAULT_JOB_SEARCH_GOALS,
+    goalsSetAt: null,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -109,6 +112,7 @@ export function updateJobSearchGoals(
       dailyGoal,
       weeklyGoal,
       monthlyGoal,
+      goalsSetAt: timestamp,
       updatedAt: timestamp,
     })
     .where(eq(jobSearchGoals.userId, userId))
@@ -119,6 +123,7 @@ export function updateJobSearchGoals(
     dailyGoal,
     weeklyGoal,
     monthlyGoal,
+    goalsSetAt: timestamp,
     updatedAt: timestamp,
   };
 }
@@ -138,7 +143,7 @@ export function getActivityMetrics(
 ): ActivityMetrics {
   const goalsRecord = getJobSearchGoals(db, userId);
   const apps = getUserApplications(db, userId);
-  return computeActivityMetrics(
+  const metrics = computeActivityMetrics(
     apps,
     {
       dailyGoal: goalsRecord.dailyGoal,
@@ -147,6 +152,7 @@ export function getActivityMetrics(
     },
     now,
   );
+  return { ...metrics, goalsSetByUser: goalsRecord.goalsSetAt !== null };
 }
 
 export function getActivityHistory(
