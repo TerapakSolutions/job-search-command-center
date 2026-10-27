@@ -14,8 +14,10 @@ export function computeGoalReminders(
   const hour = now.getHours();
 
   const { progress, currentStreak, goals } = metrics;
+  // Placeholder goals the user never chose: no behind or at-risk reminders.
+  const trackPace = metrics.goalsSetByUser !== false;
 
-  if (!progress.daily.met && hour >= 17) {
+  if (trackPace && !progress.daily.met && hour >= 17) {
     const remaining = goals.dailyGoal - progress.daily.current;
     reminders.push({
       id: 'goal-daily-behind',
@@ -30,7 +32,7 @@ export function computeGoalReminders(
 
   const dayOfWeek = today.getDay();
   const daysLeftInWeek = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
-  if (!progress.weekly.met && daysLeftInWeek <= 2) {
+  if (trackPace && !progress.weekly.met && daysLeftInWeek <= 2) {
     const remaining = goals.weeklyGoal - progress.weekly.current;
     reminders.push({
       id: 'goal-weekly-pace',
@@ -52,6 +54,7 @@ export function computeGoalReminders(
   const daysLeftInMonth = daysInMonth - dayOfMonth;
   const expectedMonthly = (goals.monthlyGoal / daysInMonth) * dayOfMonth;
   if (
+    trackPace &&
     progress.monthly.current < expectedMonthly * 0.8 &&
     daysLeftInMonth <= 7
   ) {

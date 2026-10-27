@@ -52,4 +52,30 @@ describe('computeGoalReminders', () => {
     });
     expect(reminders.some((r) => r.type === 'daily_goal_met')).toBe(true);
   });
+
+  describe('when the user has not set their own goals', () => {
+    const PRESSURE_IDS = ['goal-daily-behind', 'goal-weekly-pace', 'goal-monthly-risk'];
+    // Friday evening, a day before month end: every "behind" reminder fires.
+    const lateInMonth = new Date(2026, 9, 30, 19, 0, 0);
+    const behind: ActivityMetrics = {
+      ...baseMetrics,
+      currentStreak: 0,
+      progress: {
+        daily: { current: 0, goal: 5, percent: 0, met: false },
+        weekly: { current: 1, goal: 25, percent: 4, met: false },
+        monthly: { current: 1, goal: 100, percent: 1, met: false },
+      },
+    };
+    const ids = (m: ActivityMetrics) => computeGoalReminders(m, lateInMonth).map((r) => r.id);
+
+    it('shows no behind or at-risk reminders', () => {
+      const shown = ids({ ...behind, goalsSetByUser: false });
+      for (const id of PRESSURE_IDS) expect(shown).not.toContain(id);
+    });
+
+    it('still shows them once goals are set, or when unknown (control)', () => {
+      expect(ids({ ...behind, goalsSetByUser: true })).toEqual(expect.arrayContaining(PRESSURE_IDS));
+      expect(ids(behind)).toEqual(expect.arrayContaining(PRESSURE_IDS));
+    });
+  });
 });

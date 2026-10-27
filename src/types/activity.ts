@@ -34,6 +34,8 @@ export interface ActivityMetrics {
     weekly: GoalProgress;
     monthly: GoalProgress;
   };
+  /** False while the goals are the untouched defaults; absent means unknown. */
+  goalsSetByUser?: boolean;
 }
 
 export interface DailyActivityEntry {
