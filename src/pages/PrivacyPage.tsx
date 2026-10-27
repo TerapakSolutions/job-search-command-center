@@ -39,8 +39,30 @@ export default function PrivacyPage() {
         <Section title="Where it is stored, and who can see it">
           <p>
             Everything is kept in one database on one server, hosted by Fly.io in San Jose,
-            California. Other users of the app cannot see your data. The person who runs the app
-            can access the server and database, and so can read what is stored there.
+            California. Fly.io also keeps automatic disk snapshots for 5 days. The person who runs
+            the app can access the server and database, and so can read what is stored there.
+          </p>
+          <p>
+            Other users cannot see the emails you forward. One exception: an email sent straight
+            to the shared inbound address (not forwarded by you) is matched by its sender, so
+            anyone who saved that sender as a contact can see it.
+          </p>
+        </Section>
+
+        <Section title="Who else handles your data">
+          <p>
+            <strong>Google</strong> signs you in. <strong>Postmark</strong> receives every email
+            you forward and delivers it to the app (
+            <a
+              href="https://postmarkapp.com/privacy-policy"
+              target="_blank"
+              rel="noreferrer"
+              className="text-blue-600 hover:underline"
+            >
+              Postmark privacy
+            </a>
+            ). <strong>Fly.io</strong> hosts the server and database. <strong>OpenAI</strong>{' '}
+            processes email text, as described below.
           </p>
         </Section>
 
@@ -69,6 +91,10 @@ export default function PrivacyPage() {
         </Section>
 
         <Section title="Deleting your data">
+          <p>
+            You can download your applications and contacts at any time with{' '}
+            <strong>Export</strong> in Settings.
+          </p>
           <p>
             <strong>Delete</strong> on an email hides it from the app, but does not erase it from
             the database. To have your emails or your whole account permanently removed,{' '}
