@@ -62,4 +62,15 @@ describe('Privacy page', () => {
     );
     expect(screen.getByRole('link', { name: 'Privacy' }).getAttribute('href')).toBe('/privacy');
   });
+
+  it('shows the support address in the login page footer', async () => {
+    mockSupportEmail('help@terapak.com');
+    render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+    const link = await screen.findByRole('link', { name: 'help@terapak.com' });
+    expect(link.getAttribute('href')).toBe('mailto:help@terapak.com');
+  });
 });

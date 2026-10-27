@@ -24,6 +24,7 @@ import {
   activityRouter,
   jobSearchGoalsRouter,
 } from './routes/jobSearchActivity.js';
+import { donateRouter } from './routes/donate.js';
 
 export function createApp(db: Db) {
   const app = express();
@@ -62,6 +63,7 @@ export function createApp(db: Db) {
   app.use('/api/email-automation', emailAutomationRouter(db));
   app.use('/api/job-search-goals', jobSearchGoalsRouter(db));
   app.use('/api/activity', activityRouter(db));
+  app.use('/api/donate', donateRouter());
 
   const distPath = path.join(process.cwd(), 'dist');
 
