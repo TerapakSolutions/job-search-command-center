@@ -11,6 +11,7 @@ import ActivityHistoryPage from './pages/ActivityHistoryPage';
 import HelpPage from './pages/HelpPage';
 import LoginPage from './pages/LoginPage';
 import PrivacyPage from './pages/PrivacyPage';
+import DonationResultPage from './pages/DonationResultPage';
 import { isDemoMode } from './api/persistence';
 import { SESSION_EXPIRED_EVENT } from './api/http';
 import { useAuthStore } from './store/useAuthStore';
@@ -88,6 +89,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   // The privacy page must be readable before anyone signs in.
   if (location.pathname === '/privacy') {
     return <PrivacyPage />;
+  }
+
+  // Stripe returns donors here; show the result even without a session.
+  if (location.pathname === '/donation-success') {
+    return <DonationResultPage outcome="success" />;
+  }
+  if (location.pathname === '/donation-cancel') {
+    return <DonationResultPage outcome="cancel" />;
   }
 
   if (demoMode) {
