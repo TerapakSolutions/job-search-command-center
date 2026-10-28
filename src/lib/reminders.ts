@@ -1,5 +1,6 @@
 import type { Application } from '../types/application';
 import type { Contact } from '../types/contact';
+import type { Interview } from '../types/interview';
 import type { Reminder } from '../types/reminder';
 import {
   addBusinessDays,
@@ -32,10 +33,27 @@ function latestContactDate(contacts: Contact[]): Date | null {
   return latest;
 }
 
+// True when the application has interviews scheduled on `day` and every one
+// of them has already started, i.e. there is nothing left to prep for.
+function interviewsOnDayAreOver(
+  interviews: Interview[],
+  applicationId: string,
+  day: Date,
+  now: Date,
+): boolean {
+  const onDay = interviews.filter((interview) => {
+    if (interview.applicationId !== applicationId) return false;
+    const at = new Date(interview.scheduledAt);
+    return !Number.isNaN(at.getTime()) && startOfDay(at).getTime() === day.getTime();
+  });
+  return onDay.length > 0 && onDay.every((interview) => new Date(interview.scheduledAt) <= now);
+}
+
 export function computeReminders(
   applications: Application[],
   contacts: Contact[],
   now = new Date(),
+  interviews: Interview[] = [],
 ): Reminder[] {
   const reminders: Reminder[] = [];
   const today = startOfDay(now);
@@ -75,7 +93,8 @@ export function computeReminders(
       const interviewDate = parseDate(app.interviewDate);
       if (interviewDate) {
         const daysUntil = daysBetween(today, interviewDate);
-        if (daysUntil >= 0 && daysUntil <= 3) {
+        const over = interviewsOnDayAreOver(interviews, app.id, startOfDay(interviewDate), now);
+        if (daysUntil >= 0 && daysUntil <= 3 && !over) {
           reminders.push({
             id: `interview_prep-${app.id}`,
             type: 'interview_prep',
