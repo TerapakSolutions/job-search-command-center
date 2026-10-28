@@ -428,11 +428,22 @@ export default function InboundEmailsPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-4">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Inbound Emails</h2>
-        <p className="text-gray-600 mt-1">
-          Recruiter and job-search emails received at your Postmark inbound address.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Inbound Emails</h2>
+          <p className="text-gray-600 mt-1">
+            Recruiter and job-search emails received at your Postmark inbound address.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void loadList()}
+          disabled={loading}
+          className="inline-flex items-center gap-2 px-3 py-2 text-sm border rounded-lg hover:bg-gray-50 disabled:opacity-60 shrink-0"
+        >
+          <FiRefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          Refresh
+        </button>
       </div>
 
       <div className="bg-white border rounded-lg p-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
