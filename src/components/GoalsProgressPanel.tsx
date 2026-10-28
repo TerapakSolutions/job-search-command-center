@@ -159,6 +159,12 @@ export default function GoalsProgressPanel() {
           percent={progress.monthly.percent}
           met={progress.monthly.met}
         />
+        {(metrics.firstPeriod?.week || metrics.firstPeriod?.month) && (
+          <p className="text-xs text-gray-600">
+            This {metrics.firstPeriod.month ? 'month' : 'week'}&apos;s target is scaled to the days
+            left since you set goals.
+          </p>
+        )}
       </div>
       )}
 

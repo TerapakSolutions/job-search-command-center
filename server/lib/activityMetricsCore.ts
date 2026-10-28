@@ -32,6 +32,10 @@ export interface ActivityMetrics {
   };
   /** False while the goals are the untouched defaults; absent means unknown. */
   goalsSetByUser?: boolean;
+  /** True in the week/month goals were first set: targets scaled, no pace alerts. */
+  firstPeriod?: { week: boolean; month: boolean };
+  /** The targets as saved, when `goals` holds scaled first-period ones. */
+  savedGoals?: JobSearchGoals;
 }
 
 export interface DailyActivityEntry {
@@ -138,6 +142,46 @@ function getWeekStart(date: Date): Date {
   const diff = day === 0 ? -6 : 1 - day;
   result.setDate(result.getDate() + diff);
   return result;
+}
+
+/**
+ * Goals first set mid-week or mid-month are judged only on the days left:
+ * the weekly and monthly targets scale to those days (rounded, at least 1).
+ * Daily is unchanged. Full targets resume when the period rolls over.
+ */
+export function firstPeriodGoals(
+  goals: JobSearchGoals,
+  goalsSetAt: string | null,
+  now: Date = new Date(),
+): { goals: JobSearchGoals; firstPeriod: { week: boolean; month: boolean } } {
+  const setAt = goalsSetAt ? new Date(goalsSetAt) : null;
+  if (!setAt || Number.isNaN(setAt.getTime())) {
+    return { goals, firstPeriod: { week: false, month: false } };
+  }
+  const setDay = startOfDay(setAt);
+  // Only a period joined partway through: set on its first day, it's a full one.
+  const week =
+    getWeekStart(setAt).getTime() === getWeekStart(now).getTime() &&
+    setDay.getTime() > getWeekStart(setAt).getTime();
+  const month =
+    setDay.getFullYear() === now.getFullYear() &&
+    setDay.getMonth() === now.getMonth() &&
+    setDay.getDate() > 1;
+  const scale = (goal: number, daysLeft: number, periodDays: number) =>
+    Math.max(1, Math.round((goal * daysLeft) / periodDays));
+
+  const daysInMonth = new Date(setDay.getFullYear(), setDay.getMonth() + 1, 0).getDate();
+  const weekDaysLeft = 7 - Math.round((setDay.getTime() - getWeekStart(setAt).getTime()) / 86_400_000);
+  return {
+    goals: {
+      ...goals,
+      weeklyGoal: week ? scale(goals.weeklyGoal, weekDaysLeft, 7) : goals.weeklyGoal,
+      monthlyGoal: month
+        ? scale(goals.monthlyGoal, daysInMonth - setDay.getDate() + 1, daysInMonth)
+        : goals.monthlyGoal,
+    },
+    firstPeriod: { week, month },
+  };
 }
 
 function getMonthKey(date: Date): string {
@@ -501,7 +545,7 @@ export function buildGoalBriefingMessages(
     );
   }
 
-  if (!progress.weekly.met) {
+  if (!progress.weekly.met && !metrics.firstPeriod?.week) {
     const dayOfWeek = startOfDay(new Date()).getDay();
     const daysLeftInWeek = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
     const weeklyRemaining = goals.weeklyGoal - progress.weekly.current;
@@ -523,6 +567,7 @@ export function buildGoalBriefingMessages(
   const expectedMonthly =
     (goals.monthlyGoal / daysInMonth) * dayOfMonth;
   if (
+    !metrics.firstPeriod?.month &&
     progress.monthly.current < expectedMonthly * 0.8 &&
     daysLeftInMonth <= 7
   ) {

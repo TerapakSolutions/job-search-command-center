@@ -32,7 +32,7 @@ export function computeGoalReminders(
 
   const dayOfWeek = today.getDay();
   const daysLeftInWeek = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
-  if (trackPace && !progress.weekly.met && daysLeftInWeek <= 2) {
+  if (trackPace && !metrics.firstPeriod?.week && !progress.weekly.met && daysLeftInWeek <= 2) {
     const remaining = goals.weeklyGoal - progress.weekly.current;
     reminders.push({
       id: 'goal-weekly-pace',
@@ -55,6 +55,7 @@ export function computeGoalReminders(
   const expectedMonthly = (goals.monthlyGoal / daysInMonth) * dayOfMonth;
   if (
     trackPace &&
+    !metrics.firstPeriod?.month &&
     progress.monthly.current < expectedMonthly * 0.8 &&
     daysLeftInMonth <= 7
   ) {

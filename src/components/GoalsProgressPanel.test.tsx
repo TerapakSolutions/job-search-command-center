@@ -52,4 +52,19 @@ describe('GoalsProgressPanel', () => {
     expect(await screen.findByText('1/5')).toBeTruthy();
     expect(screen.queryByRole('link', { name: /Set your goals/ })).toBeNull();
   });
+
+  it('explains a target scaled because goals were set partway through the month', async () => {
+    (fetchActivityMetrics as jest.Mock).mockResolvedValue({
+      ...metrics,
+      goalsSetByUser: true,
+      goals: { dailyGoal: 2, weeklyGoal: 9, monthlyGoal: 6 },
+      progress: { ...metrics.progress, monthly: { current: 1, goal: 6, percent: 16, met: false } },
+      firstPeriod: { week: true, month: true },
+      savedGoals: { dailyGoal: 2, weeklyGoal: 10, monthlyGoal: 40 },
+    });
+    renderPanel();
+
+    expect(await screen.findByText('1/6')).toBeTruthy();
+    expect(screen.getByText(/scaled to the days left since you set goals/)).toBeTruthy();
+  });
 });

@@ -85,6 +85,13 @@
       "when": 1850000000000,
       "tag": "0011_job_search_goals_set_at",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1860000000000,
+      "tag": "0012_goals_set_at_first_set",
+      "breakpoints": true
     }
   ]
 }

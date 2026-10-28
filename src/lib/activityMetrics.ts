@@ -60,6 +60,42 @@ function getWeekStart(date: Date): Date {
   return result;
 }
 
+/** Mirrors the server's firstPeriodGoals (server/lib/activityMetricsCore.ts). */
+export function firstPeriodGoals(
+  goals: JobSearchGoals,
+  goalsSetAt: string | null | undefined,
+  now: Date = new Date(),
+): { goals: JobSearchGoals; firstPeriod: { week: boolean; month: boolean } } {
+  const setAt = goalsSetAt ? new Date(goalsSetAt) : null;
+  if (!setAt || Number.isNaN(setAt.getTime())) {
+    return { goals, firstPeriod: { week: false, month: false } };
+  }
+  const setDay = startOfDay(setAt);
+  // Only a period joined partway through: set on its first day, it's a full one.
+  const week =
+    getWeekStart(setAt).getTime() === getWeekStart(now).getTime() &&
+    setDay.getTime() > getWeekStart(setAt).getTime();
+  const month =
+    setDay.getFullYear() === now.getFullYear() &&
+    setDay.getMonth() === now.getMonth() &&
+    setDay.getDate() > 1;
+  const scale = (goal: number, daysLeft: number, periodDays: number) =>
+    Math.max(1, Math.round((goal * daysLeft) / periodDays));
+
+  const daysInMonth = new Date(setDay.getFullYear(), setDay.getMonth() + 1, 0).getDate();
+  const weekDaysLeft = 7 - Math.round((setDay.getTime() - getWeekStart(setAt).getTime()) / 86_400_000);
+  return {
+    goals: {
+      ...goals,
+      weeklyGoal: week ? scale(goals.weeklyGoal, weekDaysLeft, 7) : goals.weeklyGoal,
+      monthlyGoal: month
+        ? scale(goals.monthlyGoal, daysInMonth - setDay.getDate() + 1, daysInMonth)
+        : goals.monthlyGoal,
+    },
+    firstPeriod: { week, month },
+  };
+}
+
 function getMonthKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }

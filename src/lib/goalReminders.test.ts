@@ -78,4 +78,29 @@ describe('computeGoalReminders', () => {
       expect(ids(behind)).toEqual(expect.arrayContaining(PRESSURE_IDS));
     });
   });
+
+  describe('in the week and month goals were first set', () => {
+    const satOct31 = new Date(2026, 9, 31, 19, 0, 0);
+    const behind: ActivityMetrics = {
+      ...baseMetrics,
+      currentStreak: 0,
+      progress: {
+        daily: { current: 0, goal: 2, percent: 0, met: false },
+        weekly: { current: 1, goal: 9, percent: 11, met: false },
+        monthly: { current: 1, goal: 6, percent: 16, met: false },
+      },
+    };
+    const ids = (m: ActivityMetrics) => computeGoalReminders(m, satOct31).map((r) => r.id);
+
+    it('shows no weekly pace or monthly at-risk reminder, but keeps the daily one', () => {
+      const shown = ids({ ...behind, firstPeriod: { week: true, month: true } });
+      expect(shown).not.toContain('goal-weekly-pace');
+      expect(shown).not.toContain('goal-monthly-risk');
+      expect(shown).toContain('goal-daily-behind');
+    });
+
+    it('shows them outside the first period (control)', () => {
+      expect(ids(behind)).toEqual(expect.arrayContaining(['goal-weekly-pace', 'goal-monthly-risk']));
+    });
+  });
 });

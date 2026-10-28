@@ -11,7 +11,7 @@ import {
 import type { BriefingData, BriefingPipelineStats } from './briefingTypes.js';
 import { toBriefingDate } from './briefingTypes.js';
 import { getActivityMetrics } from './activityMetrics.js';
-import { buildGoalBriefingMessages } from './activityMetricsCore.js';
+import { buildGoalBriefingMessages, type ActivityMetrics } from './activityMetricsCore.js';
 import {
   getUserEmailContext,
   inboundEmailBelongsToUser,
@@ -341,6 +341,7 @@ export function aggregateBriefingData(
     monthlyMet: activityMetrics.progress.monthly.met,
     goalMessages,
     goalsSetByUser: activityMetrics.goalsSetByUser,
+    targetsNote: scaledTargetsNote(activityMetrics),
   };
 
   const allRecommendations = [...goalMessages.slice(0, 2), ...recommendations];
@@ -362,6 +363,22 @@ export function aggregateBriefingData(
     changesSincePrevious,
     goalProgress,
   };
+}
+
+// So the AI doesn't call a scaled target "your goal of 6" when the user saved 40.
+function scaledTargetsNote(metrics: ActivityMetrics): string | undefined {
+  const saved = metrics.savedGoals;
+  if (!saved) return undefined;
+  const parts: string[] = [];
+  if (metrics.firstPeriod?.week) {
+    parts.push(`weekly target scaled from ${saved.weeklyGoal} to ${metrics.goals.weeklyGoal}`);
+  }
+  if (metrics.firstPeriod?.month) {
+    parts.push(`monthly target scaled from ${saved.monthlyGoal} to ${metrics.goals.monthlyGoal}`);
+  }
+  return parts.length
+    ? `Goals were set partway through this period: ${parts.join(', ')} for the days left. Do not call the period behind or at risk.`
+    : undefined;
 }
 
 function buildRuleBasedRecommendations(input: {
