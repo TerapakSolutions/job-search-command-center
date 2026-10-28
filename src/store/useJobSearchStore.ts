@@ -261,7 +261,8 @@ const storeCreator = (
     }
   },
 
-  getReminders: () => computeReminders(get().applications, get().contacts),
+  getReminders: () =>
+    computeReminders(get().applications, get().contacts, new Date(), get().interviews),
 
   getApplicationById: (id) => get().applications.find((app) => app.id === id),
 

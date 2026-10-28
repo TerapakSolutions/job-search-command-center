@@ -117,12 +117,12 @@ export default function TodayPage() {
   }, [applications, demoMode]);
 
   const reminders = useMemo(() => {
-    const pipelineReminders = computeReminders(applications, contacts);
+    const pipelineReminders = computeReminders(applications, contacts, new Date(), interviews);
     const goalReminders = activityMetrics
       ? computeGoalReminders(activityMetrics)
       : [];
     return [...goalReminders, ...pipelineReminders];
-  }, [applications, contacts, activityMetrics]);
+  }, [applications, contacts, interviews, activityMetrics]);
 
   const upcomingInterviews = useMemo(() => {
     const today = new Date();

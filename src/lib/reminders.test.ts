@@ -1,6 +1,7 @@
 import { computeReminders } from './reminders';
 import type { Application } from '../types/application';
 import type { Contact } from '../types/contact';
+import type { Interview } from '../types/interview';
 
 const baseApp = (overrides: Partial<Application> = {}): Application => ({
   id: 'app-1',
@@ -82,5 +83,41 @@ describe('computeReminders', () => {
     ];
     const reminders = computeReminders(apps, [], now);
     expect(reminders.some((r) => r.type === 'stale_review')).toBe(true);
+  });
+});
+
+// Steve, 2026-10-27: once today's interview is over, "Prep for interview ...
+// Interview is today" should go away.
+describe('interview prep after the interview', () => {
+  // Local-time constructors keep these independent of the machine's zone.
+  const NINE_PM = new Date(2026, 9, 27, 21, 0);
+  const app = baseApp({ status: 'interviewing', interviewDate: '2026-10-27' });
+  const interviewAt = (scheduled: Date): Interview => ({
+    id: 'int-1',
+    applicationId: 'app-1',
+    scheduledAt: scheduled.toISOString(),
+    type: 'video',
+    location: '',
+    notes: '',
+    createdAt: '',
+    updatedAt: '',
+  });
+  const hasPrep = (interviews: Interview[]) =>
+    computeReminders([app], [], NINE_PM, interviews).some((r) => r.type === 'interview_prep');
+
+  it('drops the prep reminder once the interview time has passed', () => {
+    expect(hasPrep([interviewAt(new Date(2026, 9, 27, 14, 0))])).toBe(false);
+  });
+
+  it('keeps it while the interview is still ahead today (control)', () => {
+    expect(hasPrep([interviewAt(new Date(2026, 9, 27, 22, 30))])).toBe(true);
+  });
+
+  it('keeps it when only the date is known (control)', () => {
+    expect(hasPrep([])).toBe(true);
+  });
+
+  it('ignores a past interview on another day', () => {
+    expect(hasPrep([interviewAt(new Date(2026, 9, 20, 14, 0))])).toBe(true);
   });
 });

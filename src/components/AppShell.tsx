@@ -46,12 +46,13 @@ export default function AppShell({ children }: AppShellProps) {
   const location = useLocation();
   const applications = useJobSearchStore((s) => s.applications);
   const contacts = useJobSearchStore((s) => s.contacts);
+  const interviews = useJobSearchStore((s) => s.interviews);
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const demoMode = isDemoMode();
   const reminderCount = useMemo(
-    () => computeReminders(applications, contacts).length,
-    [applications, contacts],
+    () => computeReminders(applications, contacts, new Date(), interviews).length,
+    [applications, contacts, interviews],
   );
 
   const title = pageTitles[location.pathname] ?? 'Job Search Command Center';
