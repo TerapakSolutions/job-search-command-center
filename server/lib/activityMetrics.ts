@@ -13,6 +13,7 @@ import {
   computeActivityMetrics,
   computeProductivityInsights,
   DEFAULT_JOB_SEARCH_GOALS,
+  firstPeriodGoals,
   type ActivityHistory,
   type ActivityMetrics,
   type JobSearchGoals,
@@ -112,7 +113,8 @@ export function updateJobSearchGoals(
       dailyGoal,
       weeklyGoal,
       monthlyGoal,
-      goalsSetAt: timestamp,
+      // When goals were first set; later saves keep it (first-period scaling).
+      goalsSetAt: existing.goalsSetAt ?? timestamp,
       updatedAt: timestamp,
     })
     .where(eq(jobSearchGoals.userId, userId))
@@ -123,7 +125,7 @@ export function updateJobSearchGoals(
     dailyGoal,
     weeklyGoal,
     monthlyGoal,
-    goalsSetAt: timestamp,
+    goalsSetAt: existing.goalsSetAt ?? timestamp,
     updatedAt: timestamp,
   };
 }
@@ -143,16 +145,19 @@ export function getActivityMetrics(
 ): ActivityMetrics {
   const goalsRecord = getJobSearchGoals(db, userId);
   const apps = getUserApplications(db, userId);
-  const metrics = computeActivityMetrics(
-    apps,
-    {
-      dailyGoal: goalsRecord.dailyGoal,
-      weeklyGoal: goalsRecord.weeklyGoal,
-      monthlyGoal: goalsRecord.monthlyGoal,
-    },
-    now,
-  );
-  return { ...metrics, goalsSetByUser: goalsRecord.goalsSetAt !== null };
+  const savedGoals = {
+    dailyGoal: goalsRecord.dailyGoal,
+    weeklyGoal: goalsRecord.weeklyGoal,
+    monthlyGoal: goalsRecord.monthlyGoal,
+  };
+  const { goals, firstPeriod } = firstPeriodGoals(savedGoals, goalsRecord.goalsSetAt, now);
+  const metrics = computeActivityMetrics(apps, goals, now);
+  return {
+    ...metrics,
+    goalsSetByUser: goalsRecord.goalsSetAt !== null,
+    firstPeriod,
+    ...((firstPeriod.week || firstPeriod.month) && { savedGoals }),
+  };
 }
 
 export function getActivityHistory(

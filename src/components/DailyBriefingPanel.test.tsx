@@ -202,4 +202,21 @@ describe('DailyBriefingPanel', () => {
     const link = await screen.findByRole('link', { name: 'help@terapak.com' });
     expect(link.getAttribute('href')).toBe('mailto:help@terapak.com');
   });
+
+  it('scales the week like the goals panel when goals were just set', async () => {
+    jest.useFakeTimers({ now: new Date(2026, 9, 27, 15, 0), advanceTimers: true });
+    try {
+      (fetchJobSearchGoals as jest.Mock).mockResolvedValue({
+        dailyGoal: 2,
+        weeklyGoal: 10,
+        monthlyGoal: 40,
+        goalsSetAt: new Date(2026, 9, 27, 14, 0).toISOString(),
+      });
+      const { container } = render(<DailyBriefingPanel />);
+
+      await waitFor(() => expect(container.textContent).toContain('Week: 0/9'));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

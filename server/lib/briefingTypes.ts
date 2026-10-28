@@ -54,6 +54,8 @@ export interface BriefingGoalProgress {
   monthlyMet: boolean;
   goalMessages: string[];
   goalsSetByUser?: boolean;
+  /** Set when the week/month targets are scaled because goals were set partway through. */
+  targetsNote?: string;
 }
 
 export interface BriefingData {

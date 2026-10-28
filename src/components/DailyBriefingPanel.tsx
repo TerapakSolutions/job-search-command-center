@@ -16,7 +16,7 @@ import type { DailyBriefing } from '../types/dailyBriefing';
 import { isDemoMode } from '../api/persistence';
 import { fetchJobSearchGoals } from '../api/activityClient';
 import { useJobSearchStore } from '../store/useJobSearchStore';
-import { computeLocalActivityMetrics } from '../lib/activityMetrics';
+import { computeLocalActivityMetrics, firstPeriodGoals } from '../lib/activityMetrics';
 import { DEFAULT_JOB_SEARCH_GOALS, type JobSearchGoals } from '../types/activity';
 import ContactLine from './ContactLine';
 
@@ -55,7 +55,8 @@ export default function DailyBriefingPanel() {
         goals = DEFAULT_JOB_SEARCH_GOALS;
       }
     }
-    return computeLocalActivityMetrics(applications, goals);
+    const scaled = firstPeriodGoals(goals, savedGoals?.goalsSetAt);
+    return computeLocalActivityMetrics(applications, scaled.goals);
   }, [applications, savedGoals]);
   // Placeholder goals the user never chose: show counts, not targets.
   const goalsUnset = savedGoals?.goalsSetAt === null;

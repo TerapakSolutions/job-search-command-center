@@ -38,6 +38,10 @@ export interface ActivityMetrics {
   };
   /** False while the goals are the untouched defaults; absent means unknown. */
   goalsSetByUser?: boolean;
+  /** True in the week/month goals were first set: targets scaled, no pace alerts. */
+  firstPeriod?: { week: boolean; month: boolean };
+  /** The targets as saved, when `goals` holds scaled first-period ones. */
+  savedGoals?: JobSearchGoals;
 }
 
 export interface DailyActivityEntry {
