@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { FiPlus, FiSearch, FiTrash2 } from 'react-icons/fi';
+import { FiPlus, FiRefreshCw, FiSearch, FiTrash2 } from 'react-icons/fi';
 import ApplicationCard from '../components/ApplicationCard';
 import ApplicationForm from '../components/ApplicationForm';
 import Modal from '../components/Modal';
@@ -12,11 +12,22 @@ export default function ApplicationsPage() {
   const addApplication = useJobSearchStore((s) => s.addApplication);
   const updateApplication = useJobSearchStore((s) => s.updateApplication);
   const deleteApplication = useJobSearchStore((s) => s.deleteApplication);
+  const refreshData = useJobSearchStore((s) => s.refreshData);
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Application | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await refreshData();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -50,14 +61,25 @@ export default function ApplicationsPage() {
             Add, edit, and search all tracked roles.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-        >
-          <FiPlus className="mr-2" />
-          New application
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            disabled={refreshing}
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm border rounded-lg hover:bg-gray-50 disabled:opacity-60"
+          >
+            <FiRefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={openCreate}
+            className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+          >
+            <FiPlus className="mr-2" />
+            New application
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
