@@ -1,0 +1,22 @@
+# jobsearch.terapak.com — index the public pages only. Everything behind sign-in
+# is per-user and must never be indexed; the server answers every app route with
+# the SPA shell (200), so robots.txt is the only signal crawlers get.
+User-agent: *
+Allow: /login
+Allow: /privacy
+Disallow: /api/
+Disallow: /auth/
+Disallow: /webhooks/
+Disallow: /today
+Disallow: /pipeline
+Disallow: /applications
+Disallow: /contacts
+Disallow: /inbound-emails
+Disallow: /settings
+Disallow: /activity
+Disallow: /help
+Disallow: /dashboard
+Disallow: /donation-success
+Disallow: /donation-cancel
+
+Sitemap: https://jobsearch.terapak.com/sitemap.xml
