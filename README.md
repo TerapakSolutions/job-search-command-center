@@ -211,7 +211,9 @@ Scrolls and Video engagement can stay on.
    - Network shows one `gtag/js?id=G-MP6LG6VRQC` request.
    - Each navigation sends one `collect?…en=page_view` request, whose `dl` is a sanitized URL (e.g. `/applications`, never an id or email) and whose `dt` is the static title.
    - `document.cookie` has no `_ga`.
-4. GA4 → Admin → DebugView (with the Google Analytics Debugger extension), or Reports → Realtime: page views appear with sanitized paths.
+4. GA4 → Admin → DebugView (with the Google Analytics Debugger extension) should show the page_view events with sanitized paths. Under denied consent, Realtime and standard reports may show nothing until Google's modeling thresholds are met. If they stay empty, that is the consent default, not a tracking bug.
+
+Also turn off Admin → Data collection → Google signals. Code already sets `allow_google_signals: false`; the admin switch is a second layer.
 
 ## REST API
 
