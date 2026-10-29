@@ -169,6 +169,50 @@ All `/api/*` routes (except `GET /api/health`) require a valid session cookie.
 
 Migration `0001_auth_users` adds a `users` table and `user_id` columns to all entity tables. **Existing rows without a `user_id` are orphaned** and will not appear after sign-in. Export JSON from Settings before upgrading, then re-import after logging in, or delete `./data/jobsearch.sqlite` for a fresh start.
 
+## Analytics (GA4)
+
+Google Analytics 4 property `561541850`, Measurement ID `G-MP6LG6VRQC`.
+
+**Where it lives**
+
+- `src/lib/analytics.ts`: the loader, Consent Mode defaults, the route table, the sanitizers, and the page_view sender. It is the only code that calls `window.gtag`.
+- `src/components/AnalyticsTracker.tsx`: mounted once in `src/App.tsx`, inside `BrowserRouter` and above `AuthGate`, so `/login`, `/privacy` and the donation pages are measured as well as the signed-in app.
+- The tag is injected at runtime, not from `index.html`, so it can be skipped outside production.
+
+**When it loads**: only when the hostname is exactly `jobsearch.terapak.com`, the bundle is a production `vite build` (`import.meta.env.PROD`), and demo mode is off. So it never loads on localhost, `*.fly.dev`, the Vite dev server, or a demo build. Demo mode is browser-only test data, not the product.
+
+**What is sent**
+
+- `config` uses `send_page_view: false`, with Google signals and ad personalization off. The tracker then sends one manual `page_view` per route change, including the initial load. Redirect-only routes (`/`, `/dashboard`, and `/login` when signed in) and the auth check are skipped, so a navigation that passes through a `<Navigate>` counts once, for the page you land on.
+- `page_location` is `https://jobsearch.terapak.com` + the route pattern. Unknown path segments (ids, UUIDs, emails, names) become `:id`. The query keeps only `utm_*` and `gclid`, and drops any value containing `@`. The hash is dropped.
+- `page_title` is a static per-route title from the route table, never `document.title`.
+- `page_referrer` is the previous sanitized page. On the first load it is the sanitized `document.referrer`: same site → sanitized, other sites → origin only.
+- The same sanitized context is applied with `gtag('set', …)` before each page_view, so automatic events (user_engagement, scroll) never use the raw URL.
+- Nothing else is sent: no user id, no store data, no form values.
+- **Adding a route**: add it to `ROUTES` in `src/lib/analytics.ts`, with a `:param` pattern if it has ids, so it gets a real title.
+
+**Consent Mode v2**: `ad_storage`, `ad_user_data`, `ad_personalization` and `analytics_storage` all default to `denied` before `config`, and nothing grants them (there is no cookie banner). GA therefore sets no `_ga` cookies and sends cookieless pings only. To use cookie-based measurement, change `ANALYTICS_STORAGE_CONSENT` and update the privacy page first.
+
+**GA admin settings**: gtag.js has no in-code switch for these. In Admin → Data streams → (web stream) → Enhanced measurement, turn off:
+
+- **Page views → Show advanced settings → "Page changes based on browser history events"**. The app sends its own page_views; leaving this on duplicates them and sends the raw URL.
+- **Form interactions**
+- **Site search**
+- **Outbound clicks**: `link_url` can be a contact's or employer's URL.
+- **File downloads**: `link_url`/`file_name` can name an employer or a person.
+
+Scrolls and Video engagement can stay on.
+
+**Verifying**
+
+1. `pnpm test -- analytics`: sanitizers, the one-page_view-per-navigation rule, the host and build gate, and the no-form-values check.
+2. Locally (`pnpm dev`, or a build served on localhost): DevTools → Network shows no `googletagmanager.com` or `google-analytics.com` requests, and `window.gtag` is `undefined`.
+3. On https://jobsearch.terapak.com after deploy:
+   - Network shows one `gtag/js?id=G-MP6LG6VRQC` request.
+   - Each navigation sends one `collect?…en=page_view` request, whose `dl` is a sanitized URL (e.g. `/applications`, never an id or email) and whose `dt` is the static title.
+   - `document.cookie` has no `_ga`.
+4. GA4 → Admin → DebugView (with the Google Analytics Debugger extension), or Reports → Realtime: page views appear with sanitized paths.
+
 ## REST API
 
 Base path: `/api`
