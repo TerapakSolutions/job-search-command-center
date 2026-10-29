@@ -16,7 +16,6 @@ Disallow: /settings
 Disallow: /activity
 Disallow: /help
 Disallow: /dashboard
-Disallow: /emails
 Disallow: /donation-success
 Disallow: /donation-cancel
 
