@@ -36,7 +36,12 @@ jobs:
           # Cypress is for local e2e only; skip its ~500MB binary download in CI.
           CYPRESS_INSTALL_BINARY: 0
       - run: pnpm lint
+      # The date-formatting tests assume Pacific local time (src/lib/dates.test.ts: "22:00Z = 3:00 PM
+      # Pacific") — they were only ever run on a Pacific laptop. GitHub runners are UTC, and Node
+      # reads TZ once at start-up, so it must be set here, not inside a test.
       - run: pnpm test
+        env:
+          TZ: America/Los_Angeles
       # `build` also runs both typechecks (package.json: "pnpm typecheck && vite build").
       - run: pnpm build
 
