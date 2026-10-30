@@ -1,0 +1,70 @@
+name: CI/CD
+
+# Every PR runs the same checks a laptop runs (lint, tests, build). A push to main runs them
+# again and then deploys to Fly — before 2026-10-29 this repo had NO checks on PRs and NO deploy:
+# merging shipped nothing, and prod changed only when someone remembered to run `fly deploy`.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time, and never cancel one half-way: the app is a single machine with SQLite
+# on a volume, so overlapping deploys would fight over it.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('ci-{0}', github.ref) || 'fly-deploy' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    name: verify (lint + tests + build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      # No `with: version:` — `packageManager` in package.json is the single source of truth, and
+      # pnpm/action-setup@v4 refuses to run when both are set.
+      - uses: pnpm/action-setup@v4
+      # The Dockerfile builds on node:22, so test on 22: a green run on another major is evidence
+      # about a runtime production never uses.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        env:
+          # Cypress is for local e2e only; skip its ~500MB binary download in CI.
+          CYPRESS_INSTALL_BINARY: 0
+      - run: pnpm lint
+      # The date-formatting tests assume Pacific local time (src/lib/dates.test.ts: "22:00Z = 3:00 PM
+      # Pacific") — they were only ever run on a Pacific laptop. GitHub runners are UTC, and Node
+      # reads TZ once at start-up, so it must be set here, not inside a test.
+      - run: pnpm test
+        env:
+          TZ: America/Los_Angeles
+      # `build` also runs both typechecks (package.json: "pnpm typecheck && vite build").
+      - run: pnpm build
+
+  deploy:
+    name: deploy → production
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      # Pinned, not @master: an unpinned setup-flyctl died transiently on 2026-09-27 in
+      # merchant-service and took a deploy down with it.
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+      - name: fly deploy
+        run: flyctl deploy --app job-search-command-center --remote-only --wait-timeout 600
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      # Prove the new release actually answers, so a green run means a working site.
+      - name: smoke check
+        run: |
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://jobsearch.terapak.com/api/health) && [ "$code" = 200 ] && echo "health 200" && exit 0
+            sleep 10
+          done
+          echo "health check failed after deploy (last status: $code)"; exit 1
