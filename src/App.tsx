@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import AppShell from './components/AppShell';
+import AnalyticsTracker from './components/AnalyticsTracker';
 import TodayPage from './pages/TodayPage';
 import PipelinePage from './pages/PipelinePage';
 import ApplicationsPage from './pages/ApplicationsPage';
@@ -128,6 +129,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <AnalyticsTracker />
       <AuthGate>
         <AppBootstrap>
           <AppShell>

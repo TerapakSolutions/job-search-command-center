@@ -62,7 +62,8 @@ export default function PrivacyPage() {
               Postmark privacy
             </a>
             ). <strong>Fly.io</strong> hosts the server and database. <strong>OpenAI</strong>{' '}
-            processes email text, as described below.
+            processes email text, as described below. <strong>Google Analytics</strong> counts
+            which screens are opened, without cookies or personal data.
           </p>
         </Section>
 
@@ -93,8 +94,9 @@ export default function PrivacyPage() {
 
         <Section title="What the app does not do">
           <p>
-            No ads and no analytics or tracking scripts. The only cookie is the one that keeps you
-            signed in.
+            No ads. Google Analytics counts which screens are opened, with no cookies and no
+            personal data: never what is on a screen, what you type, or who you are. The only
+            cookie is the one that keeps you signed in.
           </p>
         </Section>
 
