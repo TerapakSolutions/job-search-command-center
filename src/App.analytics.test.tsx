@@ -150,6 +150,7 @@ describe('GA4 page views', () => {
       'ad_personalization',
       'analytics_storage',
       'wait_for_update',
+      'region',
     ]);
     const serialized = JSON.stringify(calls());
     for (const call of calls()) {
