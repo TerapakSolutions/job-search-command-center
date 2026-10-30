@@ -191,7 +191,7 @@ Google Analytics 4 property `561541850`, Measurement ID `G-MP6LG6VRQC`.
 - Nothing else is sent: no user id, no store data, no form values.
 - **Adding a route**: add it to `ROUTES` in `src/lib/analytics.ts`, with a `:param` pattern if it has ids, so it gets a real title.
 
-**Consent Mode v2**: `ad_storage`, `ad_user_data`, `ad_personalization` and `analytics_storage` all default to `denied` before `config`, and nothing grants them (there is no cookie banner). GA therefore sets no `_ga` cookies and sends cookieless pings only. To use cookie-based measurement, change `ANALYTICS_STORAGE_CONSENT` and update the privacy page first.
+**Consent Mode v2**: two `consent default` calls, both before `js` and `config`. First, a region-specific default denies `ad_storage`, `ad_user_data`, `ad_personalization` and `analytics_storage` for the EEA, UK and Switzerland (`ANALYTICS_COOKIE_DENIED_REGIONS`); visitors there get no `_ga` cookies and send cookieless pings only. Then the global default keeps the three ad signals denied and grants `analytics_storage`, so everyone else gets first-party `_ga` cookies and is counted in Realtime and standard reports. Nothing updates consent later (there is no cookie banner). Google signals and ad personalisation stay off in `config`. Change the region list or the defaults only together with the privacy page.
 
 **GA admin settings**: gtag.js has no in-code switch for these. In Admin → Data streams → (web stream) → Enhanced measurement, turn off:
 
@@ -210,8 +210,8 @@ Scrolls and Video engagement can stay on.
 3. On https://jobsearch.terapak.com after deploy:
    - Network shows one `gtag/js?id=G-MP6LG6VRQC` request.
    - Each navigation sends one `collect?…en=page_view` request, whose `dl` is a sanitized URL (e.g. `/applications`, never an id or email) and whose `dt` is the static title.
-   - `document.cookie` has no `_ga`.
-4. GA4 → Admin → DebugView (with the Google Analytics Debugger extension) should show the page_view events with sanitized paths. Under denied consent, Realtime and standard reports may show nothing until Google's modeling thresholds are met. If they stay empty, that is the consent default, not a tracking bug.
+   - `document.cookie` has `_ga` and `_ga_MP6LG6VRQC` (outside the EEA, UK and Switzerland).
+4. GA4 → Admin → DebugView (with the Google Analytics Debugger extension) should show the page_view events with sanitized paths. Realtime should show users from outside the EEA, UK and Switzerland; visits from those regions are cookieless and may not appear until Google's modeling thresholds are met.
 
 Also turn off Admin → Data collection → Google signals. Code already sets `allow_google_signals: false`; the admin switch is a second layer.
 

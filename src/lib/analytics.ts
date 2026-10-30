@@ -7,8 +7,9 @@ import { matchPath } from 'react-router-dom';
  * - only sanitized route patterns, a utm_* and gclid query allow-list, and static
  *   per-route titles ever reach gtag (never document.location/title/referrer);
  * - nothing from the store, the user, or any form is ever passed in;
- * - Consent Mode v2 defaults to denied (no _ga cookies), matching the privacy page's
- *   "the only cookie is the one that keeps you signed in".
+ * - Consent Mode v2: ad signals are always denied; analytics_storage is granted (GA
+ *   sets first-party _ga cookies) except in the EEA, UK and Switzerland, where a
+ *   region-specific default denies it. The privacy page discloses exactly this.
  *
  * `window.gtag` is called from this module only.
  */
@@ -19,16 +20,30 @@ const PRODUCTION_ORIGIN = `https://${PRODUCTION_HOSTNAME}`;
 const SCRIPT_ID = 'ga4-gtag';
 
 /**
- * Flip to 'granted' only together with a privacy-page update: granted lets GA set
- * first-party _ga cookies.
+ * EEA (EU + IS, LI, NO), UK and Switzerland: analytics_storage stays denied here, so
+ * visitors get no _ga cookies (cookieless pings only). Keep in step with the privacy page.
  */
-export const ANALYTICS_STORAGE_CONSENT: 'granted' | 'denied' = 'denied';
+export const ANALYTICS_COOKIE_DENIED_REGIONS = [
+  'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IE', 'IT',
+  'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'IS', 'LI', 'NO',
+  'GB', 'CH',
+] as const;
 
-const CONSENT_DEFAULTS = {
+/** Sent first: gtag applies the most specific matching region default. */
+const REGION_CONSENT_DEFAULTS = {
   ad_storage: 'denied',
   ad_user_data: 'denied',
   ad_personalization: 'denied',
-  analytics_storage: ANALYTICS_STORAGE_CONSENT,
+  analytics_storage: 'denied',
+  region: [...ANALYTICS_COOKIE_DENIED_REGIONS],
+} as const;
+
+/** Everywhere else: analytics cookies on, ads off. */
+const GLOBAL_CONSENT_DEFAULTS = {
+  ad_storage: 'denied',
+  ad_user_data: 'denied',
+  ad_personalization: 'denied',
+  analytics_storage: 'granted',
 } as const;
 
 declare global {
@@ -171,7 +186,8 @@ export function loadGoogleTag(documentReferrer: string): void {
     window.dataLayer?.push(arguments);
   };
 
-  window.gtag('consent', 'default', { ...CONSENT_DEFAULTS });
+  window.gtag('consent', 'default', REGION_CONSENT_DEFAULTS);
+  window.gtag('consent', 'default', GLOBAL_CONSENT_DEFAULTS);
   window.gtag('js', new Date());
   window.gtag('config', GA_MEASUREMENT_ID, {
     send_page_view: false,

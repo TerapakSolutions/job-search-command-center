@@ -1,4 +1,5 @@
 import {
+  ANALYTICS_COOKIE_DENIED_REGIONS,
   GA_MEASUREMENT_ID,
   loadGoogleTag,
   resolveTrackedPath,
@@ -145,6 +146,18 @@ describe('resolveTrackedPath', () => {
   });
 });
 
+describe('ANALYTICS_COOKIE_DENIED_REGIONS', () => {
+  it('is exactly the EEA plus UK and Switzerland', () => {
+    expect([...ANALYTICS_COOKIE_DENIED_REGIONS].sort()).toEqual(
+      [
+        'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IE', 'IT',
+        'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'IS', 'LI', 'NO',
+        'GB', 'CH',
+      ].sort(),
+    );
+  });
+});
+
 describe('loadGoogleTag and trackPageView', () => {
   beforeEach(() => {
     document.head.innerHTML = '';
@@ -154,7 +167,7 @@ describe('loadGoogleTag and trackPageView', () => {
 
   const calls = () => (window.dataLayer ?? []).map((entry) => Array.from(entry as ArrayLike<unknown>));
 
-  it('injects the tag once, denies consent before config, and disables the automatic page_view', () => {
+  it('injects the tag once, sets both consent defaults before js/config, and disables the automatic page_view', () => {
     loadGoogleTag('');
     loadGoogleTag('');
     const scripts = document.querySelectorAll('script[src*="googletagmanager.com/gtag/js"]');
@@ -164,17 +177,26 @@ describe('loadGoogleTag and trackPageView', () => {
     );
 
     const all = calls();
-    const consentIndex = all.findIndex((c) => c[0] === 'consent' && c[1] === 'default');
+    const consentCalls = all.filter((c) => c[0] === 'consent' && c[1] === 'default');
     const configs = all.filter((c) => c[0] === 'config');
     expect(configs).toHaveLength(1);
-    expect(consentIndex).toBeGreaterThanOrEqual(0);
-    expect(consentIndex).toBeLessThan(all.findIndex((c) => c[0] === 'config'));
-    expect(all[consentIndex][2]).toEqual({
+    // Region-specific default first, then the global default; both before js and config.
+    expect(consentCalls).toHaveLength(2);
+    expect(all[0]).toEqual(['consent', 'default', {
       ad_storage: 'denied',
       ad_user_data: 'denied',
       ad_personalization: 'denied',
       analytics_storage: 'denied',
-    });
+      region: [...ANALYTICS_COOKIE_DENIED_REGIONS],
+    }]);
+    expect(all[1]).toEqual(['consent', 'default', {
+      ad_storage: 'denied',
+      ad_user_data: 'denied',
+      ad_personalization: 'denied',
+      analytics_storage: 'granted',
+    }]);
+    expect(all[2][0]).toBe('js');
+    expect(all[3][0]).toBe('config');
     expect(configs[0][1]).toBe(GA_MEASUREMENT_ID);
     expect(configs[0][2]).toMatchObject({
       send_page_view: false,

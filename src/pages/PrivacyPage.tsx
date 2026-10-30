@@ -63,7 +63,7 @@ export default function PrivacyPage() {
             </a>
             ). <strong>Fly.io</strong> hosts the server and database. <strong>OpenAI</strong>{' '}
             processes email text, as described below. <strong>Google Analytics</strong> counts
-            which screens are opened, without cookies or personal data.
+            which screens are opened, with its own cookies but no personal data.
           </p>
         </Section>
 
@@ -94,9 +94,10 @@ export default function PrivacyPage() {
 
         <Section title="What the app does not do">
           <p>
-            No ads. Google Analytics counts which screens are opened, with no cookies and no
-            personal data: never what is on a screen, what you type, or who you are. The only
-            cookie is the one that keeps you signed in.
+            No ads. Google Analytics counts which screens are opened, never what is on a screen,
+            what you type, or who you are. It sets its own cookies (_ga) to count visits;
+            visitors in the EU, UK and Switzerland get no analytics cookies. The other cookie
+            keeps you signed in.
           </p>
         </Section>
 
