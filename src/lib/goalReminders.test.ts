@@ -41,6 +41,30 @@ describe('computeGoalReminders', () => {
     expect(reminders.some((r) => r.type === 'streak_milestone')).toBe(true);
   });
 
+  // 2026-10-29 (Steve): "3-day streak! Congratulations on 3 consecutive days" showed next to
+  // "0 today". Both were true — the streak counts through YESTERDAY until today ends
+  // (activityMetrics computeStreaks) — but the wording read as if today counted.
+  it('with nothing applied today, the streak message says it is still open — not a done deal', () => {
+    const reminders = computeGoalReminders({
+      ...baseMetrics,
+      applicationsToday: 0,
+      currentStreak: 3,
+      progress: { ...baseMetrics.progress, daily: { current: 0, goal: 5, percent: 0, met: false } },
+    });
+    const streak = reminders.find((r) => r.type === 'streak_milestone');
+    expect(streak?.title).toBe('3-day streak');
+    expect(streak?.description).toBe(
+      'You applied each of the last 3 days. Apply today to keep the streak going.',
+    );
+  });
+
+  it('once something is applied today, the milestone congratulates as before', () => {
+    const reminders = computeGoalReminders({ ...baseMetrics, applicationsToday: 1, currentStreak: 3 });
+    const streak = reminders.find((r) => r.type === 'streak_milestone');
+    expect(streak?.title).toBe('3-day streak!');
+    expect(streak?.description).toBe('Congratulations on 3 consecutive days of applications. Keep it up!');
+  });
+
   it('congratulates daily goal completion', () => {
     const reminders = computeGoalReminders({
       ...baseMetrics,

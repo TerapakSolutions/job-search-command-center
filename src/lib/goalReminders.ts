@@ -70,14 +70,20 @@ export function computeGoalReminders(
     });
   }
 
+  // With nothing applied today the streak still counts through yesterday (it only breaks when
+  // today ends — activityMetrics computeStreaks), so say it is open rather than congratulate:
+  // "Congratulations on 3 consecutive days" beside "0 today" read as a contradiction.
+  const streakOpenToday = metrics.applicationsToday === 0;
   for (const milestone of STREAK_MILESTONES) {
     if (currentStreak === milestone) {
       reminders.push({
         id: `goal-streak-${milestone}`,
         type: 'streak_milestone',
         priority: 'low',
-        title: `${milestone}-day streak!`,
-        description: `Congratulations on ${milestone} consecutive days of applications. Keep it up!`,
+        title: streakOpenToday ? `${milestone}-day streak` : `${milestone}-day streak!`,
+        description: streakOpenToday
+          ? `You applied each of the last ${milestone} days. Apply today to keep the streak going.`
+          : `Congratulations on ${milestone} consecutive days of applications. Keep it up!`,
         applicationId: '',
         dueDate: todayIso,
       });
