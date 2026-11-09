@@ -63,7 +63,7 @@ export function verifySessionToken(token: string): SessionPayload | null {
   }
 }
 
-function parseCookies(cookieHeader: string | undefined): Record<string, string> {
+export function parseCookies(cookieHeader: string | undefined): Record<string, string> {
   if (!cookieHeader) {
     return {};
   }
@@ -88,7 +88,8 @@ export function getUserIdFromRequest(req: Request): string | null {
 export function setSessionCookie(res: Response, userId: string): void {
   const token = createSessionToken(userId);
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
-  res.setHeader(
+  // append, not setHeader: the OAuth callback also clears its state cookie.
+  res.append(
     'Set-Cookie',
     `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(SESSION_MAX_AGE_MS / 1000)}${secure}`,
   );

@@ -23,11 +23,16 @@ async function callback(db: ReturnType<typeof createTestDb>): Promise<string> {
   const port = typeof addr === 'object' && addr ? addr.port : 0;
   try {
     return await new Promise<string>((resolve, reject) => {
+      // A valid sign-in carries matching state in the URL and cookie.
       http
-        .get(`http://127.0.0.1:${port}/auth/google/callback?code=abc`, (res) => {
-          res.resume();
-          resolve(res.headers.location ?? '');
-        })
+        .get(
+          `http://127.0.0.1:${port}/auth/google/callback?code=abc&state=s1`,
+          { headers: { cookie: 'oauth_state=s1' } },
+          (res) => {
+            res.resume();
+            resolve(res.headers.location ?? '');
+          },
+        )
         .on('error', reject);
     });
   } finally {
