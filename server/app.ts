@@ -52,6 +52,11 @@ export function createApp(db: Db) {
     res.json({ ok: true, dbPath: getDbPath() });
   });
 
+  // Crawlable so Google sees this, not indexable (Search Console, 2026-11-09).
+  app.use('/auth', (_req, res, next) => {
+    res.setHeader('X-Robots-Tag', 'noindex');
+    next();
+  });
   app.use('/auth', authRouter(db));
   app.use('/webhooks/postmark', postmarkInboundRouter(db));
   app.use('/api/cron', dailyBriefingsCronRouter(db));

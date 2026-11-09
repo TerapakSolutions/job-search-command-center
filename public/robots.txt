@@ -1,11 +1,13 @@
 # jobsearch.terapak.com — index the public pages only. Everything behind sign-in
 # is per-user and must never be indexed; the server answers every app route with
-# the SPA shell (200), so robots.txt is the only signal crawlers get.
+# the SPA shell (200). /login and /privacy name themselves canonical; every other
+# route carries an X-Robots-Tag: noindex header (server/app.ts).
+# /auth/ is NOT disallowed: it answers noindex, and a disallow hid that from Google,
+# so /auth/google stayed indexed (Search Console, 2026-11-09).
 User-agent: *
 Allow: /login
 Allow: /privacy
 Disallow: /api/
-Disallow: /auth/
 Disallow: /webhooks/
 Disallow: /today
 Disallow: /pipeline

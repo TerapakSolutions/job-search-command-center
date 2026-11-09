@@ -6,14 +6,16 @@ import path from 'node:path';
 import { createApp } from './app.js';
 import { createTestDb } from './lib/testDb.js';
 
-// Search Console, 2026-11-09, sc-domain:terapak.com, "Duplicate without user-selected
-// canonical": https://jobsearch.terapak.com/login. Every route answers with the same
-// shell, so /login looked like a copy of /.
+// Search Console, 2026-11-09, sc-domain:terapak.com:
+//  - "Duplicate without user-selected canonical": https://jobsearch.terapak.com/login.
+//    Every route answers with the same shell, so /login looked like a copy of /.
+//  - "Indexed, though blocked by robots.txt": https://jobsearch.terapak.com/auth/google.
+//    Disallow: /auth/ kept Google from ever seeing the redirect, so the bare URL stayed indexed.
 // The shell is identical everywhere, so the only per-URL signals are response HEADERS.
 const SITE = 'https://jobsearch.terapak.com';
 const PUBLIC_PATHS = ['/login', '/privacy'];
 
-describe('search signals on the SPA shell', () => {
+describe('search signals on the SPA shell and /auth', () => {
   const originalCwd = process.cwd();
   let tmp: string;
   let db: ReturnType<typeof createTestDb>;
@@ -54,5 +56,15 @@ describe('search signals on the SPA shell', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('x-robots-tag')).toBe('noindex');
     expect(res.headers.get('link')).toBeNull();
+  });
+
+  it('/auth/google is noindex on its redirect', async () => {
+    const res = await get('/auth/google');
+    expect(res.headers.get('x-robots-tag')).toBe('noindex');
+  });
+
+  it('/auth/google/callback is noindex too', async () => {
+    const res = await get('/auth/google/callback');
+    expect(res.headers.get('x-robots-tag')).toBe('noindex');
   });
 });
