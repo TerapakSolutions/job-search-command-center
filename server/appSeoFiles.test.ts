@@ -73,7 +73,11 @@ describe('robots.txt content', () => {
   });
 
   it('disallows the API and the server-only prefixes', () => {
-    for (const p of ['/api/', '/auth/', '/webhooks/']) expect(disallowed).toContain(p);
+    for (const p of ['/api/', '/webhooks/']) expect(disallowed).toContain(p);
+  });
+
+  it('does NOT disallow /auth/: it answers noindex, and a disallow hides that (appSearchSignals.test.ts)', () => {
+    expect(disallowed.some((d) => '/auth/google'.startsWith(d))).toBe(false);
   });
 
   it('🔑 disallows EVERY signed-in route in App.tsx, so a new route cannot be indexed by default', () => {
