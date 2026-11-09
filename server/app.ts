@@ -26,6 +26,11 @@ import {
 } from './routes/jobSearchActivity.js';
 import { donateRouter } from './routes/donate.js';
 
+/** The public origin, as in public/sitemap.xml. */
+const SITE = 'https://jobsearch.terapak.com';
+/** Signed-out pages worth indexing. Must match public/sitemap.xml and the Allow lines in robots.txt. */
+const PUBLIC_PATHS = new Set(['/login', '/privacy']);
+
 export function createApp(db: Db) {
   const app = express();
 
@@ -97,7 +102,12 @@ export function createApp(db: Db) {
       res.status(404).end();
       return;
     }
-    res.sendFile(path.join(distPath, 'index.html'), { headers: { 'Cache-Control': 'no-cache' } }, (err) => {
+    // Every route gets the same shell, so headers are the only per-URL signal:
+    // public pages name themselves canonical, everything else is noindex.
+    const searchHeaders: Record<string, string> = PUBLIC_PATHS.has(req.path)
+      ? { Link: `<${SITE}${req.path}>; rel="canonical"` }
+      : { 'X-Robots-Tag': 'noindex' };
+    res.sendFile(path.join(distPath, 'index.html'), { headers: { 'Cache-Control': 'no-cache', ...searchHeaders } }, (err) => {
       if (err) next();
     });
   });
