@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { eq, or } from 'drizzle-orm';
 import { Router, type Request, type Response } from 'express';
 import type { Db } from '../db/index.js';
@@ -6,6 +7,7 @@ import { createId, nowIso } from '../lib/id.js';
 import {
   clearSessionCookie,
   getUserIdFromRequest,
+  parseCookies,
   setSessionCookie,
 } from '../lib/session.js';
 
@@ -26,6 +28,35 @@ function getGoogleConfig(): { clientId: string; clientSecret: string } {
   return { clientId, clientSecret };
 }
 
+// One-time value tying the Google callback to the browser that started
+// sign-in (login CSRF). Lax, not Strict: Google's redirect back is cross-site.
+const OAUTH_STATE_COOKIE = 'oauth_state';
+const OAUTH_STATE_MAX_AGE_S = 10 * 60;
+
+function stateCookieAttrs(maxAge: number): string {
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  return `Path=/auth; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
+}
+
+function stateMatches(req: Request): boolean {
+  const fromQuery = req.query.state;
+  if (typeof fromQuery !== 'string' || !fromQuery) {
+    return false;
+  }
+  let fromCookie: string | undefined;
+  try {
+    fromCookie = parseCookies(req.headers.cookie)[OAUTH_STATE_COOKIE];
+  } catch {
+    return false;
+  }
+  if (!fromCookie) {
+    return false;
+  }
+  const a = Buffer.from(fromQuery);
+  const b = Buffer.from(fromCookie);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 function publicUser(row: typeof users.$inferSelect) {
   return {
     id: row.id,
@@ -42,6 +73,7 @@ export function authRouter(db: Db): Router {
     try {
       const { clientId } = getGoogleConfig();
       const redirectUri = `${getAppBaseUrl()}/auth/google/callback`;
+      const state = crypto.randomBytes(32).toString('base64url');
       const params = new URLSearchParams({
         client_id: clientId,
         redirect_uri: redirectUri,
@@ -49,7 +81,12 @@ export function authRouter(db: Db): Router {
         scope: 'openid email profile',
         access_type: 'online',
         prompt: 'select_account',
+        state,
       });
+      res.append(
+        'Set-Cookie',
+        `${OAUTH_STATE_COOKIE}=${state}; ${stateCookieAttrs(OAUTH_STATE_MAX_AGE_S)}`,
+      );
       res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
     } catch (err) {
       res.status(500).json({
@@ -59,6 +96,13 @@ export function authRouter(db: Db): Router {
   });
 
   router.get('/google/callback', async (req: Request, res: Response) => {
+    // One-shot: clear on every outcome.
+    res.append('Set-Cookie', `${OAUTH_STATE_COOKIE}=; ${stateCookieAttrs(0)}`);
+    if (!stateMatches(req)) {
+      res.redirect(`${getFrontendUrl()}/login?error=state_mismatch`);
+      return;
+    }
+
     const code = typeof req.query.code === 'string' ? req.query.code : null;
     if (!code) {
       res.redirect(`${getFrontendUrl()}/login?error=missing_code`);
