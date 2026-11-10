@@ -1,5 +1,6 @@
 import type { Application } from '../types/application';
 import {
+  EMPLOYMENT_TYPE_LABELS,
   PIPELINE_STATUS_LABELS,
   WORK_LOCATION_LABELS,
 } from '../types/application';
@@ -32,14 +33,16 @@ export default function ApplicationCard({
   onEdit,
 }: ApplicationCardProps) {
   const interviews = useJobSearchStore((s) => s.interviews);
+  // A single quoted rate is often entered as both min and max; show it once.
   const salary =
     application.salaryMin || application.salaryMax
       ? [
-          application.salaryMin?.toLocaleString(),
-          application.salaryMax?.toLocaleString(),
-        ]
-          .filter(Boolean)
-          .join(' – ')
+          ...new Set(
+            [application.salaryMin, application.salaryMax]
+              .filter((v): v is number => v != null && v !== 0)
+              .map((v) => v.toLocaleString()),
+          ),
+        ].join(' – ')
       : null;
 
   return (
@@ -58,7 +61,27 @@ export default function ApplicationCard({
             {WORK_LOCATION_LABELS[application.workLocationType]}
             {application.location ? ` · ${application.location}` : ''}
           </p>
-          {salary && <p>${salary}</p>}
+          {salary && (
+            <p>
+              ${salary}
+              {application.payPeriod === 'hour' ? '/hr' : ''}
+            </p>
+          )}
+          {(application.employmentType || application.agency) && (
+            <p>
+              {[
+                application.employmentType
+                  ? EMPLOYMENT_TYPE_LABELS[application.employmentType]
+                  : null,
+                application.agency ? `via ${application.agency}` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          )}
+          {application.submittedDate && (
+            <p>Submitted {formatDate(application.submittedDate)}</p>
+          )}
           {application.dateApplied && (
             <p>Applied {formatDate(application.dateApplied)}</p>
           )}
