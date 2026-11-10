@@ -20,6 +20,8 @@ import {
   updatePipelineFromEmail,
 } from '../api/emailAutomationClient';
 import { isDemoMode } from '../api/persistence';
+import LinkedApplicationPicker from '../components/LinkedApplicationPicker';
+import { useJobSearchStore } from '../store/useJobSearchStore';
 import { formatDate } from '../lib/dates';
 import {
   classificationBadgeClass,
@@ -77,6 +79,7 @@ export default function InboundEmailsPage() {
   const [auditLoading, setAuditLoading] = useState(false);
   const [showHtml, setShowHtml] = useState(false);
   const [automation, setAutomation] = useState<EmailAutomationAnalysis | null>(null);
+  const applications = useJobSearchStore((s) => s.applications);
   const [automationLoading, setAutomationLoading] = useState(false);
   const [automationRunning, setAutomationRunning] = useState(false);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
@@ -980,6 +983,15 @@ export default function InboundEmailsPage() {
                       <p className="text-sm text-gray-500">Loading matches…</p>
                     ) : automation ? (
                       <>
+                        {detail && (
+                          <LinkedApplicationPicker
+                            emailId={detail.id}
+                            applications={applications}
+                            linkedApplicationId={automation.matches.linkedApplicationId ?? null}
+                            disabled={demoMode}
+                            onChanged={() => void loadAutomation(detail.id)}
+                          />
+                        )}
                         {automation.matches.matches.length > 0 ? (
                           <div className="space-y-2">
                             <p className="text-xs font-medium text-gray-700">

@@ -6,6 +6,11 @@ import InboundEmailsPage from './InboundEmailsPage';
 import * as inboundEmailsClient from '../api/inboundEmailsClient';
 
 jest.mock('../api/inboundEmailsClient');
+// The page reads the user's applications for the "Linked application" picker.
+jest.mock('../store/useJobSearchStore', () => ({
+  useJobSearchStore: (selector: (s: { applications: never[] }) => unknown) =>
+    selector({ applications: [] }),
+}));
 jest.mock('../api/emailAutomationClient', () => ({
   fetchEmailAutomationAnalysis: jest.fn().mockResolvedValue({
     emailId: 'email-1',

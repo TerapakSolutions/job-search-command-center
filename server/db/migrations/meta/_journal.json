@@ -99,6 +99,13 @@
       "when": 1870000000000,
       "tag": "0013_application_contract_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1880000000000,
+      "tag": "0014_email_application_links",
+      "breakpoints": true
     }
   ]
 }

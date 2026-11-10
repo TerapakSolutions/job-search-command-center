@@ -13,6 +13,7 @@ import {
   applications,
   communications,
   contacts,
+  emailApplicationLinks,
   emailAutomationAuditLog,
   emailAutomationPendingApprovals,
   inboundEmails,
@@ -78,6 +79,47 @@ function getEmailForUser(db: Db, userId: string, emailId: string) {
     return null;
   }
   return row;
+}
+
+// Link an inbound email to one of the user's applications, replacing any
+// earlier link, or unlink it (applicationId null). Returns false, storing
+// nothing, when the user does not own the email or the application. Runs no
+// automation and changes nothing on the application.
+export function setEmailApplicationLink(
+  db: Db,
+  userId: string,
+  emailId: string,
+  applicationId: string | null,
+): boolean {
+  if (!getEmailForUser(db, userId, emailId)) return false;
+  if (applicationId !== null) {
+    const owned = db
+      .select({ id: applications.id })
+      .from(applications)
+      .where(and(eq(applications.id, applicationId), eq(applications.userId, userId)))
+      .all()[0];
+    if (!owned) return false;
+  }
+  db.delete(emailApplicationLinks)
+    .where(
+      and(
+        eq(emailApplicationLinks.userId, userId),
+        eq(emailApplicationLinks.inboundEmailId, emailId),
+      ),
+    )
+    .run();
+  if (applicationId !== null) {
+    db.insert(emailApplicationLinks)
+      .values({
+        id: createId(),
+        userId,
+        inboundEmailId: emailId,
+        applicationId,
+        createdAt: nowIso(),
+      })
+      .run();
+  }
+  return true;
 }
 
 export function recordEmailAutomationAudit(
@@ -233,6 +275,7 @@ export function analyzeEmailAutomation(
     }) ?? row.positionTitle;
 
   const matches = matchEmailToApplications(db, userId, {
+    inboundEmailId: row.id,
     fromEmail: effectiveFromEmail,
     companyName: effectiveCompany,
     positionTitle: effectiveRole,

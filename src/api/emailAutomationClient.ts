@@ -15,6 +15,16 @@ export async function fetchEmailAutomationAnalysis(
   return request<EmailAutomationAnalysis>(`/inbound-emails/${emailId}/automation`);
 }
 
+export async function linkEmailToApplication(
+  emailId: string,
+  applicationId: string | null,
+): Promise<{ linkedApplicationId: string | null }> {
+  return request<{ linkedApplicationId: string | null }>(
+    `/inbound-emails/${emailId}/link`,
+    { method: 'PUT', body: JSON.stringify({ applicationId }) },
+  );
+}
+
 export async function createApplicationFromEmail(
   emailId: string,
 ): Promise<AutomationActionResult> {
