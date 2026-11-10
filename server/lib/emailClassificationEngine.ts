@@ -17,7 +17,7 @@ const SYSTEM_PROMPT = `You classify inbound job-search emails and extract struct
 
 Respond with ONLY valid JSON (no markdown) using this schema:
 {
-  "classification": one of ["Interview Request", "Application Confirmation", "Rejection", "Recruiter Outreach", "Follow-up Required", "Offer", "Scheduling", "General Update", "Not Job Related", "Other"],
+  "classification": one of ["Interview Request", "Application Confirmation", "Agreed to Submission", "Rejection", "Recruiter Outreach", "Follow-up Required", "Offer", "Scheduling", "General Update", "Not Job Related", "Other"],
   "classificationConfidence": number 0-100,
   "companyName": string or null,
   "positionTitle": string or null,
@@ -33,6 +33,8 @@ Respond with ONLY valid JSON (no markdown) using this schema:
 Guidelines:
 - "Interview Request": recruiter wants to schedule or proceed to interviews
 - "Application Confirmation": acknowledgment that an application was received
+- "Agreed to Submission": the job seeker, writing this message, agrees to be submitted or represented for a role. Only when "writtenByCandidate" is true; a recruiter asking for consent is not this
+- When "writtenByCandidate" is true, the job seeker wrote this message; set requiresResponse false
 - "Rejection": candidate not moving forward
 - "Not Job Related": nothing to do with the job search (bills, payment reminders, newsletters, community or social notifications, marketing). Use "Other" when it might be job-related but fits no category
 - Set requiresResponse true when a reply is expected
@@ -42,7 +44,16 @@ interface ClassifyInput {
   subject: string;
   fromEmail: string;
   textBody: string;
+  // The job seeker wrote this message (the top of a thread they forwarded).
+  writtenByCandidate?: boolean;
 }
+
+// The job seeker agreeing to be submitted. Checked only on messages the job
+// seeker wrote, because recruiters use the same phrases to ask for consent.
+const CANDIDATE_AGREEMENT =
+  /open to moving forward|happy to move forward|go ahead and submit|(?:you|please)\s+(?:can\s+|may\s+)?submit\s+(?:me|my)|ok(?:ay)?\s+to\s+submit|right to represent|consent to (?:be\s+)?submit/;
+const CANDIDATE_DECLINE =
+  /\bnot\s+(?:open|interested)|pass on this|\bdecline|\bwithdraw|no longer interested|not (?:be\s+)?moving forward/;
 
 export async function classifyInboundEmailWithLlm(
   input: ClassifyInput,
@@ -56,6 +67,7 @@ export async function classifyInboundEmailWithLlm(
       subject: input.subject,
       fromEmail: input.fromEmail,
       textBody: input.textBody.slice(0, 8000),
+      ...(input.writtenByCandidate ? { writtenByCandidate: true } : {}),
     },
     null,
     2,
@@ -76,6 +88,17 @@ export function classifyInboundEmailWithRules(
   input: ClassifyInput,
 ): EmailClassificationResult {
   const text = `${input.subject}\n${input.textBody}`.toLowerCase();
+
+  if (input.writtenByCandidate) {
+    const body = input.textBody.toLowerCase();
+    if (CANDIDATE_AGREEMENT.test(body) && !CANDIDATE_DECLINE.test(body)) {
+      return buildRuleResult('Agreed to Submission', 85, input, {
+        requiresResponse: false,
+        suggestedAction: defaultSuggestedAction('Agreed to Submission'),
+        aiSummary: 'You agreed to be submitted for this role.',
+      });
+    }
+  }
 
   if (isInterviewConfirmationText(text)) {
     const extracted = extractClassificationFields(input);

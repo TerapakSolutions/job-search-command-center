@@ -33,6 +33,8 @@ export function defaultSuggestedAction(
       return 'Reply to schedule the interview';
     case 'Application Confirmation':
       return 'No action needed — application received';
+    case 'Agreed to Submission':
+      return 'Wait for the recruiter to confirm the submission';
     case 'Rejection':
       return 'Archive the application and move on';
     case 'Offer':

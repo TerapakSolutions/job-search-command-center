@@ -1,6 +1,7 @@
 const CLASSIFICATION_STYLES: Record<string, string> = {
   'Interview Request': 'bg-purple-100 text-purple-800 border-purple-200',
   'Application Confirmation': 'bg-blue-100 text-blue-800 border-blue-200',
+  'Agreed to Submission': 'bg-teal-100 text-teal-800 border-teal-200',
   Rejection: 'bg-gray-100 text-gray-700 border-gray-200',
   'Recruiter Outreach': 'bg-indigo-100 text-indigo-800 border-indigo-200',
   'Follow-up Required': 'bg-amber-100 text-amber-800 border-amber-200',
@@ -27,7 +28,11 @@ export function classificationPriorityLabel(
     return 'High priority';
   }
   if (requiresResponse) return 'Action needed';
-  if (classification === 'Rejection' || classification === 'Application Confirmation') {
+  if (
+    classification === 'Rejection' ||
+    classification === 'Application Confirmation' ||
+    classification === 'Agreed to Submission'
+  ) {
     return 'Low priority';
   }
   return null;

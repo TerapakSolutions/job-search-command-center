@@ -7,6 +7,8 @@ import QuickStartPanel, { INBOUND_ADDRESS } from '../components/QuickStartPanel'
 export const CLASSIFICATION_GLOSSARY: Record<string, string> = {
   'Application Confirmation':
     'An employer confirming it received your application. Creates an Applied application when the company and role are clear.',
+  'Agreed to Submission':
+    'Your own reply, at the top of a thread you forwarded, agreeing to be submitted for a role. Changes no application.',
   'Recruiter Outreach':
     'A recruiter contacting you about a role. Creates or updates an application at Recruiter screen when the company and role are clear.',
   'Interview Request': 'An invitation to interview. Moves the application to Interviewing, sometimes after your approval.',

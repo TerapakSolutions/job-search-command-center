@@ -71,7 +71,26 @@ function applyKnownPatternRuleOverrides(
     subject: classifiedInput.subject,
     fromEmail: classifiedInput.fromEmail,
     textBody: classifiedInput.textBody,
+    writtenByCandidate: classifiedInput.forwardMetadata.topMessageFromForwarder,
   });
+
+  // The job seeker's own reply agreeing to be submitted. The rule needs a
+  // message they wrote, an agreement phrase and no decline, so its label
+  // wins; the company, role and recruiter the LLM extracted are kept.
+  if (
+    classifiedInput.forwardMetadata.topMessageFromForwarder &&
+    ruleResult.classification === 'Agreed to Submission'
+  ) {
+    return enrichClassificationFromForward(
+      {
+        ...ruleResult,
+        companyName: result.companyName ?? ruleResult.companyName,
+        positionTitle: result.positionTitle ?? ruleResult.positionTitle,
+        recruiterName: result.recruiterName ?? ruleResult.recruiterName,
+      },
+      classifiedInput,
+    );
+  }
 
   if (
     isInterviewConfirmationText(haystack) &&
@@ -98,6 +117,7 @@ export async function classifyEmailContent(input: {
       subject: classifiedInput.subject,
       fromEmail: classifiedInput.fromEmail,
       textBody: classifiedInput.textBody,
+      writtenByCandidate: classifiedInput.forwardMetadata.topMessageFromForwarder,
     });
     if (llmResult) {
       return applyKnownPatternRuleOverrides(llmResult, classifiedInput);
@@ -113,6 +133,7 @@ export async function classifyEmailContent(input: {
     subject: classifiedInput.subject,
     fromEmail: classifiedInput.fromEmail,
     textBody: classifiedInput.textBody,
+    writtenByCandidate: classifiedInput.forwardMetadata.topMessageFromForwarder,
   });
   return enrichClassificationFromForward(ruleResult, classifiedInput);
 }
@@ -122,6 +143,20 @@ function enrichClassificationFromForward(
   classifiedInput: ReturnType<typeof classificationInputFromEmail>,
 ): EmailClassificationResult {
   const { forwardMetadata } = classifiedInput;
+  const outbound = forwardMetadata.topMessageFromForwarder;
+  // Only a message the job seeker wrote can be "Agreed to Submission"; any
+  // other email the LLM puts there falls back to the rules.
+  if (!outbound && result.classification === 'Agreed to Submission') {
+    result = classifyInboundEmailWithRules({
+      subject: classifiedInput.subject,
+      fromEmail: classifiedInput.fromEmail,
+      textBody: classifiedInput.textBody,
+    });
+  }
+  // The job seeker wrote an outbound top message, so no reply is owed.
+  if (outbound) {
+    result = { ...result, requiresResponse: false };
+  }
   const subject = forwardMetadata.originalSubject ?? classifiedInput.subject;
   const senderEmail = forwardMetadata.originalSenderEmail ?? classifiedInput.fromEmail;
 
