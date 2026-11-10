@@ -4,13 +4,39 @@ import {
   PIPELINE_STATUS_LABELS,
   WORK_LOCATION_LABELS,
 } from '../types/application';
-import { formatDate, formatDateTime } from '../lib/dates';
+import { daysBetween, formatDate, formatDateTime, parseDate } from '../lib/dates';
 import { upcomingInterviewAt } from '../lib/interviews';
 import { useJobSearchStore } from '../store/useJobSearchStore';
 
-// Applications page: green once interviewing, yellow at the recruiter stage,
-// plain for everything else (just applied, saved, closed).
-function statusCardClass(status: Application['status']): string {
+// Same "active" set the daily brief uses for inactive applications.
+const ACTIVE_STATUSES = new Set<Application['status']>([
+  'saved',
+  'applied',
+  'recruiter_screen',
+  'interviewing',
+  'final_round',
+]);
+const STALE_AFTER_DAYS = 7;
+
+// Days since an active application was last updated, when that is a week or
+// more; otherwise null.
+function staleDays(application: Application): number | null {
+  if (!ACTIVE_STATUSES.has(application.status)) return null;
+  const updated = parseDate(application.updatedAt);
+  if (!updated) return null;
+  const days = daysBetween(updated, new Date());
+  return days >= STALE_AFTER_DAYS ? days : null;
+}
+
+// Applications page: red when rejected; orange when an active application has
+// had no update for a week; otherwise green once interviewing, yellow at the
+// recruiter stage, plain for everything else (just applied, saved, closed).
+function statusCardClass(
+  status: Application['status'],
+  stale: boolean,
+): string {
+  if (status === 'rejected') return 'bg-red-50 border-red-300';
+  if (stale) return 'bg-orange-50 border-orange-400';
   if (status === 'interviewing' || status === 'final_round') {
     return 'bg-green-50 border-green-300';
   }
@@ -33,6 +59,7 @@ export default function ApplicationCard({
   onEdit,
 }: ApplicationCardProps) {
   const interviews = useJobSearchStore((s) => s.interviews);
+  const stale = highlightStatus ? staleDays(application) : null;
   // A single quoted rate is often entered as both min and max; show it once.
   const salary =
     application.salaryMin || application.salaryMax
@@ -50,11 +77,16 @@ export default function ApplicationCard({
       type="button"
       onClick={() => onEdit?.(application)}
       className={`w-full text-left border rounded-lg p-3 shadow-sm hover:shadow-md hover:border-blue-300 transition ${
-        highlightStatus ? statusCardClass(application.status) : 'bg-white border-gray-200'
+        highlightStatus
+          ? statusCardClass(application.status, stale !== null)
+          : 'bg-white border-gray-200'
       }`}
     >
       <p className="font-medium text-gray-900 truncate">{application.roleTitle}</p>
       <p className="text-sm text-gray-600 truncate">{application.company}</p>
+      {stale !== null && (
+        <p className="text-xs font-medium text-orange-700">No activity in {stale} days</p>
+      )}
       {!compact && (
         <div className="mt-2 space-y-1 text-xs text-gray-500">
           <p>
