@@ -51,6 +51,8 @@ export interface ApplicationMatchResult {
   matches: ApplicationMatch[];
   bestMatch: ApplicationMatch | null;
   requiresManualSelection: boolean;
+  // Set when the user linked this email to one of their applications by hand.
+  linkedApplicationId: string | null;
 }
 
 export interface NextActionSuggestion {

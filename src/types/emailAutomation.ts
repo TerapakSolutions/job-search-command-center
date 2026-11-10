@@ -11,6 +11,7 @@ export interface ApplicationMatchResult {
   matches: ApplicationMatch[];
   bestMatch: ApplicationMatch | null;
   requiresManualSelection: boolean;
+  linkedApplicationId: string | null;
 }
 
 export interface NextActionSuggestion {

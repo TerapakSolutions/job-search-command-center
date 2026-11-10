@@ -168,6 +168,31 @@ export const inboundEmails = sqliteTable('inbound_emails', {
   updatedAt: text('updated_at').notNull(),
 });
 
+// A user's manual link from an inbound email to one of their applications.
+// Per user: several users can own the same inbound email row.
+export const emailApplicationLinks = sqliteTable(
+  'email_application_links',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    inboundEmailId: text('inbound_email_id')
+      .notNull()
+      .references(() => inboundEmails.id, { onDelete: 'cascade' }),
+    applicationId: text('application_id')
+      .notNull()
+      .references(() => applications.id, { onDelete: 'cascade' }),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('email_application_links_user_email_unique').on(
+      table.userId,
+      table.inboundEmailId,
+    ),
+  ],
+);
+
 export const emailAutomationAuditLog = sqliteTable('email_automation_audit_log', {
   id: text('id').primaryKey(),
   userId: text('user_id')

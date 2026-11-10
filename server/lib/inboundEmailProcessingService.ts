@@ -253,7 +253,7 @@ export async function processInboundEmail(
     if (analysis?.matches.bestMatch) {
       timeline.complete(
         'application_matched',
-        `Matched existing application: ${analysis.matches.bestMatch.company} / ${analysis.matches.bestMatch.roleTitle}`,
+        `${analysis.matches.linkedApplicationId ? 'Linked by you' : 'Matched existing application'}: ${analysis.matches.bestMatch.company} / ${analysis.matches.bestMatch.roleTitle}`,
         matchTime,
       );
     } else if (analysis?.duplicateApplicationId) {

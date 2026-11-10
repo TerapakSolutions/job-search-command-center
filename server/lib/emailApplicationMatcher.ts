@@ -1,6 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/index.js';
-import { applications, contacts } from '../db/schema.js';
+import { applications, contacts, emailApplicationLinks } from '../db/schema.js';
 import type { ApplicationMatch, ApplicationMatchResult } from './emailAutomationTypes.js';
 import {
   MATCH_AMBIGUITY_GAP,
@@ -59,6 +59,7 @@ function recruiterMatchScore(
 }
 
 export interface MatchEmailInput {
+  inboundEmailId: string;
   fromEmail: string;
   companyName: string | null;
   positionTitle: string | null;
@@ -81,6 +82,36 @@ export function matchEmailToApplications(
     .from(contacts)
     .where(eq(contacts.userId, userId))
     .all();
+
+  // A manual link wins. It is resolved against this user's applications only,
+  // so a link can never surface another user's application.
+  const link = db
+    .select({ applicationId: emailApplicationLinks.applicationId })
+    .from(emailApplicationLinks)
+    .where(
+      and(
+        eq(emailApplicationLinks.userId, userId),
+        eq(emailApplicationLinks.inboundEmailId, input.inboundEmailId),
+      ),
+    )
+    .all()[0];
+  const linkedApp = link ? apps.find((app) => app.id === link.applicationId) : undefined;
+  if (linkedApp) {
+    const linkedMatch: ApplicationMatch = {
+      applicationId: linkedApp.id,
+      company: linkedApp.company,
+      roleTitle: linkedApp.roleTitle,
+      status: linkedApp.status,
+      confidence: 100,
+      matchReasons: ['Linked by you'],
+    };
+    return {
+      matches: [linkedMatch],
+      bestMatch: linkedMatch,
+      requiresManualSelection: false,
+      linkedApplicationId: linkedApp.id,
+    };
+  }
 
   const fromEmail = input.fromEmail.trim().toLowerCase();
   const matches: ApplicationMatch[] = [];
@@ -174,6 +205,7 @@ export function matchEmailToApplications(
         ? bestMatch
         : null,
     requiresManualSelection,
+    linkedApplicationId: null,
   };
 }
 

@@ -7,6 +7,7 @@ import {
   draftReplyFromEmail,
   listAuditLogForInboundEmail,
   runEmailAutomation,
+  setEmailApplicationLink,
   updatePipelineFromEmail,
 } from '../lib/emailAutomationService.js';
 import {
@@ -194,6 +195,24 @@ export function inboundEmailsRouter(db: Db): Router {
       return;
     }
     res.status(204).send();
+  });
+
+  // Link this email to one of the user's applications ({ applicationId }), or
+  // unlink it ({ applicationId: null }). 404 when the user does not own the
+  // email or the application.
+  router.put('/:id/link', (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const id = String(req.params.id);
+    const raw = req.body?.applicationId;
+    if (raw !== null && typeof raw !== 'string') {
+      res.status(400).json({ error: 'applicationId must be a string or null' });
+      return;
+    }
+    if (!setEmailApplicationLink(db, userId, id, raw)) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    res.json({ linkedApplicationId: raw });
   });
 
   router.get('/:id/automation', (req: Request, res: Response) => {
