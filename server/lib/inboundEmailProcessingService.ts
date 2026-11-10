@@ -318,16 +318,23 @@ export async function processInboundEmail(
     } else {
       timeline.skip(
         'safe_actions_applied',
-        automation.skipSummary ?? 'No safe automation actions applied',
+        automation.skipSummary ??
+          (automation.pendingApprovals > 0
+            ? 'Nothing applied automatically'
+            : 'No safe automation actions applied'),
         actionTime,
       );
     }
 
     if (automation.pendingApprovals > 0) {
+      // Say what was queued, so it doesn't read as a dead end. The timeline
+      // is not rewritten when the approval is resolved, so this must stay
+      // true afterwards ("queued", not "waiting").
       timeline.complete(
         'approval_queued',
-        automation.approvalSummary ??
-          `${automation.pendingApprovals} approval(s) queued`,
+        `Queued for your approval: ${
+          automation.approvalSummary ?? `${automation.pendingApprovals} item(s)`
+        }`,
         actionTime,
       );
     } else {

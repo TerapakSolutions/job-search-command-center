@@ -15,14 +15,12 @@ import type { AutomationActionResult , EmailAutomationAnalysis } from './emailAu
 import { PIPELINE_AUTO_CONFIDENCE_THRESHOLD } from './emailAutomationTypes.js';
 import {
   formatApprovalReason,
-  formatPipelineApprovalLabel,
   hasIdentifiedCompany,
   hasIdentifiedCompanyAndRole,
   isNoReplyOrApplicationConfirmation,
 } from './emailAutomationMessages.js';
 import { isInterviewConfirmationText } from './emailContentExtraction.js';
 import { formatAutomationActionMessage } from './automationOutcomeMessages.js';
-import { approvalTypeLabel } from './approvalReason.js';
 import type { ProcessingTimelineBuilder } from './processingTimeline.js';
 
 const PROTECTED_PIPELINE_STATUSES = new Set(['offer']);
@@ -256,7 +254,7 @@ export function applySafeAutomationRules(
             'Identify the company and role from this confirmation before creating an application',
         });
         pendingApprovals += 1;
-        approvalMessages.push(approvalTypeLabel('no_matching_application'));
+        approvalMessages.push('Identify the company and role, then create the application');
         recordEmailAutomationAudit(db, {
           userId,
           inboundEmailId: emailId,
@@ -448,7 +446,7 @@ export function applySafeAutomationRules(
         suggestedAction: `Create application for ${row.companyName ?? 'this company'} / ${row.positionTitle ?? 'role from email'}`,
       });
       pendingApprovals += 1;
-      approvalMessages.push(approvalTypeLabel('no_matching_application'));
+      approvalMessages.push(`Create application for ${row.companyName ?? 'this company'} / ${row.positionTitle ?? 'role from email'}`);
       recordEmailAutomationAudit(db, {
         userId,
         inboundEmailId: emailId,
@@ -476,7 +474,7 @@ export function applySafeAutomationRules(
         candidateMatches: analysis.matches.matches,
       });
       pendingApprovals += 1;
-      approvalMessages.push(approvalTypeLabel('multiple_matching_applications'));
+      approvalMessages.push('Choose which application this email belongs to');
       recordEmailAutomationAudit(db, {
         userId,
         inboundEmailId: emailId,
@@ -509,10 +507,7 @@ export function applySafeAutomationRules(
     });
     pendingApprovals += 1;
     approvalMessages.push(
-      formatPipelineApprovalLabel(
-        analysis.pipelineProposal.proposedStatus,
-        analysis.pipelineProposal.currentStatus,
-      ),
+      `Update pipeline to ${analysis.pipelineProposal.proposedStatus.replace(/_/g, ' ')}`,
     );
     recordEmailAutomationAudit(db, {
       userId,
@@ -549,7 +544,7 @@ export function applySafeAutomationRules(
       suggestedAction: row.suggestedAction ?? 'Review and send a reply to this email',
     });
     pendingApprovals += 1;
-    approvalMessages.push(approvalTypeLabel('manual_review_required'));
+    approvalMessages.push('Review the suggested reply');
     recordEmailAutomationAudit(db, {
       userId,
       inboundEmailId: emailId,
@@ -589,7 +584,7 @@ export function applySafeAutomationRules(
       suggestedAction: 'Create recruiter contact and optionally link to a new application',
     });
     pendingApprovals += 1;
-    approvalMessages.push(approvalTypeLabel('no_matching_application'));
+    approvalMessages.push('Create a recruiter contact');
     recordEmailAutomationAudit(db, {
       userId,
       inboundEmailId: emailId,
