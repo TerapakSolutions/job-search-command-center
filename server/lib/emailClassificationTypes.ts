@@ -1,6 +1,7 @@
 export const EMAIL_CLASSIFICATIONS = [
   'Interview Request',
   'Application Confirmation',
+  'Agreed to Submission',
   'Rejection',
   'Recruiter Outreach',
   'Follow-up Required',
