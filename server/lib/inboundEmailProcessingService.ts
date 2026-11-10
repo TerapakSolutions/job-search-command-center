@@ -28,6 +28,18 @@ function extractTextBody(payloadJson: string): string {
   }
 }
 
+// Postmark's display name for the sender (the forwarder, for a forward).
+function extractFromName(payloadJson: string): string | null {
+  try {
+    const payload = JSON.parse(payloadJson) as Record<string, unknown>;
+    return typeof payload.FromName === 'string' && payload.FromName.trim()
+      ? payload.FromName
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function saveTimeline(db: Db, emailId: string, builder: ProcessingTimelineBuilder): void {
   db.update(inboundEmails)
     .set({
@@ -85,15 +97,18 @@ async function classifyInboundEmailRow(
   timeline: ProcessingTimelineBuilder,
 ): Promise<boolean> {
   const textBody = extractTextBody(row.payload);
+  const fromName = extractFromName(row.payload);
   persistForwardMetadata(db, row.id, {
     subject: row.subject,
     fromEmail: row.fromEmail,
+    fromName,
     textBody,
   });
 
   const result = await classifyEmailContent({
     subject: row.subject,
     fromEmail: row.fromEmail,
+    fromName,
     textBody,
   });
 

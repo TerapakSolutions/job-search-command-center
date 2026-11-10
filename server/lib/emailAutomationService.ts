@@ -24,6 +24,7 @@ import {
   matchEmailToApplications,
 } from './emailApplicationMatcher.js';
 import { buildDraftReply, generateNextActions } from './emailNextActions.js';
+import { classificationInputFromEmail } from './emailForwardedParser.js';
 import { buildPipelineUpdateProposal } from './emailPipelineAutomation.js';
 import {
   hasIdentifiedCompany,
@@ -233,6 +234,18 @@ function extractTextBody(payloadJson: string): string {
   }
 }
 
+// Postmark's display name for the sender (the forwarder, for a forward).
+function extractFromName(payloadJson: string): string | null {
+  try {
+    const payload = JSON.parse(payloadJson) as Record<string, unknown>;
+    return typeof payload.FromName === 'string' && payload.FromName.trim()
+      ? payload.FromName
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function initialStatusFromClassification(classification: string | null): PipelineStatus {
   switch (classification) {
     case 'Application Confirmation':
@@ -337,7 +350,17 @@ export function analyzeEmailAutomation(
     }
   }
 
+  // Not stored on the row; recomputed from the stored text, as classification
+  // does.
+  const writtenByYou = classificationInputFromEmail({
+    subject: row.subject,
+    fromEmail: row.fromEmail,
+    fromName: extractFromName(row.payload),
+    textBody: extractTextBody(row.payload),
+  }).forwardMetadata.topMessageFromForwarder;
+
   const nextActions = generateNextActions({
+    writtenByYou,
     classification: row.classification,
     requiresResponse: row.requiresResponse,
     interviewDetected: row.interviewDetected,

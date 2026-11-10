@@ -158,6 +158,9 @@ export function parseForwardedEmail(
   subject: string,
   fromEmail: string,
   textBody: string,
+  // The forwarder's display name (Postmark FromName). Outlook sometimes
+  // writes the top message's From: line as a bare display name.
+  fromName?: string | null,
 ): ForwardedEmailMetadata {
   const notForwarded: ForwardedEmailMetadata = {
     isForwarded: false,
@@ -193,7 +196,14 @@ export function parseForwardedEmail(
   const headers = headerBlock?.headers ?? {};
   const fromHeader = headers.from ?? '';
   const { name, email } = parseEmailAddress(fromHeader);
-  const originalSenderEmail = email;
+  // A name-only From: line that matches the forwarder's display name is the
+  // forwarder.
+  const isForwarderByName =
+    !email &&
+    !!name &&
+    !!fromName?.trim() &&
+    name.trim().toLowerCase() === fromName.trim().toLowerCase();
+  const originalSenderEmail = email ?? (isForwarderByName ? fromEmail.toLowerCase() : null);
   const originalSenderName = name;
 
   let originalSubject = headers.subject?.trim() || null;
@@ -247,6 +257,7 @@ export function parseForwardedEmail(
       originalSubject ?? subject,
       fromEmail,
       originalBody,
+      fromName,
     );
     if (
       nested.isForwarded &&
@@ -332,6 +343,7 @@ function parseOutboundTopMessage(input: {
 export function classificationInputFromEmail(input: {
   subject: string;
   fromEmail: string;
+  fromName?: string | null;
   textBody: string;
 }): {
   subject: string;
@@ -343,6 +355,7 @@ export function classificationInputFromEmail(input: {
     input.subject,
     input.fromEmail,
     input.textBody,
+    input.fromName,
   );
 
   if (!forwardMetadata.isForwarded) {

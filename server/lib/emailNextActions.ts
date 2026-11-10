@@ -10,11 +10,15 @@ export function generateNextActions(input: {
   pipelineProposal: PipelineUpdateProposal | null;
   canOfferApplicationCreation: boolean;
   company?: string | null;
+  // The job seeker wrote this message (the top of a thread they forwarded).
+  writtenByYou?: boolean;
 }): NextActionSuggestion[] {
   const actions: NextActionSuggestion[] = [];
   const classification = input.classification;
 
-  if (input.requiresResponse) {
+  // Never suggest replying to a message the job seeker wrote (rows classified
+  // before outbound detection may still be marked as needing a response).
+  if (input.requiresResponse && !input.writtenByYou) {
     actions.push({
       type: 'reply',
       label: 'Reply to recruiter',
@@ -43,7 +47,8 @@ export function generateNextActions(input: {
     });
   }
 
-  if (classification === 'Follow-up Required') {
+  // A follow-up the job seeker just sent needs no follow-up from them.
+  if (classification === 'Follow-up Required' && !input.writtenByYou) {
     actions.push({
       type: 'follow_up',
       label: 'Send follow-up',
