@@ -5,7 +5,8 @@ import {
   classifyInboundEmailWithLlm,
   classifyInboundEmailWithRules,
 } from './emailClassificationEngine.js';
-import { isInterviewConfirmationText ,
+import { inferEmployerFromSenderEmail,
+  isInterviewConfirmationText ,
   resolveEmployerCompany,
   resolveRoleTitle,
 } from './emailContentExtraction.js';
@@ -124,8 +125,19 @@ function enrichClassificationFromForward(
   const subject = forwardMetadata.originalSubject ?? classifiedInput.subject;
   const senderEmail = forwardMetadata.originalSenderEmail ?? classifiedInput.fromEmail;
 
+  // An outbound top message was written by the forwarder, so a company the
+  // classifier derives from the forwarder's own address is not the employer.
+  const forwarderCompany = forwardMetadata.topMessageFromForwarder
+    ? inferEmployerFromSenderEmail(classifiedInput.fromEmail)
+    : null;
+  const classifiedCompany =
+    forwarderCompany &&
+    result.companyName?.trim().toLowerCase() === forwarderCompany.toLowerCase()
+      ? null
+      : result.companyName;
+
   const resolvedCompany = resolveEmployerCompany({
-    companyName: result.companyName,
+    companyName: classifiedCompany,
     originalCompany: forwardMetadata.originalCompany,
     subject,
     senderEmail,
@@ -146,10 +158,13 @@ function enrichClassificationFromForward(
 
   return {
     ...result,
-    companyName: resolvedCompany ?? result.companyName,
+    companyName: resolvedCompany ?? classifiedCompany,
     positionTitle: resolvedRole ?? result.positionTitle,
-    recruiterName:
-      result.recruiterName ?? forwardMetadata.originalSenderName ?? null,
+    // For an outbound top message the classifier read the forwarder's text,
+    // so the counterparty from the quoted thread is the recruiter.
+    recruiterName: forwardMetadata.topMessageFromForwarder
+      ? forwardMetadata.originalSenderName ?? result.recruiterName ?? null
+      : result.recruiterName ?? forwardMetadata.originalSenderName ?? null,
   };
 }
 
