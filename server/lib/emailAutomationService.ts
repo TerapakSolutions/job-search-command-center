@@ -350,14 +350,7 @@ export function analyzeEmailAutomation(
     }
   }
 
-  // Not stored on the row; recomputed from the stored text, as classification
-  // does.
-  const writtenByYou = classificationInputFromEmail({
-    subject: row.subject,
-    fromEmail: row.fromEmail,
-    fromName: extractFromName(row.payload),
-    textBody: extractTextBody(row.payload),
-  }).forwardMetadata.topMessageFromForwarder;
+  const writtenByYou = isWrittenByYou(row);
 
   const nextActions = generateNextActions({
     writtenByYou,
@@ -380,6 +373,18 @@ export function analyzeEmailAutomation(
     canOfferApplicationCreation,
     duplicateApplicationId,
   };
+}
+
+// The job seeker wrote this email's top message (a forwarded thread they
+// replied to last). Not stored on the row; recomputed from the stored text,
+// as classification does.
+function isWrittenByYou(row: typeof inboundEmails.$inferSelect): boolean {
+  return classificationInputFromEmail({
+    subject: row.subject,
+    fromEmail: row.fromEmail,
+    fromName: extractFromName(row.payload),
+    textBody: extractTextBody(row.payload),
+  }).forwardMetadata.topMessageFromForwarder;
 }
 
 export function createApplicationFromEmail(
@@ -563,6 +568,34 @@ export function createContactFromEmail(
   if (appRows.length === 0) return null;
 
   const fromEmail = (row.originalSenderEmail ?? row.fromEmail).trim().toLowerCase();
+  // Never save the job seeker's own address as a contact. That happens when
+  // the original sender of a forward did not parse and the forwarding
+  // address is used instead. Skip the whole action (no contact, no logged
+  // communication) and record it as rejected, not completed, so a later
+  // Re-analyze that parses the real sender still creates the right contact.
+  const { userEmail } = getUserEmailContext(db, userId);
+  const ownAddresses = new Set(
+    [userEmail, row.isForwarded ? row.fromEmail : null]
+      .filter((v): v is string => Boolean(v))
+      .map((v) => v.trim().toLowerCase()),
+  );
+  if (ownAddresses.has(fromEmail)) {
+    return {
+      success: false,
+      actionType: 'create_contact',
+      confidence: row.classificationConfidence,
+      auditLogId: recordAuditLog(db, {
+        userId,
+        inboundEmailId: emailId,
+        actionType: 'create_contact',
+        confidence: row.classificationConfidence,
+        status: 'rejected',
+        details: { reason: 'own_address' },
+      }),
+      changes: {},
+      message: "Skipped contact: the sender is your own address",
+    };
+  }
   const existingContacts = db
     .select()
     .from(contacts)
@@ -651,7 +684,7 @@ export function createContactFromEmail(
       applicationId,
       contactId,
       channel: 'email',
-      direction: 'inbound',
+      direction: isWrittenByYou(row) ? 'outbound' : 'inbound',
       subject: row.subject,
       body: textBody.slice(0, 5000),
       occurredAt: row.receivedAt,
