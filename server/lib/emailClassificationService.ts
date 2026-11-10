@@ -43,6 +43,18 @@ function extractTextBody(payloadJson: string): string {
   }
 }
 
+// Postmark's display name for the sender (the forwarder, for a forward).
+function extractFromName(payloadJson: string): string | null {
+  try {
+    const payload = JSON.parse(payloadJson) as Record<string, unknown>;
+    return typeof payload.FromName === 'string' && payload.FromName.trim()
+      ? payload.FromName
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function classificationFieldsFromRow(
   row: typeof inboundEmails.$inferSelect,
 ): InboundEmailClassificationFields {
@@ -108,6 +120,7 @@ function applyKnownPatternRuleOverrides(
 export async function classifyEmailContent(input: {
   subject: string;
   fromEmail: string;
+  fromName?: string | null;
   textBody: string;
 }) {
   const classifiedInput = classificationInputFromEmail(input);
@@ -138,6 +151,13 @@ export async function classifyEmailContent(input: {
   return enrichClassificationFromForward(ruleResult, classifiedInput);
 }
 
+const WAIT_FOR_REPLY_LABELS = new Set<string>([
+  'Follow-up Required',
+  'Recruiter Outreach',
+  'General Update',
+  'Other',
+]);
+
 function enrichClassificationFromForward(
   result: EmailClassificationResult,
   classifiedInput: ReturnType<typeof classificationInputFromEmail>,
@@ -153,9 +173,22 @@ function enrichClassificationFromForward(
       textBody: classifiedInput.textBody,
     });
   }
-  // The job seeker wrote an outbound top message, so no reply is owed.
+  // The job seeker wrote an outbound top message, so no reply is owed. For
+  // labels where the next step is the other side's (a follow-up or general
+  // note the job seeker sent), say so: the LLM tends to suggest replying to
+  // the job seeker. Labels with their own next step (interview, offer,
+  // rejection, agreed to submission, ...) keep it.
   if (outbound) {
-    result = { ...result, requiresResponse: false };
+    const counterparty = forwardMetadata.originalSenderName?.trim();
+    result = {
+      ...result,
+      requiresResponse: false,
+      suggestedAction: WAIT_FOR_REPLY_LABELS.has(result.classification)
+        ? counterparty
+          ? `Wait for ${counterparty} to reply`
+          : 'Wait for a reply'
+        : result.suggestedAction,
+    };
   }
   const subject = forwardMetadata.originalSubject ?? classifiedInput.subject;
   const senderEmail = forwardMetadata.originalSenderEmail ?? classifiedInput.fromEmail;
@@ -206,7 +239,7 @@ function enrichClassificationFromForward(
 export function persistForwardMetadata(
   db: Db,
   emailId: string,
-  input: { subject: string; fromEmail: string; textBody: string },
+  input: { subject: string; fromEmail: string; fromName?: string | null; textBody: string },
 ): ReturnType<typeof classificationInputFromEmail>['forwardMetadata'] {
   const classifiedInput = classificationInputFromEmail(input);
   const { forwardMetadata } = classifiedInput;
@@ -258,14 +291,17 @@ export async function classifyInboundEmailForUser(
   }
 
   const textBody = extractTextBody(row.payload);
+  const fromName = extractFromName(row.payload);
   persistForwardMetadata(db, row.id, {
     subject: row.subject,
     fromEmail: row.fromEmail,
+    fromName,
     textBody,
   });
   const result = await classifyEmailContent({
     subject: row.subject,
     fromEmail: row.fromEmail,
+    fromName,
     textBody,
   });
 
