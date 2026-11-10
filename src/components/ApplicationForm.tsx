@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react';
-import type { Application, ApplicationInput, PipelineStatus } from '../types/application';
+import type {
+  Application,
+  ApplicationInput,
+  EmploymentType,
+  PayPeriod,
+  PipelineStatus,
+} from '../types/application';
 import {
+  EMPLOYMENT_TYPES,
+  EMPLOYMENT_TYPE_LABELS,
+  PAY_PERIODS,
+  PAY_PERIOD_LABELS,
   PIPELINE_STATUSES,
   PIPELINE_STATUS_LABELS,
   WORK_LOCATION_TYPES,
@@ -21,6 +31,10 @@ const emptyForm: ApplicationInput = {
   location: '',
   salaryMin: null,
   salaryMax: null,
+  payPeriod: null,
+  employmentType: null,
+  agency: null,
+  submittedDate: null,
   dateApplied: null,
   status: 'saved',
   notes: '',
@@ -44,6 +58,10 @@ export default function ApplicationForm({
         location: initial.location,
         salaryMin: initial.salaryMin,
         salaryMax: initial.salaryMax,
+        payPeriod: initial.payPeriod ?? null,
+        employmentType: initial.employmentType ?? null,
+        agency: initial.agency ?? null,
+        submittedDate: initial.submittedDate ?? null,
         dateApplied: initial.dateApplied,
         status: initial.status,
         notes: initial.notes,
@@ -130,7 +148,7 @@ export default function ApplicationForm({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Salary min">
+        <Field label="Pay min">
           <input
             type="number"
             value={form.salaryMin ?? ''}
@@ -141,10 +159,11 @@ export default function ApplicationForm({
               )
             }
             className={inputClass}
-            placeholder="120000"
+            step="any"
+            placeholder="120000 or 65"
           />
         </Field>
-        <Field label="Salary max">
+        <Field label="Pay max">
           <input
             type="number"
             value={form.salaryMax ?? ''}
@@ -155,7 +174,62 @@ export default function ApplicationForm({
               )
             }
             className={inputClass}
-            placeholder="160000"
+            step="any"
+            placeholder="160000 or 70"
+          />
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="Pay period">
+          <select
+            value={form.payPeriod ?? 'year'}
+            onChange={(e) => updateField('payPeriod', e.target.value as PayPeriod)}
+            className={inputClass}
+          >
+            {PAY_PERIODS.map((period) => (
+              <option key={period} value={period}>
+                {PAY_PERIOD_LABELS[period]}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Engagement type">
+          <select
+            value={form.employmentType ?? ''}
+            onChange={(e) =>
+              updateField(
+                'employmentType',
+                e.target.value ? (e.target.value as EmploymentType) : null,
+              )
+            }
+            className={inputClass}
+          >
+            <option value="">Not set</option>
+            {EMPLOYMENT_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {EMPLOYMENT_TYPE_LABELS[type]}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="Staffing agency">
+          <input
+            value={form.agency ?? ''}
+            onChange={(e) => updateField('agency', e.target.value || null)}
+            className={inputClass}
+            placeholder="Agency that submitted you (company is the client)"
+          />
+        </Field>
+        <Field label="Date submitted">
+          <input
+            type="date"
+            value={form.submittedDate ?? ''}
+            onChange={(e) => updateField('submittedDate', e.target.value || null)}
+            className={inputClass}
           />
         </Field>
       </div>

@@ -22,6 +22,13 @@ export const applications = sqliteTable('applications', {
   location: text('location').notNull().default(''),
   salaryMin: integer('salary_min'),
   salaryMax: integer('salary_max'),
+  // 'year' | 'hour'; NULL reads as a yearly salary.
+  payPeriod: text('pay_period'),
+  // 'full_time' | 'w2_contract' | 'c2c' | '1099'
+  employmentType: text('employment_type'),
+  // Staffing agency that submitted the candidate; company stays the client.
+  agency: text('agency'),
+  submittedDate: text('submitted_date'),
   dateApplied: text('date_applied'),
   status: text('status').notNull().default('saved'),
   notes: text('notes').notNull().default(''),

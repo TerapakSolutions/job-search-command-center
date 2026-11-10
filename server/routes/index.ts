@@ -9,6 +9,17 @@ import {
 } from '../db/schema.js';
 import { createCrudRouter } from '../lib/crudRouter.js';
 
+const PAY_PERIODS = new Set(['year', 'hour']);
+const EMPLOYMENT_TYPES = new Set(['full_time', 'w2_contract', 'c2c', '1099']);
+
+function oneOf(allowed: Set<string>, value: unknown): string | null {
+  return typeof value === 'string' && allowed.has(value) ? value : null;
+}
+
+function optionalText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 export function applicationsRouter(db: Db) {
   return createCrudRouter({
     db,
@@ -24,6 +35,10 @@ export function applicationsRouter(db: Db) {
       location: String(body.location ?? ''),
       salaryMin: body.salaryMin != null ? Number(body.salaryMin) : null,
       salaryMax: body.salaryMax != null ? Number(body.salaryMax) : null,
+      payPeriod: oneOf(PAY_PERIODS, body.payPeriod),
+      employmentType: oneOf(EMPLOYMENT_TYPES, body.employmentType),
+      agency: optionalText(body.agency),
+      submittedDate: optionalText(body.submittedDate),
       dateApplied: body.dateApplied ? String(body.dateApplied) : null,
       status: String(body.status ?? 'saved'),
       notes: String(body.notes ?? ''),
@@ -44,6 +59,16 @@ export function applicationsRouter(db: Db) {
       }),
       ...(body.salaryMax !== undefined && {
         salaryMax: body.salaryMax != null ? Number(body.salaryMax) : null,
+      }),
+      ...(body.payPeriod !== undefined && {
+        payPeriod: oneOf(PAY_PERIODS, body.payPeriod),
+      }),
+      ...(body.employmentType !== undefined && {
+        employmentType: oneOf(EMPLOYMENT_TYPES, body.employmentType),
+      }),
+      ...(body.agency !== undefined && { agency: optionalText(body.agency) }),
+      ...(body.submittedDate !== undefined && {
+        submittedDate: optionalText(body.submittedDate),
       }),
       ...(body.dateApplied !== undefined && {
         dateApplied: body.dateApplied ? String(body.dateApplied) : null,

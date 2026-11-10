@@ -92,6 +92,13 @@
       "when": 1860000000000,
       "tag": "0012_goals_set_at_first_set",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1870000000000,
+      "tag": "0013_application_contract_fields",
+      "breakpoints": true
     }
   ]
 }
