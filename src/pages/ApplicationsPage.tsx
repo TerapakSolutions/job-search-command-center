@@ -38,19 +38,27 @@ export default function ApplicationsPage() {
     }
   };
 
-  const filtered = useMemo(() => {
+  const { filtered, hiddenMatches } = useMemo(() => {
     const q = search.toLowerCase().trim();
-    return applications.filter((app) => {
-      const matchesSearch =
-        !q ||
-        app.company.toLowerCase().includes(q) ||
-        app.roleTitle.toLowerCase().includes(q);
-      const matchesStatus =
-        statusFilter === 'all'
-          ? showClosed || !CLOSED_STATUSES.has(app.status)
-          : app.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
+    const matchesSearch = (app: Application) =>
+      !q ||
+      app.company.toLowerCase().includes(q) ||
+      app.roleTitle.toLowerCase().includes(q);
+    const hidesClosed = statusFilter === 'all' && !showClosed;
+    return {
+      filtered: applications.filter(
+        (app) =>
+          matchesSearch(app) &&
+          (statusFilter === 'all'
+            ? !hidesClosed || !CLOSED_STATUSES.has(app.status)
+            : app.status === statusFilter),
+      ),
+      // A search that only hits hidden roles must not read as "never applied".
+      hiddenMatches:
+        q && hidesClosed
+          ? applications.filter((app) => CLOSED_STATUSES.has(app.status) && matchesSearch(app)).length
+          : 0,
+    };
   }, [applications, search, statusFilter, showClosed]);
 
   const openCreate = () => {
@@ -127,6 +135,17 @@ export default function ApplicationsPage() {
           </label>
         )}
       </div>
+
+      {hiddenMatches > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowClosed(true)}
+          className="text-sm text-blue-600 hover:underline"
+        >
+          {hiddenMatches} rejected or archived also {hiddenMatches === 1 ? 'matches' : 'match'}. Show{' '}
+          {hiddenMatches === 1 ? 'it' : 'them'}
+        </button>
+      )}
 
       {filtered.length === 0 ? (
         <p className="text-center text-gray-500 py-12 bg-white border rounded-lg">

@@ -51,6 +51,14 @@ describe('Applications: rejected and archived', () => {
     expect(shown()).toEqual(['Active Co', 'Rejected Co', 'Ghosted Co']);
   });
 
+  it('a search says when a hidden one matches, so it is not mistaken for missing', () => {
+    render(<ApplicationsPage />);
+    fireEvent.change(screen.getByPlaceholderText(/search company or role/i), { target: { value: 'rejected co' } });
+    expect(shown()).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: /1 rejected or archived also matches/i }));
+    expect(shown()).toEqual(['Rejected Co']);
+  });
+
   it('show when you pick that status', () => {
     render(<ApplicationsPage />);
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'rejected' } });
