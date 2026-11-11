@@ -66,6 +66,19 @@ describe('a forwarded Google Calendar invite', () => {
   });
 });
 
+describe('a forwarded cancellation of a calendar event', () => {
+  it('books no time, and asks for no reply', async () => {
+    const cancelled = googleCalendarInvite.replace(/Invitation:/g, 'Canceled event:');
+    const { row, replies } = await process(
+      GOOGLE_INVITE_SUBJECT.replace('Invitation:', 'Canceled event:'),
+      cancelled,
+      inviteShape,
+    );
+    expect(row.interviewDatetime).toBeNull();
+    expect(replies).toHaveLength(0);
+  });
+});
+
 describe('a scheduling email that offers times (control)', () => {
   const offer = `Hi Steve,
 

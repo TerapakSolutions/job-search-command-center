@@ -85,6 +85,13 @@ const CALENDAR_INVITE_SUBJECT =
 const CALENDAR_INVITE_BODY =
   /sent by google calendar|invitation from google calendar|powered by calendly\.com|a new event has been scheduled/i;
 
+// A cancelled or declined event: no reply needed, but no meeting to book.
+const CANCELLED_EVENT_SUBJECT = /^(?:(?:fw|fwd|re):\s*)*(?:canceled|cancelled|declined)\b/i;
+
+export function isCancelledEvent(subject: string): boolean {
+  return CANCELLED_EVENT_SUBJECT.test(subject.trim());
+}
+
 export function isCalendarInvite(input: { subject: string; textBody: string }): boolean {
   return (
     CALENDAR_INVITE_SUBJECT.test(input.subject.trim()) || CALENDAR_INVITE_BODY.test(input.textBody)

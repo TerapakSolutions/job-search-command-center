@@ -8,6 +8,7 @@ import {
 import { extractInterviewDatetime,
   inferEmployerFromSenderEmail,
   isCalendarInvite,
+  isCancelledEvent,
   isInterviewConfirmationText ,
   resolveEmployerCompany,
   resolveRoleTitle,
@@ -226,7 +227,11 @@ function enrichClassificationFromForward(
   // confirmation's "Date/Time:" line). Fill it when the classifier left it
   // empty, but only for an invite or a confirmation: an email offering
   // several times must not book the first one.
-  if (result.classification === 'Scheduling' && !result.interviewDatetime) {
+  if (
+    result.classification === 'Scheduling' &&
+    !result.interviewDatetime &&
+    !isCancelledEvent(classifiedInput.subject)
+  ) {
     const haystack = `${classifiedInput.subject}\n${classifiedInput.textBody}`;
     if (
       isCalendarInvite({ subject: classifiedInput.subject, textBody: classifiedInput.textBody }) ||
