@@ -200,6 +200,19 @@ describe('InboundEmailsPage', () => {
     expect(screen.getByRole('button', { name: /Re-analyze/i })).toBeTruthy();
   });
 
+  it('opens the email named in the link (?email=) without searching', async () => {
+    render(
+      <MemoryRouter initialEntries={['/inbound-emails?email=email-1']}>
+        <InboundEmailsPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(mockFetchInboundEmailById).toHaveBeenCalledWith('email-1');
+    });
+    expect(await screen.findByText('Hello candidate')).toBeTruthy();
+  });
+
   it('shows when a forwarded email was originally sent, not just when it was forwarded', async () => {
     mockFetchInboundEmailById.mockResolvedValue({
       ...sampleList.items[0],

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { FiCheck, FiInbox, FiMail, FiRefreshCw, FiPlay, FiUserPlus, FiBriefcase, FiTrendingUp, FiEdit3, FiList, FiTrash2 } from 'react-icons/fi';
 import {
   deleteInboundEmail,
@@ -189,6 +190,14 @@ export default function InboundEmailsPage() {
     void loadDetail(id);
     void loadAutomation(id);
   };
+
+  // A link from elsewhere (e.g. a pending approval on Today) names the email
+  // to open: /inbound-emails?email=<id>.
+  const [searchParams] = useSearchParams();
+  const linkedEmailId = searchParams.get('email');
+  useEffect(() => {
+    if (linkedEmailId && !demoMode) handleSelect(linkedEmailId);
+  }, [linkedEmailId, demoMode]);
 
   const handleMarkReviewed = async () => {
     if (!detail) return;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FiCpu, FiCheck, FiX } from 'react-icons/fi';
+import { FiCpu, FiCheck, FiMail, FiX } from 'react-icons/fi';
 import {
   approvePendingAutomation,
   fetchAutomationDashboard,
@@ -142,6 +142,13 @@ export default function AutomationDashboardPanel() {
                     <FiX size={12} />
                     Reject
                   </button>
+                  <Link
+                    to={`/inbound-emails?email=${encodeURIComponent(approval.inboundEmailId)}`}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:underline"
+                  >
+                    <FiMail size={12} />
+                    Open email
+                  </Link>
                 </div>
               </li>
             ))}
