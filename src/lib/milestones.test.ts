@@ -23,16 +23,51 @@ function app(overrides: Partial<Application> & Pick<Application, 'id' | 'status'
   };
 }
 
+const TODAY = '2026-11-15';
+
 describe('detectNewMilestones', () => {
   it('fires when an application advances into a milestone status', () => {
-    const apps = [app({ id: 'a', status: 'interviewing' })];
-    const result = detectNewMilestones(apps, { a: 'applied' });
+    const apps = [app({ id: 'a', status: 'interviewing', interviewDate: '2026-11-20' })];
+    const result = detectNewMilestones(apps, { a: 'applied' }, TODAY);
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
       applicationId: 'a',
       status: 'interviewing',
       label: 'Interview scheduled',
     });
+  });
+
+  it('does not fire for Interviewing until an interview date exists (R3)', () => {
+    const noDate = [app({ id: 'a', status: 'interviewing' })];
+    expect(detectNewMilestones(noDate, { a: 'applied' })).toHaveLength(0);
+    // A screening request is not a milestone either.
+    expect(detectNewMilestones([app({ id: 'a', status: 'recruiter_screen' })], { a: 'applied' })).toHaveLength(0);
+  });
+
+  it('fires once when the interview date arrives after the stage moved', () => {
+    const dated = [app({ id: 'a', status: 'interviewing', interviewDate: '2026-11-20' })];
+    // Seen at Interviewing with no date.
+    expect(
+      detectNewMilestones(dated, currentStatusMap([app({ id: 'a', status: 'interviewing' })]), TODAY),
+    ).toHaveLength(1);
+    // Seen again with that date: no repeat.
+    expect(detectNewMilestones(dated, currentStatusMap(dated), TODAY)).toHaveLength(0);
+  });
+
+  it('does not fire again when the interview is rescheduled', () => {
+    const moved = [app({ id: 'a', status: 'interviewing', interviewDate: '2026-11-22' })];
+    expect(detectNewMilestones(moved, { a: 'interviewing@2026-11-20' }, TODAY)).toHaveLength(0);
+  });
+
+  it('a past date (an earlier screening) is not a booked interview', () => {
+    const stale = [app({ id: 'a', status: 'interviewing', interviewDate: '2026-11-12' })];
+    expect(detectNewMilestones(stale, { a: 'recruiter_screen@2026-11-12' }, TODAY)).toHaveLength(0);
+  });
+
+  it('fires once when the real interview is booked after a past screening date', () => {
+    const booked = [app({ id: 'a', status: 'interviewing', interviewDate: '2026-11-20' })];
+    expect(detectNewMilestones(booked, { a: 'interviewing@2026-11-12' }, TODAY)).toHaveLength(1);
+    expect(detectNewMilestones(booked, currentStatusMap(booked), TODAY)).toHaveLength(0);
   });
 
   it('does not fire for apps already in the milestone status (no transition)', () => {
@@ -74,6 +109,12 @@ describe('currentStatusMap', () => {
   it('snapshots id -> status for all applications', () => {
     const apps = [app({ id: 'a', status: 'applied' }), app({ id: 'b', status: 'offer' })];
     expect(currentStatusMap(apps)).toEqual({ a: 'applied', b: 'offer' });
+  });
+
+  it('includes the interview date when there is one', () => {
+    expect(currentStatusMap([app({ id: 'a', status: 'interviewing', interviewDate: '2026-11-20' })])).toEqual({
+      a: 'interviewing@2026-11-20',
+    });
   });
 });
 

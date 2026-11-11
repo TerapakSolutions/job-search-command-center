@@ -31,7 +31,9 @@ import GoalsProgressPanel from '../components/GoalsProgressPanel';
 import MilestoneCelebration from '../components/MilestoneCelebration';
 import QuickStartPanel from '../components/QuickStartPanel';
 
-const MILESTONE_SEEN_KEY = 'milestone-last-seen-status-v1';
+// v2 values carry the interview date ("interviewing@2026-11-20"). A new key,
+// so existing dated interviews don't all celebrate once on upgrade.
+const MILESTONE_SEEN_KEY = 'milestone-last-seen-v2';
 
 const priorityStyles = {
   high: 'border-red-200 bg-red-50',

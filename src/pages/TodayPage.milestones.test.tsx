@@ -8,6 +8,12 @@ jest.mock('../components/DailyBriefingPanel', () => () => null);
 jest.mock('../components/AutomationDashboardPanel', () => () => null);
 jest.mock('../components/GoalsProgressPanel', () => () => null);
 
+// A week from now, so the test doesn't expire.
+const inAWeek = (() => {
+  const d = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+})();
+
 const pathstream: Application = {
   id: 'app-pathstream',
   company: 'Pathstream',
@@ -20,7 +26,7 @@ const pathstream: Application = {
   dateApplied: null,
   status: 'interviewing',
   notes: '',
-  interviewDate: null,
+  interviewDate: inAWeek,
   createdAt: '2026-06-01T00:00:00.000Z',
   updatedAt: '2026-06-01T00:00:00.000Z',
 };
@@ -39,10 +45,13 @@ jest.mock('../store/useJobSearchStore', () => ({
     selector(storeState),
 }));
 
-const KEY = 'milestone-last-seen-status-v1';
+const KEY = 'milestone-last-seen-v2';
 
 describe('TodayPage milestone celebration', () => {
-  afterEach(() => localStorage.clear());
+  afterEach(() => {
+    localStorage.clear();
+    storeState.applications = [pathstream];
+  });
 
   it('celebrates when an application has advanced into a milestone since last seen', async () => {
     localStorage.setItem(KEY, JSON.stringify({ 'app-pathstream': 'applied' }));
@@ -62,12 +71,25 @@ describe('TodayPage milestone celebration', () => {
     expect(within(banner).getByText('Pathstream — Engineering Manager')).toBeTruthy();
     // Seen-status is advanced so it won't re-fire next visit.
     expect(JSON.parse(localStorage.getItem(KEY)!)['app-pathstream']).toBe(
-      'interviewing',
+      `interviewing@${inAWeek}`,
     );
   });
 
+  it('does not celebrate Interviewing before an interview date exists (R3)', () => {
+    storeState.applications = [{ ...pathstream, interviewDate: null }];
+    localStorage.setItem(KEY, JSON.stringify({ 'app-pathstream': 'applied' }));
+
+    render(
+      <MemoryRouter>
+        <TodayPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText('Interview scheduled!')).toBeNull();
+  });
+
   it('does not celebrate an app already at the milestone (no transition)', () => {
-    localStorage.setItem(KEY, JSON.stringify({ 'app-pathstream': 'interviewing' }));
+    localStorage.setItem(KEY, JSON.stringify({ 'app-pathstream': `interviewing@${inAWeek}` }));
 
     render(
       <MemoryRouter>
@@ -91,7 +113,7 @@ describe('TodayPage milestone celebration', () => {
     expect(screen.queryByText('Interview scheduled!')).toBeNull();
     // ...but the baseline is now recorded for next time.
     expect(JSON.parse(localStorage.getItem(KEY)!)['app-pathstream']).toBe(
-      'interviewing',
+      `interviewing@${inAWeek}`,
     );
   });
 });
