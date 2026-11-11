@@ -4,6 +4,8 @@ export interface Contact {
   name: string;
   email: string;
   linkedIn: string;
+  phone?: string | null;
+  title?: string | null;
   company: string;
   source: string;
   lastContactDate: string | null;
@@ -18,6 +20,8 @@ export interface ContactInput {
   name: string;
   email: string;
   linkedIn: string;
+  phone?: string | null;
+  title?: string | null;
   company: string;
   source: string;
   lastContactDate: string | null;

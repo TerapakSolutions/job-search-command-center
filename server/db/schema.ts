@@ -48,6 +48,8 @@ export const contacts = sqliteTable('contacts', {
   name: text('name').notNull(),
   email: text('email').notNull().default(''),
   linkedIn: text('linked_in').notNull().default(''),
+  phone: text('phone'),
+  title: text('title'),
   company: text('company').notNull().default(''),
   source: text('source').notNull().default('manual'),
   lastContactDate: text('last_contact_date'),

@@ -315,6 +315,8 @@ const storeCreator = (
               name: contact.name,
               email: contact.email,
               linkedIn: contact.linkedIn,
+              phone: contact.phone ?? null,
+              title: contact.title ?? null,
               company: contact.company ?? '',
               source: contact.source ?? 'manual',
               lastContactDate: contact.lastContactDate,

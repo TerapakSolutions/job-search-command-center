@@ -95,6 +95,8 @@ export function contactsRouter(db: Db) {
       name: String(body.name ?? ''),
       email: String(body.email ?? ''),
       linkedIn: String(body.linkedIn ?? ''),
+      phone: optionalText(body.phone),
+      title: optionalText(body.title),
       company: String(body.company ?? ''),
       source: String(body.source ?? 'manual'),
       lastContactDate: body.lastContactDate
@@ -112,6 +114,8 @@ export function contactsRouter(db: Db) {
       ...(body.name !== undefined && { name: String(body.name) }),
       ...(body.email !== undefined && { email: String(body.email) }),
       ...(body.linkedIn !== undefined && { linkedIn: String(body.linkedIn) }),
+      ...(body.phone !== undefined && { phone: optionalText(body.phone) }),
+      ...(body.title !== undefined && { title: optionalText(body.title) }),
       ...(body.company !== undefined && { company: String(body.company) }),
       ...(body.source !== undefined && { source: String(body.source) }),
       ...(body.lastContactDate !== undefined && {
