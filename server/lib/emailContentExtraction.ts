@@ -77,6 +77,20 @@ export function isInterviewConfirmationText(text: string): boolean {
   );
 }
 
+// Calendar invitations and booking notices (Google Calendar, Calendly,
+// Outlook-style "Invitation:" subjects). They describe a booked meeting and
+// need no reply. "Invitation to apply" is not one: the subject needs the colon.
+const CALENDAR_INVITE_SUBJECT =
+  /^(?:(?:fw|fwd|re):\s*)*(?:invitation|updated invitation|invitation updated|accepted|new event):/i;
+const CALENDAR_INVITE_BODY =
+  /sent by google calendar|invitation from google calendar|powered by calendly\.com|a new event has been scheduled/i;
+
+export function isCalendarInvite(input: { subject: string; textBody: string }): boolean {
+  return (
+    CALENDAR_INVITE_SUBJECT.test(input.subject.trim()) || CALENDAR_INVITE_BODY.test(input.textBody)
+  );
+}
+
 export function extractEmployerFromSubject(subject: string): string | null {
   const trimmed = subject.trim();
   if (!trimmed) return null;
