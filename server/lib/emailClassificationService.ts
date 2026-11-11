@@ -105,6 +105,25 @@ function applyKnownPatternRuleOverrides(
     );
   }
 
+  // The LLM can call an outbound hold ("don't submit until we confirm the
+  // rate") Already Submitted Elsewhere. Keep that label only when the rule,
+  // which needs an "elsewhere" marker, agrees; otherwise use the rule's
+  // label with the LLM's extracted fields.
+  if (
+    classifiedInput.forwardMetadata.topMessageFromForwarder &&
+    result.classification === 'Already Submitted Elsewhere'
+  ) {
+    return enrichClassificationFromForward(
+      {
+        ...ruleResult,
+        companyName: result.companyName ?? ruleResult.companyName,
+        positionTitle: result.positionTitle ?? ruleResult.positionTitle,
+        recruiterName: result.recruiterName ?? ruleResult.recruiterName,
+      },
+      classifiedInput,
+    );
+  }
+
   if (
     isInterviewConfirmationText(haystack) &&
     ruleResult.classification === 'Scheduling' &&

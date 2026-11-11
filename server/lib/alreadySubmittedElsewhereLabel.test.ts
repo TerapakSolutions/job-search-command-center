@@ -165,6 +165,26 @@ describe('controls', () => {
     expect(result.classification).not.toBe('Agreed to Submission');
   });
 
+  it('an outbound rate hold is not this label, even if the LLM says so', async () => {
+    const SENTENCE =
+      "Thanks for reaching out. I've already been submitted to this Example Insurer Solution Architect role through another vendor, so please don't submit my profile for it.";
+    expect(outlookAlreadySubmittedElsewhere).toContain(SENTENCE);
+    mockLlm.mockResolvedValue(
+      llmResult({ classification: LABEL, companyName: 'Example Insurer', positionTitle: 'Solution Architect' }),
+    );
+    const result = await classifyEmailContent({
+      subject: ALREADY_SUBMITTED_SUBJECT,
+      fromEmail: FORWARDER,
+      fromName: 'Steve Terapak',
+      textBody: outlookAlreadySubmittedElsewhere.replace(
+        SENTENCE,
+        "Please don't submit my profile until we confirm the rate.",
+      ),
+    });
+    expect(result.classification).not.toBe(LABEL);
+    expect(result.companyName).toBe('Example Insurer');
+  });
+
   it('a recruiter writing "already submitted" is not this label, even if the LLM says so', async () => {
     mockLlm.mockResolvedValue(llmResult({ classification: LABEL }));
     const result = await classifyEmailContent({

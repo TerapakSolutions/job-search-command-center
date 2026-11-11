@@ -34,7 +34,7 @@ Guidelines:
 - "Interview Request": recruiter wants to schedule or proceed to interviews
 - "Application Confirmation": acknowledgment that an application was received
 - "Agreed to Submission": the job seeker, writing this message, agrees to be submitted or represented for a role. Only when "writtenByCandidate" is true; a recruiter asking for consent is not this
-- "Already Submitted Elsewhere": the job seeker, writing this message, says they are already submitted for this role through another vendor or recruiter, or asks not to be submitted for it. Only when "writtenByCandidate" is true. Never "Agreed to Submission"
+- "Already Submitted Elsewhere": the job seeker, writing this message, says they are already submitted for this role through a different vendor or recruiter. Only when "writtenByCandidate" is true. Never "Agreed to Submission". A hold ("don't submit until ...") or a status question to the same vendor is not this
 - When "writtenByCandidate" is true, the job seeker wrote this message; set requiresResponse false
 - "Rejection": candidate not moving forward
 - "Not Job Related": nothing to do with the job search (bills, payment reminders, newsletters, community or social notifications, marketing). Use "Other" when it might be job-related but fits no category
