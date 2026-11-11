@@ -84,6 +84,9 @@ describe('a second vendor on a role you are already submitted to', () => {
     });
     expect(saved[0].messageNotes).toContain('Secondary vendor');
     expect(saved[0].messageNotes).toContain('via First Vendor');
+    // The contact works for the vendor, not the client.
+    expect(saved[0].company).not.toBe('Example Insurer');
+    expect(saved[0].company.toLowerCase()).toContain('vendor');
 
     const after = db.select().from(applications).where(eq(applications.id, 'app-insurer')).all()[0];
     expect(after).toEqual(before);
@@ -121,6 +124,32 @@ describe('a second vendor on a role you are already submitted to', () => {
       linkedIn: 'https://www.linkedin.com/in/example-recruiter',
     });
     expect(saved[0].messageNotes).toContain('Met at a meetup.');
+  });
+
+  it('Re-analyze does not save the contact twice or repeat the note', async () => {
+    const { db, userId, id } = setup();
+    await processInboundEmail(db, id, { userId });
+    await processInboundEmail(db, id, { userId, reanalysis: true, manual: true });
+
+    const saved = vendorContacts(db);
+    expect(saved).toHaveLength(1);
+    expect(saved[0].messageNotes.match(/Secondary vendor/g)).toHaveLength(1);
+  });
+
+  it('Re-analyze saves the contact for an email processed before this label existed (the prod case)', async () => {
+    const { db, userId, id } = setup();
+    db.update(inboundEmails)
+      .set({
+        processingStatus: 'processed',
+        classification: 'Agreed to Submission',
+        classificationConfidence: 95,
+      })
+      .where(eq(inboundEmails.id, id))
+      .run();
+
+    await processInboundEmail(db, id, { userId, reanalysis: true, manual: true });
+
+    expect(vendorContacts(db)).toHaveLength(1);
   });
 
   it('control: with no matching application, no contact is saved automatically', async () => {

@@ -64,7 +64,8 @@ function looksLikeTitle(line: string): boolean {
     t.length <= 60 &&
     !/[@:<>]/.test(t) &&
     !/\d/.test(t) &&
-    !/https?:|www\.|\.com\b/i.test(t)
+    !/https?:|www\.|\.com\b/i.test(t) &&
+    !/^(?:sent from|get outlook|sent via)\b/i.test(t)
   );
 }
 

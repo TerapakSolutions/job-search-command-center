@@ -679,9 +679,13 @@ export function createContactFromEmail(
         subject: row.originalSubject ?? row.subject,
         senderEmail: row.originalSenderEmail ?? row.fromEmail,
       }) ?? '';
-    const company = isLikelyDomainCompany(extractedCompany)
-      ? (appRows[0]?.company ?? '')
-      : extractedCompany || appRows[0]?.company || '';
+    // A second vendor works for the vendor, not the application's client.
+    const company =
+      row.classification === 'Already Submitted Elsewhere'
+        ? row.originalCompany?.trim() ?? ''
+        : isLikelyDomainCompany(extractedCompany)
+          ? (appRows[0]?.company ?? '')
+          : extractedCompany || appRows[0]?.company || '';
     db.insert(contacts)
       .values({
         id: contactId,

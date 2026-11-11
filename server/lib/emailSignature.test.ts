@@ -34,6 +34,16 @@ describe('parseSenderSignature', () => {
     ).toEqual({ title: null, phone: null, linkedIn: null });
   });
 
+  it.each(['Sent from my iPhone', 'Get Outlook for iOS<https://aka.ms/o0ukef>'])(
+    'control: a mobile footer is not a title (%s)',
+    (footer) => {
+      const body = ['Sounds good.', '', 'Thanks,', 'Ravi', '', footer].join('\n');
+      expect(
+        parseSenderSignature(body, { email: 'ravi@acme.example', name: 'Ravi Kumar', wholeBody: true }).title,
+      ).toBeNull();
+    },
+  );
+
   it('reads a plain (not forwarded) message signed by the sender', () => {
     const body = [
       'Hi Steve,',
