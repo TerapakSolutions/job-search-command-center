@@ -8,6 +8,7 @@ import {
 } from '../api/emailAutomationClient';
 import { isDemoMode } from '../api/persistence';
 import { approvalTypeLabel } from '../lib/approvalDisplay';
+import { auditActionLabel } from '../lib/auditActionLabel';
 import type {
   AutomationDashboardSummary,
   PendingApprovalEntry,
@@ -155,7 +156,7 @@ export default function AutomationDashboardPanel() {
             {summary!.recentActions.map((action) => (
               <li key={action.id} className="flex justify-between gap-2">
                 <span>
-                  {action.actionType.replace(/_/g, ' ')}
+                  {auditActionLabel(action)}
                   {action.emailSubject ? ` — ${action.emailSubject}` : ''}
                 </span>
                 <span className="text-xs text-gray-400 shrink-0">

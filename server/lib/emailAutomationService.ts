@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, gte } from 'drizzle-orm';
 import type {
   AuditLogEntry,
   AutomationActionResult,
@@ -1466,6 +1466,8 @@ export function resolvePendingApproval(
   };
 }
 
+const RECENT_ACTIVITY_MS = 3 * 24 * 60 * 60 * 1000;
+
 export function getAutomationDashboardSummary(
   db: Db,
   userId: string,
@@ -1489,12 +1491,24 @@ export function getAutomationDashboardSummary(
       reason: a.reason,
     }));
 
+  // Active applications with recruiter activity in the last 3 days are
+  // already being worked; the generic reminder is for quiet ones.
+  const recentCutoff = new Date(Date.now() - RECENT_ACTIVITY_MS).toISOString();
+  const recentlyActive = new Set(
+    db
+      .select({ applicationId: communications.applicationId })
+      .from(communications)
+      .where(and(eq(communications.userId, userId), gte(communications.occurredAt, recentCutoff)))
+      .all()
+      .map((c) => c.applicationId),
+  );
+
   for (const app of apps) {
     if (app.status === 'recruiter_screen' || app.status === 'interviewing') {
       const alreadyListed = attentionApplications.some(
         (a) => a.applicationId === app.id,
       );
-      if (!alreadyListed) {
+      if (!alreadyListed && !recentlyActive.has(app.id)) {
         attentionApplications.push({
           applicationId: app.id,
           company: app.company,
