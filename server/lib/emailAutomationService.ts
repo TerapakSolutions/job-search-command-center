@@ -301,6 +301,9 @@ export function analyzeEmailAutomation(
     recruiterName: row.recruiterName ?? row.originalSenderName,
     classification: row.classification,
     subject: effectiveSubject,
+    ownEmails: [getUserEmailContext(db, userId).userEmail, row.isForwarded ? row.fromEmail : '']
+      .filter(Boolean),
+    ownName: row.isForwarded ? extractFromName(row.payload) : null,
   });
 
   const duplicateApplicationId = findDuplicateApplication(

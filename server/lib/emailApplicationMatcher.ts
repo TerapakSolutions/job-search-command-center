@@ -67,6 +67,9 @@ export interface MatchEmailInput {
   /** Used by the booking rule below. */
   classification?: string | null;
   subject?: string | null;
+  /** The job seeker's own addresses and name, never a booking's counterparty. */
+  ownEmails?: string[];
+  ownName?: string | null;
 }
 
 // Emails that book or request a meeting with a recruiter you already know.
@@ -99,10 +102,17 @@ function matchBookingByContact(
       .map((app) => [app.id, app]),
   );
 
+  // Every invite names the job seeker too ("Steve Terapak and …").
+  const ownEmails = new Set((input.ownEmails ?? []).map((e) => e.trim().toLowerCase()));
+  const ownName = normalize(input.ownName);
+
   const named = userContacts.filter((contact) => {
     if (!contact.applicationId || !openApps.has(contact.applicationId)) return false;
     const name = normalize(contact.name);
     if (name.split(' ').length < 2) return false;
+    if (ownEmails.has(contact.email.trim().toLowerCase()) || (ownName && name === ownName)) {
+      return false;
+    }
     return name === recruiter || subject.includes(` ${name} `);
   });
   const appIds = new Set(named.map((contact) => contact.applicationId!));

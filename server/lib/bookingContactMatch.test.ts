@@ -86,6 +86,18 @@ describe('a forwarded calendar invite from the recruiter of one application', ()
       subject: GOOGLE_INVITE_SUBJECT,
       payload: JSON.stringify({ FromName: 'Steve Terapak', TextBody: googleCalendarInvite }),
     });
+    // An old forward saved you as a contact on another application.
+    db.insert(contacts)
+      .values({
+        id: 'contact-self',
+        userId,
+        applicationId: 'app-other',
+        name: 'Steve Terapak',
+        email: 'steve@terapak.com',
+        createdAt: '2026-11-01T00:00:00.000Z',
+        updatedAt: '2026-11-01T00:00:00.000Z',
+      })
+      .run();
 
     await processInboundEmail(db, id, { userId });
 
@@ -136,6 +148,27 @@ describe('matching a booking through a saved contact', () => {
     expect(matchEmailToApplications(db, userId, input({ recruiterName: null })).bestMatch?.applicationId).toBe(
       'app-grocer',
     );
+  });
+
+  it('ignores a contact that is you (every invite names you)', () => {
+    const { db, userId } = setup();
+    db.insert(contacts)
+      .values({
+        id: 'contact-self',
+        userId,
+        applicationId: 'app-other',
+        name: 'Steve Terapak',
+        email: 'steve@terapak.com',
+        createdAt: '2026-11-01T00:00:00.000Z',
+        updatedAt: '2026-11-01T00:00:00.000Z',
+      })
+      .run();
+    const result = matchEmailToApplications(
+      db,
+      userId,
+      input({ ownEmails: ['steve@terapak.com'], ownName: 'Steve Terapak' }),
+    );
+    expect(result.bestMatch?.applicationId).toBe('app-grocer');
   });
 
   it('does not guess when the recruiter is saved on two applications', () => {
