@@ -8,6 +8,12 @@ jest.mock('../components/DailyBriefingPanel', () => () => null);
 jest.mock('../components/AutomationDashboardPanel', () => () => null);
 jest.mock('../components/GoalsProgressPanel', () => () => null);
 
+// A week from now, so the test doesn't expire.
+const inAWeek = (() => {
+  const d = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+})();
+
 const pathstream: Application = {
   id: 'app-pathstream',
   company: 'Pathstream',
@@ -20,7 +26,7 @@ const pathstream: Application = {
   dateApplied: null,
   status: 'interviewing',
   notes: '',
-  interviewDate: '2026-11-20',
+  interviewDate: inAWeek,
   createdAt: '2026-06-01T00:00:00.000Z',
   updatedAt: '2026-06-01T00:00:00.000Z',
 };
@@ -65,7 +71,7 @@ describe('TodayPage milestone celebration', () => {
     expect(within(banner).getByText('Pathstream — Engineering Manager')).toBeTruthy();
     // Seen-status is advanced so it won't re-fire next visit.
     expect(JSON.parse(localStorage.getItem(KEY)!)['app-pathstream']).toBe(
-      'interviewing@2026-11-20',
+      `interviewing@${inAWeek}`,
     );
   });
 
@@ -83,7 +89,7 @@ describe('TodayPage milestone celebration', () => {
   });
 
   it('does not celebrate an app already at the milestone (no transition)', () => {
-    localStorage.setItem(KEY, JSON.stringify({ 'app-pathstream': 'interviewing@2026-11-20' }));
+    localStorage.setItem(KEY, JSON.stringify({ 'app-pathstream': `interviewing@${inAWeek}` }));
 
     render(
       <MemoryRouter>
@@ -107,7 +113,7 @@ describe('TodayPage milestone celebration', () => {
     expect(screen.queryByText('Interview scheduled!')).toBeNull();
     // ...but the baseline is now recorded for next time.
     expect(JSON.parse(localStorage.getItem(KEY)!)['app-pathstream']).toBe(
-      'interviewing@2026-11-20',
+      `interviewing@${inAWeek}`,
     );
   });
 });

@@ -40,11 +40,18 @@ function parseSeen(value: string | undefined): { status: string | undefined; dat
     : { status: value.slice(0, at), date: value.slice(at + 1) };
 }
 
-// Interviewing is only "Interview scheduled" once there is a date. A screening
-// request or an undated interview request is not a milestone yet.
-function isCelebratable(app: Application): boolean {
+function localToday(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Interviewing is only "Interview scheduled" once an interview is booked for
+// today or later. A screening request, an undated interview request, or a
+// past date left over from an earlier screening is not a milestone yet.
+function isCelebratable(app: Application, today: string): boolean {
   if (!isMilestoneStatus(app.status)) return false;
-  return app.status !== 'interviewing' || Boolean(app.interviewDate);
+  if (app.status !== 'interviewing') return true;
+  return Boolean(app.interviewDate) && app.interviewDate! >= today;
 }
 
 function statusIndex(status: string | undefined): number {
@@ -71,13 +78,20 @@ export function currentStatusMap(applications: Application[]): LastSeenStatusMap
 export function detectNewMilestones(
   applications: Application[],
   lastSeen: LastSeenStatusMap,
+  today: string = localToday(),
 ): Milestone[] {
   const milestones: Milestone[] = [];
   for (const app of applications) {
-    if (!isCelebratable(app)) continue;
+    if (!isCelebratable(app, today)) continue;
     const seen = parseSeen(lastSeen[app.id]);
     const advanced = statusIndex(seen.status) < statusIndex(app.status);
-    const dateArrived = seen.status === app.status && app.status === 'interviewing' && !seen.date;
+    // Still Interviewing, and a booked date replaced none or a past one
+    // (a reschedule from one upcoming date to another doesn't count).
+    const dateArrived =
+      seen.status === app.status &&
+      app.status === 'interviewing' &&
+      seen.date !== app.interviewDate &&
+      (!seen.date || seen.date < today);
     if (!advanced && !dateArrived) continue;
     milestones.push({
       applicationId: app.id,
