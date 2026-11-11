@@ -29,17 +29,21 @@ function staleDays(application: Application): number | null {
 }
 
 // Applications page: red when rejected; orange when an active application has
-// had no update for a week; otherwise green once interviewing, yellow at the
-// recruiter stage, plain for everything else (just applied, saved, closed).
+// had no update for a week; otherwise green once interviewing (a booked
+// recruiter screen counts: it is step one of interviewing), yellow at the
+// recruiter stage until the screen is booked, plain for everything else
+// (just applied, saved, closed).
 function statusCardClass(
   status: Application['status'],
   stale: boolean,
+  booked: boolean,
 ): string {
   if (status === 'rejected') return 'bg-red-50 border-red-300';
   if (stale) return 'bg-orange-50 border-orange-400';
   if (status === 'interviewing' || status === 'final_round') {
     return 'bg-green-50 border-green-300';
   }
+  if (status === 'recruiter_screen' && booked) return 'bg-green-50 border-green-300';
   if (status === 'recruiter_screen') return 'bg-yellow-50 border-yellow-300';
   return 'bg-white border-gray-200';
 }
@@ -78,7 +82,7 @@ export default function ApplicationCard({
       onClick={() => onEdit?.(application)}
       className={`w-full text-left border rounded-lg p-3 shadow-sm hover:shadow-md hover:border-blue-300 transition ${
         highlightStatus
-          ? statusCardClass(application.status, stale !== null)
+          ? statusCardClass(application.status, stale !== null, Boolean(application.interviewDate))
           : 'bg-white border-gray-200'
       }`}
     >
