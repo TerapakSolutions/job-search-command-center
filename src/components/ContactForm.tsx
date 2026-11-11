@@ -21,6 +21,8 @@ const emptyContact = (applicationId: string | null = null): ContactInput => ({
   name: '',
   email: '',
   linkedIn: '',
+  phone: null,
+  title: null,
   company: '',
   source: 'manual',
   lastContactDate: null,
@@ -46,6 +48,8 @@ export default function ContactForm({
         name: initial.name,
         email: initial.email,
         linkedIn: initial.linkedIn,
+        phone: initial.phone ?? null,
+        title: initial.title ?? null,
         company: initial.company ?? '',
         source: initial.source ?? 'manual',
         lastContactDate: initial.lastContactDate,
@@ -177,6 +181,32 @@ export default function ContactForm({
         </label>
       </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <label className="block">
+          <span className="text-sm font-medium text-gray-700">Phone</span>
+          <input
+            type="tel"
+            value={form.phone ?? ''}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, phone: e.target.value || null }))
+            }
+            className={inputClass}
+            placeholder="+1 555-0100"
+          />
+        </label>
+        <label className="block">
+          <span className="text-sm font-medium text-gray-700">Title</span>
+          <input
+            value={form.title ?? ''}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, title: e.target.value || null }))
+            }
+            className={inputClass}
+            placeholder="Technical Recruiter"
+          />
+        </label>
+      </div>
+
       <label className="block">
         <span className="text-sm font-medium text-gray-700">Message notes</span>
         <textarea
@@ -250,10 +280,12 @@ export function ContactRow({
     <div className="bg-white border border-gray-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
       <div className="min-w-0">
         <p className="font-medium text-gray-900">{contact.name}</p>
+        {contact.title && <p className="text-sm text-gray-700">{contact.title}</p>}
         <p className="text-sm text-gray-600">{subtitle}</p>
         <div className="mt-2 text-sm text-gray-500 space-y-1">
           <p>Source: {contactSourceLabel(contact.source)}</p>
           {contact.email && <p>{contact.email}</p>}
+          {contact.phone && <p>{contact.phone}</p>}
           {contact.linkedIn && (
             <a
               href={contact.linkedIn}

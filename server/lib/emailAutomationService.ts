@@ -48,6 +48,7 @@ import {
   isInboundEmailDeleted,
 } from './inboundEmailService.js';
 import { createId, nowIso } from './id.js';
+import { parseSenderSignature } from './emailSignature.js';
 
 // The calendar day an ISO timestamp falls on in server local time (Pacific in
 // prod), so an evening application counts toward that day's goal.
@@ -621,6 +622,24 @@ export function createContactFromEmail(
     resolvedNextAction = row.suggestedAction ?? '';
   }
 
+  // A second vendor on a role the job seeker is already submitted to: keep
+  // the recruiter for other roles, note that they are not the vendor of
+  // record, and leave no next action.
+  let vendorNote: string | null = null;
+  if (row.classification === 'Already Submitted Elsewhere') {
+    resolvedNextAction = '';
+    const agency = appRows[0]?.agency?.trim();
+    vendorNote = `Secondary vendor: you are already submitted for this role ${
+      agency ? `via ${agency}` : 'through another vendor'
+    }. Saved for other roles.`;
+  }
+  const signature = parseSenderSignature(extractTextBody(row.payload), {
+    email: fromEmail,
+    name: row.originalSenderName ?? row.recruiterName,
+    wholeBody: !row.isForwarded,
+  });
+  const dated = (note: string) => `[${row.receivedAt.slice(0, 10)}] ${note}`;
+
   if (existing) {
     contactId = existing.id;
     merged = true;
@@ -629,9 +648,16 @@ export function createContactFromEmail(
       .set({
         name,
         lastContactDate: row.receivedAt.slice(0, 10),
-        messageNotes: row.aiSummary
-          ? `${existing.messageNotes}\n[${row.receivedAt.slice(0, 10)}] ${row.aiSummary}`.trim()
-          : existing.messageNotes,
+        messageNotes: [
+          existing.messageNotes,
+          ...[vendorNote, row.aiSummary].filter((n): n is string => Boolean(n)).map(dated),
+        ]
+          .join('\n')
+          .trim(),
+        // Signature details fill only what is empty; never what was typed.
+        phone: existing.phone ?? signature.phone,
+        title: existing.title ?? signature.title,
+        linkedIn: existing.linkedIn.trim() ? existing.linkedIn : signature.linkedIn ?? '',
         nextAction: isMeaningfulContactNextAction(resolvedNextAction)
           ? resolvedNextAction
           : existing.nextAction,
@@ -663,11 +689,13 @@ export function createContactFromEmail(
         applicationId,
         name,
         email: row.originalSenderEmail ?? row.fromEmail,
-        linkedIn: '',
+        linkedIn: signature.linkedIn ?? '',
+        phone: signature.phone,
+        title: signature.title,
         company,
         source: row.fromEmail.includes('linkedin') ? 'linkedin' : 'email',
         lastContactDate: row.receivedAt.slice(0, 10),
-        messageNotes: row.aiSummary ?? '',
+        messageNotes: [vendorNote, row.aiSummary].filter(Boolean).join('\n'),
         nextAction: resolvedNextAction,
         createdAt: timestamp,
         updatedAt: timestamp,

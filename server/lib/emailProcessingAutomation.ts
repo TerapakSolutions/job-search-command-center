@@ -426,6 +426,19 @@ export function applySafeAutomationRules(
     }
   }
 
+  // A second vendor on a role the job seeker is already submitted to: save
+  // the recruiter as a contact on that application (marked as a secondary
+  // vendor). The application itself is never changed.
+  if (
+    row.classification === 'Already Submitted Elsewhere' &&
+    isHighConfidence(row) &&
+    applicationId &&
+    !shouldSkip('create_contact')
+  ) {
+    const contactResult = createContactFromEmail(db, userId, emailId, applicationId);
+    if (contactResult) results.push(contactResult);
+  }
+
   if (
     row.classification === 'Recruiter Outreach' &&
     isHighConfidence(row) &&
