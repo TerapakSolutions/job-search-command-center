@@ -64,6 +64,59 @@ export interface MatchEmailInput {
   companyName: string | null;
   positionTitle: string | null;
   recruiterName: string | null;
+  /** Used by the booking rule below. */
+  classification?: string | null;
+  subject?: string | null;
+}
+
+// Emails that book or request a meeting with a recruiter you already know.
+const BOOKING_CLASSIFICATIONS = new Set(['Scheduling', 'Interview Request']);
+const BOOKING_MATCH_CONFIDENCE = 75;
+const CLOSED_STATUSES = new Set(['rejected', 'ghosted']);
+
+/**
+ * A calendar invite often names only the people: the company is the
+ * recruiter's firm and there is no role. When it names, by full name, a
+ * contact saved on exactly one open application, that is the application.
+ * Two or more such applications: no guess.
+ */
+function matchBookingByContact(
+  input: MatchEmailInput,
+  apps: Array<typeof applications.$inferSelect>,
+  userContacts: Array<typeof contacts.$inferSelect>,
+): ApplicationMatch | null {
+  if (!BOOKING_CLASSIFICATIONS.has(input.classification ?? '')) return null;
+  const recruiter = normalize(input.recruiterName);
+  const subject = ` ${normalize(input.subject)} `;
+  // An email that names a role is about that role: the recruiter's other
+  // application only counts if its role fits (issue #14).
+  const namedRole =
+    input.positionTitle && !isUnknownRole(input.positionTitle) ? input.positionTitle : null;
+  const openApps = new Map(
+    apps
+      .filter((app) => !CLOSED_STATUSES.has(app.status))
+      .filter((app) => !namedRole || roleMatchScore(namedRole, app.roleTitle) > 0)
+      .map((app) => [app.id, app]),
+  );
+
+  const named = userContacts.filter((contact) => {
+    if (!contact.applicationId || !openApps.has(contact.applicationId)) return false;
+    const name = normalize(contact.name);
+    if (name.split(' ').length < 2) return false;
+    return name === recruiter || subject.includes(` ${name} `);
+  });
+  const appIds = new Set(named.map((contact) => contact.applicationId!));
+  if (appIds.size !== 1) return null;
+
+  const app = openApps.get([...appIds][0])!;
+  return {
+    applicationId: app.id,
+    company: app.company,
+    roleTitle: app.roleTitle,
+    status: app.status,
+    confidence: BOOKING_MATCH_CONFIDENCE,
+    matchReasons: [`Booking with your contact ${named[0].name}`],
+  };
 }
 
 export function matchEmailToApplications(
@@ -191,6 +244,24 @@ export function matchEmailToApplications(
     bestMatch !== null &&
     secondMatch !== null &&
     bestMatch.confidence - secondMatch.confidence < MATCH_AMBIGUITY_GAP;
+
+  const confidentMatch =
+    bestMatch && bestMatch.confidence >= MATCH_CONFIDENCE_THRESHOLD && !requiresManualSelection
+      ? bestMatch
+      : null;
+
+  // Only when the usual signals found nothing confident and nothing ambiguous.
+  if (!confidentMatch && !requiresManualSelection) {
+    const booking = matchBookingByContact(input, apps, userContacts);
+    if (booking) {
+      return {
+        matches: [booking, ...matches.filter((m) => m.applicationId !== booking.applicationId)],
+        bestMatch: booking,
+        requiresManualSelection: false,
+        linkedApplicationId: null,
+      };
+    }
+  }
 
   return {
     matches,
