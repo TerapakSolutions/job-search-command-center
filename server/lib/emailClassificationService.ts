@@ -86,12 +86,32 @@ function applyKnownPatternRuleOverrides(
     writtenByCandidate: classifiedInput.forwardMetadata.topMessageFromForwarder,
   });
 
-  // The job seeker's own reply agreeing to be submitted. The rule needs a
-  // message they wrote, an agreement phrase and no decline, so its label
-  // wins; the company, role and recruiter the LLM extracted are kept.
+  // The job seeker's own reply agreeing to be submitted, or saying they are
+  // already submitted through another vendor. The rules need a message they
+  // wrote and a specific phrase, so their label wins; the company, role and
+  // recruiter the LLM extracted are kept.
   if (
     classifiedInput.forwardMetadata.topMessageFromForwarder &&
-    ruleResult.classification === 'Agreed to Submission'
+    CANDIDATE_WRITTEN_LABELS.has(ruleResult.classification)
+  ) {
+    return enrichClassificationFromForward(
+      {
+        ...ruleResult,
+        companyName: result.companyName ?? ruleResult.companyName,
+        positionTitle: result.positionTitle ?? ruleResult.positionTitle,
+        recruiterName: result.recruiterName ?? ruleResult.recruiterName,
+      },
+      classifiedInput,
+    );
+  }
+
+  // The LLM can call an outbound hold ("don't submit until we confirm the
+  // rate") Already Submitted Elsewhere. Keep that label only when the rule,
+  // which needs an "elsewhere" marker, agrees; otherwise use the rule's
+  // label with the LLM's extracted fields.
+  if (
+    classifiedInput.forwardMetadata.topMessageFromForwarder &&
+    result.classification === 'Already Submitted Elsewhere'
   ) {
     return enrichClassificationFromForward(
       {
@@ -151,6 +171,12 @@ export async function classifyEmailContent(input: {
   return enrichClassificationFromForward(ruleResult, classifiedInput);
 }
 
+// Labels only a message the job seeker wrote can have.
+const CANDIDATE_WRITTEN_LABELS = new Set<string>([
+  'Agreed to Submission',
+  'Already Submitted Elsewhere',
+]);
+
 const WAIT_FOR_REPLY_LABELS = new Set<string>([
   'Follow-up Required',
   'Recruiter Outreach',
@@ -164,9 +190,9 @@ function enrichClassificationFromForward(
 ): EmailClassificationResult {
   const { forwardMetadata } = classifiedInput;
   const outbound = forwardMetadata.topMessageFromForwarder;
-  // Only a message the job seeker wrote can be "Agreed to Submission"; any
-  // other email the LLM puts there falls back to the rules.
-  if (!outbound && result.classification === 'Agreed to Submission') {
+  // Only a message the job seeker wrote can have these labels; any other
+  // email the LLM puts there falls back to the rules.
+  if (!outbound && CANDIDATE_WRITTEN_LABELS.has(result.classification)) {
     result = classifyInboundEmailWithRules({
       subject: classifiedInput.subject,
       fromEmail: classifiedInput.fromEmail,
@@ -187,7 +213,11 @@ function enrichClassificationFromForward(
         ? counterparty
           ? `Wait for ${counterparty} to reply`
           : 'Wait for a reply'
-        : result.suggestedAction,
+        : result.classification === 'Already Submitted Elsewhere'
+          ? counterparty
+            ? `Already submitted through another vendor. Keep ${counterparty} in mind for other roles`
+            : 'Already submitted through another vendor'
+          : result.suggestedAction,
     };
   }
   const subject = forwardMetadata.originalSubject ?? classifiedInput.subject;

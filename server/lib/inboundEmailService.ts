@@ -11,6 +11,7 @@ import {
 } from './emailAutomationMessages.js';
 import type { ProcessingStatus } from './inboundEmailProcessingTypes.js';
 import { ProcessingTimelineBuilder } from './processingTimeline.js';
+import { classificationInputFromEmail } from './emailForwardedParser.js';
 import { nowIso } from './id.js';
 
 export interface InboundEmailListItem {
@@ -66,6 +67,8 @@ export interface ForwardedEmailSummary {
   originalRecipient: string | null;
   originalSentAt: string | null;
   originalCompany: string | null;
+  /** The job seeker wrote the top message, so the "original" party is who they wrote to. */
+  writtenByYou: boolean;
 }
 
 export interface InboundEmailDetail extends InboundEmailListItem {
@@ -346,6 +349,24 @@ export function listInboundEmailsForUser(
   return { items, total, hiddenCount, limit, offset };
 }
 
+// Recomputed from the stored text (no column), as classification does.
+function isWrittenByYou(row: typeof inboundEmails.$inferSelect, textBody: string): boolean {
+  if (!row.isForwarded) return false;
+  let fromName: string | null = null;
+  try {
+    const payload = JSON.parse(row.payload) as Record<string, unknown>;
+    fromName = typeof payload.FromName === 'string' ? payload.FromName : null;
+  } catch {
+    fromName = null;
+  }
+  return classificationInputFromEmail({
+    subject: row.subject,
+    fromEmail: row.fromEmail,
+    fromName,
+    textBody,
+  }).forwardMetadata.topMessageFromForwarder;
+}
+
 export function getInboundEmailDetailForUser(
   db: Db,
   userId: string,
@@ -392,6 +413,7 @@ export function getInboundEmailDetailForUser(
       originalRecipient: row.originalRecipient,
       originalSentAt: row.originalSentAt,
       originalCompany: row.originalCompany,
+      writtenByYou: isWrittenByYou(row, textBody),
     },
     processingTimeline: ProcessingTimelineBuilder.parse(row.processingTimelineJson),
     pendingApprovals: listPendingApprovalsForEmail(db, row.id),

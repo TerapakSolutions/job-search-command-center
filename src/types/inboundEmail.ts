@@ -34,6 +34,8 @@ export interface ForwardedEmailSummary {
   originalRecipient: string | null;
   originalSentAt: string | null;
   originalCompany: string | null;
+  /** The job seeker wrote the top message, so the "original" party is who they wrote to. */
+  writtenByYou?: boolean;
 }
 
 export interface ProcessingTimelineStep {

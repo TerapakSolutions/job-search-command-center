@@ -710,7 +710,9 @@ export default function InboundEmailsPage() {
                       <dd>{detail.forwarded.forwardedByEmail}</dd>
                       {detail.forwarded.originalSenderEmail && (
                         <>
-                          <dt className="font-medium">Original sender</dt>
+                          <dt className="font-medium">
+                            {detail.forwarded.writtenByYou ? 'Sent to' : 'Original sender'}
+                          </dt>
                           <dd>
                             {detail.forwarded.originalSenderName
                               ? `${detail.forwarded.originalSenderName} <${detail.forwarded.originalSenderEmail}>`

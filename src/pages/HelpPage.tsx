@@ -9,6 +9,8 @@ export const CLASSIFICATION_GLOSSARY: Record<string, string> = {
     'An employer confirming it received your application. Creates an Applied application when the company and role are clear.',
   'Agreed to Submission':
     'Your own reply, at the top of a thread you forwarded, agreeing to be submitted for a role. Changes no application.',
+  'Already Submitted Elsewhere':
+    'Your own reply, at the top of a thread you forwarded, telling another vendor you are already submitted for the role through someone else. Changes no application.',
   'Recruiter Outreach':
     'A recruiter contacting you about a role. Creates or updates an application at Recruiter screen when the company and role are clear.',
   'Interview Request': 'An invitation to interview. Moves the application to Interviewing, sometimes after your approval.',

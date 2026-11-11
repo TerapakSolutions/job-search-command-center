@@ -220,6 +220,32 @@ describe('InboundEmailsPage', () => {
     expect(await screen.findByText(/Originally sent Oct 15, 2026/)).toBeTruthy();
   });
 
+  it.each([
+    [true, 'Sent to', 'Original sender'],
+    [false, 'Original sender', 'Sent to'],
+  ])('labels the counterparty of a forward you wrote (writtenByYou=%s) as "%s"', async (writtenByYou, shown, hidden) => {
+    mockFetchInboundEmailById.mockResolvedValue({
+      ...sampleList.items[0],
+      ...detailExtensions,
+      forwarded: {
+        ...detailExtensions.forwarded,
+        isForwarded: true,
+        originalSenderEmail: 'priya.nair@vendortwo.example',
+        originalSenderName: 'Priya Nair',
+        writtenByYou,
+      },
+    });
+    render(
+      <MemoryRouter>
+        <InboundEmailsPage />
+      </MemoryRouter>,
+    );
+    await userEvent.click(await screen.findByRole('button', { name: /recruiter@acme.com/i }));
+
+    expect(await screen.findByText(shown)).toBeTruthy();
+    expect(screen.queryByText(hidden)).toBeNull();
+  });
+
   it('marks email as reviewed', async () => {
     render(
       <MemoryRouter>

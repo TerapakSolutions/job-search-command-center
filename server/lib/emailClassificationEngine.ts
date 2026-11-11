@@ -17,7 +17,7 @@ const SYSTEM_PROMPT = `You classify inbound job-search emails and extract struct
 
 Respond with ONLY valid JSON (no markdown) using this schema:
 {
-  "classification": one of ["Interview Request", "Application Confirmation", "Agreed to Submission", "Rejection", "Recruiter Outreach", "Follow-up Required", "Offer", "Scheduling", "General Update", "Not Job Related", "Other"],
+  "classification": one of ["Interview Request", "Application Confirmation", "Agreed to Submission", "Already Submitted Elsewhere", "Rejection", "Recruiter Outreach", "Follow-up Required", "Offer", "Scheduling", "General Update", "Not Job Related", "Other"],
   "classificationConfidence": number 0-100,
   "companyName": string or null,
   "positionTitle": string or null,
@@ -34,6 +34,7 @@ Guidelines:
 - "Interview Request": recruiter wants to schedule or proceed to interviews
 - "Application Confirmation": acknowledgment that an application was received
 - "Agreed to Submission": the job seeker, writing this message, agrees to be submitted or represented for a role. Only when "writtenByCandidate" is true; a recruiter asking for consent is not this
+- "Already Submitted Elsewhere": the job seeker, writing this message, says they are already submitted for this role through a different vendor or recruiter. Only when "writtenByCandidate" is true. Never "Agreed to Submission". A hold ("don't submit until ...") or a status question to the same vendor is not this
 - When "writtenByCandidate" is true, the job seeker wrote this message; set requiresResponse false
 - "Rejection": candidate not moving forward
 - "Not Job Related": nothing to do with the job search (bills, payment reminders, newsletters, community or social notifications, marketing). Use "Other" when it might be job-related but fits no category
@@ -53,7 +54,15 @@ interface ClassifyInput {
 const CANDIDATE_AGREEMENT =
   /open to moving forward|happy to move forward|go ahead and submit|(?:you|please)\s+(?:can\s+|may\s+)?submit\s+(?:me|my)|ok(?:ay)?\s+to\s+submit|right to represent|consent to (?:be\s+)?submit/;
 const CANDIDATE_DECLINE =
-  /\bnot\s+(?:open|interested)|pass on this|\bdecline|\bwithdraw|no longer interested|not (?:be\s+)?moving forward/;
+  /\bnot\s+(?:open|interested)|pass on this|\bdecline|\bwithdraw|no longer interested|not (?:be\s+)?moving forward|(?:don['\u2019]?t|do not)\s+submit/;
+// The job seeker telling a vendor they are already submitted for the role
+// through someone else. Needs both "already submitted" and an elsewhere
+// marker: "don't submit me" alone can be a hold, and "already been submitted"
+// alone can be a question to the same vendor.
+const CANDIDATE_ALREADY_SUBMITTED =
+  /already\s+(?:been\s+)?submitted|(?:i['\u2019]?m|i am|i was)\s+already\s+submitted|already\s+submitted\s+me/;
+const SUBMITTED_ELSEWHERE =
+  /(?:another|other|different)\s+(?:vendor|agency|recruiter|staffing)|someone else|elsewhere/;
 
 export async function classifyInboundEmailWithLlm(
   input: ClassifyInput,
@@ -91,6 +100,13 @@ export function classifyInboundEmailWithRules(
 
   if (input.writtenByCandidate) {
     const body = input.textBody.toLowerCase();
+    if (CANDIDATE_ALREADY_SUBMITTED.test(body) && SUBMITTED_ELSEWHERE.test(body)) {
+      return buildRuleResult('Already Submitted Elsewhere', 85, input, {
+        requiresResponse: false,
+        suggestedAction: defaultSuggestedAction('Already Submitted Elsewhere'),
+        aiSummary: 'You told this vendor you are already submitted for this role through someone else.',
+      });
+    }
     if (CANDIDATE_AGREEMENT.test(body) && !CANDIDATE_DECLINE.test(body)) {
       return buildRuleResult('Agreed to Submission', 85, input, {
         requiresResponse: false,
