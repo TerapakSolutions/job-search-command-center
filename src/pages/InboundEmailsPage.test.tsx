@@ -213,6 +213,26 @@ describe('InboundEmailsPage', () => {
     expect(await screen.findByText('Hello candidate')).toBeTruthy();
   });
 
+  it('keeps a linked email open even when it is not in the loaded list', async () => {
+    mockFetchInboundEmailById.mockResolvedValue({
+      ...sampleList.items[0],
+      ...detailExtensions,
+      id: 'email-99',
+      textBody: 'Older linked email',
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/inbound-emails?email=email-99']}>
+        <InboundEmailsPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Older linked email')).toBeTruthy();
+    // The list (which doesn't contain email-99) has loaded since.
+    await waitFor(() => expect(mockFetchInboundEmails.mock.calls.length).toBeGreaterThan(1));
+    expect(screen.getByText('Older linked email')).toBeTruthy();
+  });
+
   it('shows when a forwarded email was originally sent, not just when it was forwarded', async () => {
     mockFetchInboundEmailById.mockResolvedValue({
       ...sampleList.items[0],

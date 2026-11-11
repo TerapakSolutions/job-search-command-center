@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { FiCheck, FiInbox, FiMail, FiRefreshCw, FiPlay, FiUserPlus, FiBriefcase, FiTrendingUp, FiEdit3, FiList, FiTrash2 } from 'react-icons/fi';
 import {
@@ -68,6 +68,11 @@ export default function InboundEmailsPage() {
   const [hiddenCount, setHiddenCount] = useState(0);
   const [showHidden, setShowHidden] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // A link from elsewhere (e.g. a pending approval on Today) names the email
+  // to open: /inbound-emails?email=<id>.
+  const [searchParams] = useSearchParams();
+  const linkedEmailId = searchParams.get('email');
+  const detailRef = useRef<HTMLElement>(null);
   const [detail, setDetail] = useState<InboundEmailDetail | null>(null);
   const [loading, setLoading] = useState(!demoMode);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -116,7 +121,13 @@ export default function InboundEmailsPage() {
       setEmails(result.items);
       setTotal(result.total);
       setHiddenCount(result.hiddenCount ?? 0);
-      if (selectedId && !result.items.some((e) => e.id === selectedId)) {
+      // A linked email is fetched by id, so it stays open even when it isn't
+      // in this page of the list (older, hidden, or filtered out).
+      if (
+        selectedId &&
+        selectedId !== linkedEmailId &&
+        !result.items.some((e) => e.id === selectedId)
+      ) {
         setSelectedId(null);
         setDetail(null);
       }
@@ -125,7 +136,7 @@ export default function InboundEmailsPage() {
     } finally {
       setLoading(false);
     }
-  }, [demoMode, listFilters, selectedId]);
+  }, [demoMode, listFilters, selectedId, linkedEmailId]);
 
   useEffect(() => {
     void loadList();
@@ -191,12 +202,11 @@ export default function InboundEmailsPage() {
     void loadAutomation(id);
   };
 
-  // A link from elsewhere (e.g. a pending approval on Today) names the email
-  // to open: /inbound-emails?email=<id>.
-  const [searchParams] = useSearchParams();
-  const linkedEmailId = searchParams.get('email');
   useEffect(() => {
-    if (linkedEmailId && !demoMode) handleSelect(linkedEmailId);
+    if (!linkedEmailId || demoMode) return;
+    handleSelect(linkedEmailId);
+    // On a narrow screen the email sits below the list; bring it into view.
+    detailRef.current?.scrollIntoView?.({ block: 'start' });
   }, [linkedEmailId, demoMode]);
 
   const handleMarkReviewed = async () => {
@@ -604,7 +614,10 @@ export default function InboundEmailsPage() {
           )}
         </section>
 
-        <section className="lg:col-span-3 bg-white border rounded-lg overflow-hidden flex flex-col">
+        <section
+          ref={detailRef}
+          className="lg:col-span-3 bg-white border rounded-lg overflow-hidden flex flex-col"
+        >
           {!selectedId ? (
             <div className="flex-1 flex items-center justify-center p-8 text-sm text-gray-500">
               Select an email to view its contents.
