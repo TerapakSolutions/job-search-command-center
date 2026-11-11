@@ -25,7 +25,12 @@ import {
 } from './emailApplicationMatcher.js';
 import { buildDraftReply, generateNextActions } from './emailNextActions.js';
 import { classificationInputFromEmail } from './emailForwardedParser.js';
-import { buildPipelineUpdateProposal } from './emailPipelineAutomation.js';
+import {
+  buildPipelineUpdateProposal,
+  isForwardTransition,
+  pipelineStatusLabel,
+} from './emailPipelineAutomation.js';
+import { appendStageChangeNote, buildStageChangeNote } from './stageChangeNote.js';
 import {
   hasIdentifiedCompany,
   hasIdentifiedCompanyAndRole,
@@ -347,6 +352,7 @@ export function analyzeEmailAutomation(
         classification: row.classification,
         classificationConfidence: row.classificationConfidence,
         interviewDetected: row.interviewDetected ?? false,
+        emailText: emailTextForStage(row),
       });
     }
   }
@@ -374,6 +380,25 @@ export function analyzeEmailAutomation(
     canOfferApplicationCreation,
     duplicateApplicationId,
   };
+}
+
+// Reply history quoted under the newest message.
+const QUOTED_HISTORY =
+  /^(?:_{10,}\s*$|-{2,}\s*original message|on .+wrote:\s*$|from:\s.+$)/im;
+
+// The newest message's subject and text, used to tell a recruiter screen from
+// an interview. Quoted history is left out: a later round quotes the screening
+// request it follows.
+function emailTextForStage(row: typeof inboundEmails.$inferSelect): string {
+  const { subject, textBody } = classificationInputFromEmail({
+    subject: row.subject,
+    fromEmail: row.fromEmail,
+    fromName: extractFromName(row.payload),
+    textBody: extractTextBody(row.payload),
+  });
+  const cut = textBody.search(QUOTED_HISTORY);
+  const newest = cut > 0 ? textBody.slice(0, cut) : textBody;
+  return `${subject}\n${newest}`;
 }
 
 // The job seeker wrote this email's top message (a forwarded thread they
@@ -758,6 +783,8 @@ export function updatePipelineFromEmail(
     applicationId: string;
     status?: PipelineStatus;
     force?: boolean;
+    /** Only a person's manual choice may move an application to an earlier stage. */
+    allowBackward?: boolean;
   },
 ): AutomationActionResult | null {
   const row = getEmailForUser(db, userId, emailId);
@@ -777,9 +804,35 @@ export function updatePipelineFromEmail(
     classification: row.classification,
     classificationConfidence: row.classificationConfidence,
     interviewDetected: row.interviewDetected ?? false,
+    emailText: emailTextForStage(row),
   });
 
   const targetStatus = input.status ?? proposal?.proposedStatus;
+  if (
+    input.status &&
+    !input.allowBackward &&
+    !isForwardTransition(app.status as PipelineStatus, input.status)
+  ) {
+    return {
+      success: false,
+      actionType: 'update_pipeline',
+      confidence: row.classificationConfidence,
+      auditLogId: recordAuditLog(db, {
+        userId,
+        inboundEmailId: emailId,
+        actionType: 'update_pipeline',
+        confidence: row.classificationConfidence,
+        status: 'rejected',
+        details: {
+          reason: 'backward_move',
+          currentStatus: app.status,
+          proposedStatus: input.status,
+        },
+      }),
+      changes: {},
+      message: `Kept ${app.company} at ${pipelineStatusLabel(app.status)}: an email can't move it back to ${pipelineStatusLabel(input.status)}`,
+    };
+  }
   if (!targetStatus) {
     return {
       success: false,
@@ -797,7 +850,7 @@ export function updatePipelineFromEmail(
       message: formatAutomationActionMessage({
         actionType: 'update_pipeline',
         success: false,
-        detail: 'no matched application',
+        detail: `${app.company} stays at ${pipelineStatusLabel(app.status)}`,
       }),
     };
   }
@@ -1262,6 +1315,23 @@ export function listPendingApprovalsForUser(
   return rows.map((row) => pendingApprovalToEntry(db, row));
 }
 
+// The audit action an approval stands for, so a declined draft reply is not
+// logged as a pipeline update.
+function actionTypeForApproval(approvalType: string): AutomationActionType {
+  switch (approvalType) {
+    case 'draft_reply':
+      return 'draft_reply';
+    case 'create_contact':
+      return 'create_contact';
+    case 'link_application':
+      return 'match_applications';
+    case 'create_application_suggestion':
+      return 'create_application';
+    default:
+      return 'update_pipeline';
+  }
+}
+
 export function resolvePendingApproval(
   db: Db,
   userId: string,
@@ -1308,17 +1378,18 @@ export function resolvePendingApproval(
   };
 
   if (decision === 'rejected') {
+    const actionType = actionTypeForApproval(approval.approvalType);
     const auditLogId = recordAuditLog(db, {
       userId,
       inboundEmailId: approval.inboundEmailId,
-      actionType: 'update_pipeline',
+      actionType,
       confidence: approval.confidence,
       status: 'rejected',
       details: auditDetails,
     });
     return {
       success: false,
-      actionType: 'update_pipeline',
+      actionType,
       confidence: approval.confidence,
       auditLogId,
       changes: {},
@@ -1427,9 +1498,56 @@ export function resolvePendingApproval(
 
   if (!approval.applicationId) return null;
 
+  const app = db
+    .select()
+    .from(applications)
+    .where(and(eq(applications.id, approval.applicationId), eq(applications.userId, userId)))
+    .all()[0];
+  if (!app) return null;
+
+  // The application may have moved on since this was queued.
+  if (!isForwardTransition(app.status as PipelineStatus, approval.proposedStatus as PipelineStatus)) {
+    const auditLogId = recordAuditLog(db, {
+      userId,
+      inboundEmailId: approval.inboundEmailId,
+      actionType: 'update_pipeline',
+      confidence: approval.confidence,
+      status: 'rejected',
+      details: {
+        ...auditDetails,
+        approvedFromPending: approvalId,
+        reason: 'stage_already_past',
+        currentStatus: app.status,
+      },
+    });
+    return {
+      success: false,
+      actionType: 'update_pipeline',
+      confidence: approval.confidence,
+      auditLogId,
+      changes: {},
+      message: `${app.company} is already at ${pipelineStatusLabel(app.status)}, so it stays there`,
+    };
+  }
+
+  const email = getEmailForUser(db, userId, approval.inboundEmailId);
+  const notes = email
+    ? appendStageChangeNote(
+        app.notes,
+        buildStageChangeNote({
+          date: localDateKey(timestamp),
+          status: approval.proposedStatus,
+          senderName: email.originalSenderName ?? email.recruiterName,
+          company: app.company,
+          text: emailTextForStage(email),
+        }),
+      )
+    : app.notes;
+
   db.update(applications)
     .set({
       status: approval.proposedStatus,
+      notes,
       updatedAt: timestamp,
     })
     .where(eq(applications.id, approval.applicationId))
@@ -1461,7 +1579,7 @@ export function resolvePendingApproval(
     message: formatAutomationActionMessage({
       actionType: 'update_pipeline',
       success: true,
-      detail: `Approved pipeline update to ${approval.proposedStatus.replace(/_/g, ' ')}`,
+      detail: `Approved pipeline update to ${pipelineStatusLabel(approval.proposedStatus)}`,
     }),
   };
 }

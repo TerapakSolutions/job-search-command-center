@@ -20,6 +20,7 @@ import {
   isNoReplyOrApplicationConfirmation,
 } from './emailAutomationMessages.js';
 import { isInterviewConfirmationText } from './emailContentExtraction.js';
+import { pipelineStatusLabel } from './emailPipelineAutomation.js';
 import { formatAutomationActionMessage } from './automationOutcomeMessages.js';
 import type { ProcessingTimelineBuilder } from './processingTimeline.js';
 
@@ -515,12 +516,12 @@ export function applySafeAutomationRules(
       confidence: row.classificationConfidence ?? 50,
       reason: riskyReasons.join(', '),
       reasonCodes: riskyReasons,
-      suggestedAction: `Update pipeline to ${analysis.pipelineProposal.proposedStatus.replace(/_/g, ' ')}`,
+      suggestedAction: `Update pipeline to ${pipelineStatusLabel(analysis.pipelineProposal.proposedStatus)}`,
       candidateMatches: analysis.matches.matches,
     });
     pendingApprovals += 1;
     approvalMessages.push(
-      `Update pipeline to ${analysis.pipelineProposal.proposedStatus.replace(/_/g, ' ')}`,
+      `Update pipeline to ${pipelineStatusLabel(analysis.pipelineProposal.proposedStatus)}`,
     );
     recordEmailAutomationAudit(db, {
       userId,
@@ -532,7 +533,7 @@ export function applySafeAutomationRules(
         pendingApprovalId: approvalId,
         riskyReasons,
         reasonCode: riskyReasons[0],
-        suggestedAction: `Update pipeline to ${analysis.pipelineProposal.proposedStatus.replace(/_/g, ' ')}`,
+        suggestedAction: `Update pipeline to ${pipelineStatusLabel(analysis.pipelineProposal.proposedStatus)}`,
         confidence: row.classificationConfidence,
       },
     });

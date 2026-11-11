@@ -267,6 +267,8 @@ export function inboundEmailsRouter(db: Db): Router {
       applicationId,
       status: typeof req.body?.status === 'string' ? req.body.status : undefined,
       force: req.body?.force === true,
+      // A person chose this stage, so it may be an earlier one.
+      allowBackward: true,
     });
     if (!result) {
       res.status(404).json({ error: 'Not found' });
