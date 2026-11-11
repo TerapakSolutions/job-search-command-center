@@ -53,6 +53,17 @@ describe('ApplicationCard status colours', () => {
     expect(cardClass('recruiter_screen')).toContain('bg-yellow-50');
   });
 
+  it('is green for a recruiter screen once it is booked', () => {
+    const { unmount } = render(
+      <ApplicationCard
+        application={{ ...app('recruiter_screen'), interviewDate: '2026-10-23' }}
+        highlightStatus
+      />,
+    );
+    expect(screen.getByRole('button').className).toContain('bg-green-50');
+    unmount();
+  });
+
   it('is red for rejected', () => {
     expect(cardClass('rejected')).toContain('bg-red-50');
   });
