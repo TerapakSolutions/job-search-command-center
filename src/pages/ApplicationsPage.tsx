@@ -7,6 +7,8 @@ import { useJobSearchStore } from '../store/useJobSearchStore';
 import type { Application } from '../types/application';
 import { PIPELINE_STATUS_LABELS } from '../types/application';
 
+const CLOSED_STATUSES = new Set<string>(['rejected', 'ghosted']);
+
 export default function ApplicationsPage() {
   const applications = useJobSearchStore((s) => s.applications);
   const addApplication = useJobSearchStore((s) => s.addApplication);
@@ -16,6 +18,13 @@ export default function ApplicationsPage() {
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  // Rejected and ghosted roles are hidden unless asked for, as on the
+  // Pipeline board.
+  const [showClosed, setShowClosed] = useState(false);
+  const closedCount = useMemo(
+    () => applications.filter((app) => CLOSED_STATUSES.has(app.status)).length,
+    [applications],
+  );
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Application | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -37,10 +46,12 @@ export default function ApplicationsPage() {
         app.company.toLowerCase().includes(q) ||
         app.roleTitle.toLowerCase().includes(q);
       const matchesStatus =
-        statusFilter === 'all' || app.status === statusFilter;
+        statusFilter === 'all'
+          ? showClosed || !CLOSED_STATUSES.has(app.status)
+          : app.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
-  }, [applications, search, statusFilter]);
+  }, [applications, search, statusFilter, showClosed]);
 
   const openCreate = () => {
     setEditing(null);
@@ -104,6 +115,17 @@ export default function ApplicationsPage() {
             </option>
           ))}
         </select>
+        {closedCount > 0 && statusFilter === 'all' && (
+          <label className="flex items-center gap-2 text-sm text-gray-600 whitespace-nowrap">
+            <input
+              type="checkbox"
+              checked={showClosed}
+              onChange={(e) => setShowClosed(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Show rejected &amp; archived ({closedCount})
+          </label>
+        )}
       </div>
 
       {filtered.length === 0 ? (
