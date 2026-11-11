@@ -299,6 +299,11 @@ export function analyzeEmailAutomation(
     companyName: effectiveCompany,
     positionTitle: effectiveRole,
     recruiterName: row.recruiterName ?? row.originalSenderName,
+    classification: row.classification,
+    subject: effectiveSubject,
+    ownEmails: [getUserEmailContext(db, userId).userEmail, row.isForwarded ? row.fromEmail : '']
+      .filter(Boolean),
+    ownName: row.isForwarded ? extractFromName(row.payload) : null,
   });
 
   const duplicateApplicationId = findDuplicateApplication(
@@ -385,6 +390,10 @@ export function analyzeEmailAutomation(
 // Reply history quoted under the newest message.
 const QUOTED_HISTORY =
   /^(?:_{10,}\s*$|-{2,}\s*original message|on .+wrote:\s*$|from:\s.+$)/im;
+
+function normalizeName(value: string | null | undefined): string {
+  return (value ?? '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
 
 // The newest message's subject and text, used to tell a recruiter screen from
 // an interview. Quoted history is left out: a later round quotes the screening
@@ -628,11 +637,18 @@ export function createContactFromEmail(
     .where(eq(contacts.userId, userId))
     .all();
 
-  const existing = existingContacts.find(
-    (c) =>
-      c.applicationId === applicationId &&
-      c.email.trim().toLowerCase() === fromEmail,
-  );
+  // The same person on this application: by address, or by full name when
+  // they write from another address (a recruiter's firm vs. the employer).
+  const senderName = normalizeName(row.originalSenderName ?? row.recruiterName);
+  const existing =
+    existingContacts.find(
+      (c) => c.applicationId === applicationId && c.email.trim().toLowerCase() === fromEmail,
+    ) ??
+    (senderName.split(' ').length >= 2
+      ? existingContacts.find(
+          (c) => c.applicationId === applicationId && normalizeName(c.name) === senderName,
+        )
+      : undefined);
 
   const timestamp = nowIso();
   let contactId: string;
