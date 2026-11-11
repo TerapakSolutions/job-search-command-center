@@ -1,6 +1,6 @@
 /** @jest-environment node */
 import { eq } from 'drizzle-orm';
-import { applications, inboundEmails } from '../db/schema.js';
+import { applications, emailAutomationPendingApprovals, inboundEmails } from '../db/schema.js';
 import { classifyEmailContent } from './emailClassificationService.js';
 import * as engine from './emailClassificationEngine.js';
 import type { EmailClassificationResult } from './emailClassificationTypes.js';
@@ -88,7 +88,17 @@ describe('the forwarder telling a second vendor they are already submitted', () 
     );
   });
 
-  it('changes nothing on the matched application', async () => {
+  it('changes nothing on the matched application, and queues nothing (prod LLM shape)', async () => {
+    mockLlm.mockResolvedValue(
+      llmResult({
+        classification: 'Agreed to Submission',
+        classificationConfidence: 95,
+        companyName: 'Example Insurer',
+        positionTitle: 'Solution Architect',
+        recruiterName: 'Priya Nair',
+        suggestedAction: 'Consider other roles for the candidate',
+      }),
+    );
     const db = createTestDb();
     const userId = seedTestUser(db, { email: FORWARDER });
     seedApplication(db, userId, {
@@ -118,6 +128,18 @@ describe('the forwarder telling a second vendor they are already submitted', () 
 
     const row = db.select().from(inboundEmails).where(eq(inboundEmails.id, id)).all()[0];
     expect(row.classification).toBe(LABEL);
+    const steps: Array<{ step: string; message: string }> =
+      JSON.parse(row.processingTimelineJson ?? '{}').steps ?? [];
+    expect(steps.find((st) => st.step === 'application_matched')?.message).toBe(
+      'Matched existing application: Example Insurer / Solution Architect',
+    );
+    expect(
+      db
+        .select()
+        .from(emailAutomationPendingApprovals)
+        .where(eq(emailAutomationPendingApprovals.inboundEmailId, id))
+        .all(),
+    ).toEqual([]);
     const after = db.select().from(applications).where(eq(applications.id, 'app-insurer')).all()[0];
     expect(after).toEqual(before);
   });
@@ -157,6 +179,19 @@ describe('controls', () => {
     "I've already submitted my updated resume, aligned to the job description.",
     'I already submitted the skills matrix you asked for.',
   ])('the candidate sending their own documents is not this label: %s', (textBody) => {
+    const result = classifyInboundEmailWithRules({
+      subject: 'RE: Solution Architect',
+      fromEmail: FORWARDER,
+      textBody,
+      writtenByCandidate: true,
+    });
+    expect(result.classification).not.toBe(LABEL);
+  });
+
+  it.each([
+    "Please don't submit my profile until we confirm the rate.",
+    'My profile has already been submitted to the client by you, any update?',
+  ])('a hold or a question to the same vendor is not this label: %s', (textBody) => {
     const result = classifyInboundEmailWithRules({
       subject: 'RE: Solution Architect',
       fromEmail: FORWARDER,

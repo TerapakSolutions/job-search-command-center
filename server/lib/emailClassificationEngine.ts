@@ -56,9 +56,13 @@ const CANDIDATE_AGREEMENT =
 const CANDIDATE_DECLINE =
   /\bnot\s+(?:open|interested)|pass on this|\bdecline|\bwithdraw|no longer interested|not (?:be\s+)?moving forward|(?:don['\u2019]?t|do not)\s+submit/;
 // The job seeker telling a vendor they are already submitted for the role
-// through someone else, or asking not to be submitted for it.
+// through someone else. Needs both "already submitted" and an elsewhere
+// marker: "don't submit me" alone can be a hold, and "already been submitted"
+// alone can be a question to the same vendor.
 const CANDIDATE_ALREADY_SUBMITTED =
-  /already\s+been\s+submitted|(?:i['\u2019]?m|i am|i was)\s+already\s+submitted|another\s+(?:vendor|agency|recruiter)\s+(?:has\s+)?already\s+submitted|submitted\s+(?:\S+\s+){0,6}?through another\s+(?:vendor|agency|recruiter)|(?:don['\u2019]?t|do not)\s+submit\s+(?:me|my)/;
+  /already\s+(?:been\s+)?submitted|(?:i['\u2019]?m|i am|i was)\s+already\s+submitted|already\s+submitted\s+me/;
+const SUBMITTED_ELSEWHERE =
+  /(?:another|other|different)\s+(?:vendor|agency|recruiter|staffing)|someone else|elsewhere/;
 
 export async function classifyInboundEmailWithLlm(
   input: ClassifyInput,
@@ -96,7 +100,7 @@ export function classifyInboundEmailWithRules(
 
   if (input.writtenByCandidate) {
     const body = input.textBody.toLowerCase();
-    if (CANDIDATE_ALREADY_SUBMITTED.test(body)) {
+    if (CANDIDATE_ALREADY_SUBMITTED.test(body) && SUBMITTED_ELSEWHERE.test(body)) {
       return buildRuleResult('Already Submitted Elsewhere', 85, input, {
         requiresResponse: false,
         suggestedAction: defaultSuggestedAction('Already Submitted Elsewhere'),
