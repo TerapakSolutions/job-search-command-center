@@ -85,8 +85,9 @@ describe('a second vendor on a role you are already submitted to', () => {
     expect(saved[0].messageNotes).toContain('Secondary vendor');
     expect(saved[0].messageNotes).toContain('via First Vendor');
     // The contact works for the vendor, not the client.
+    expect(saved[0].company).toBe('Vendortwo');
     expect(saved[0].company).not.toBe('Example Insurer');
-    expect(saved[0].company.toLowerCase()).toContain('vendor');
+    expect(saved[0].company).not.toBe('First Vendor');
 
     const after = db.select().from(applications).where(eq(applications.id, 'app-insurer')).all()[0];
     expect(after).toEqual(before);
