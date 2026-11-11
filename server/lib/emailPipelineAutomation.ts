@@ -1,6 +1,7 @@
 import type { PipelineStatus , PipelineUpdateProposal } from './emailAutomationTypes.js';
 import type { EmailClassification } from './emailClassificationTypes.js';
 import { PIPELINE_AUTO_CONFIDENCE_THRESHOLD } from './emailAutomationTypes.js';
+import { isInterviewConfirmationText } from './emailContentExtraction.js';
 
 const STATUS_ORDER: PipelineStatus[] = [
   'saved',
@@ -45,6 +46,9 @@ const HIRING_TEAM =
 // words. A bare "screen" is not one ("share your screen").
 const SCREENING =
   /\bscreening\b|\b(?:phone|recruiter|initial|intro) screen\b|initial (?:zoom |phone |video )?(?:call|chat|conversation)|intro(?:ductory)? call/;
+// An explicitly confirmed interview, beyond the phrasings
+// isInterviewConfirmationText recognises ("Interview confirmed for …").
+const INTERVIEW_CONFIRMED = /\binterview (?:is |has been )?confirmed\b/;
 // A short call is a screen unless the email names the hiring team.
 const SHORT_CALL = /\b(?:15|20|30)[- ]min(?:ute)?s?\b/;
 
@@ -68,10 +72,23 @@ export function proposedStatusFromClassification(
     case 'Recruiter Outreach':
       return 'recruiter_screen';
     case 'Interview Request':
-    case 'Scheduling':
       return (
         interviewStageFromText(emailText) ??
         (interviewDetected ? 'interviewing' : 'recruiter_screen')
+      );
+    case 'Scheduling':
+      // A booking. Recruiters call screens "interviews" and calendar invites
+      // often name only the people, so without screening, hiring-team or
+      // interview-confirmation wording a booking goes no further than
+      // Recruiter Screen.
+      if (emailText === undefined) {
+        return interviewDetected ? 'interviewing' : 'recruiter_screen';
+      }
+      return (
+        interviewStageFromText(emailText) ??
+        (isInterviewConfirmationText(emailText) || INTERVIEW_CONFIRMED.test(emailText.toLowerCase())
+          ? 'interviewing'
+          : 'recruiter_screen')
       );
     case 'Offer':
       return 'offer';
