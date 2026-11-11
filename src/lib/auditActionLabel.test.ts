@@ -7,8 +7,19 @@ const entry = (actionType: string, status: string, details: Record<string, unkno
 });
 
 describe('Recent AI actions labels (R4)', () => {
+  it('labels the rows one screening email left in prod, stored as they are', () => {
+    // Before the fix, a declined draft reply was stored as update_pipeline.
+    const labels = [
+      entry('update_pipeline', 'pending', { pendingApprovalId: 'a1' }),
+      entry('update_pipeline', 'completed', { approvalType: 'pipeline_update', userDecision: 'approved' }),
+      entry('update_pipeline', 'rejected', { approvalType: 'draft_reply', userDecision: 'rejected' }),
+    ].map(auditActionLabel);
+
+    expect(labels).toEqual(['pipeline update queued', 'pipeline updated', 'draft reply declined']);
+  });
+
   it('gives the queued, approved and declined steps of one email distinct labels', () => {
-    // The three rows one screening email left in prod.
+    // The same email once a declined draft reply is stored as draft_reply.
     const labels = [
       entry('update_pipeline', 'pending', { pendingApprovalId: 'a1' }),
       entry('update_pipeline', 'completed', { approvalType: 'pipeline_update', userDecision: 'approved' }),
