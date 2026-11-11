@@ -202,6 +202,28 @@ describe('a later reply in the same thread', () => {
     const queued = pipelineApprovals(db);
     expect(queued).toHaveLength(1);
     expect(queued[0].proposedStatus).toBe('interviewing');
+
+    // The note doesn't pick up the old screening link from the quoted history.
+    resolvePendingApproval(db, userId, queued[0].id, 'approved');
+    const note = app(db).notes.split('\n').pop() ?? '';
+    expect(note).toMatch(/Interviewing requested by Alex Rivera/);
+    expect(note).not.toMatch(/Schedule:/);
+  });
+});
+
+describe('a technical interview that mentions sharing your screen', () => {
+  it('goes to Interviewing', () => {
+    expect(
+      buildPipelineUpdateProposal({
+        applicationId: APP_ID,
+        currentStatus: 'recruiter_screen',
+        classification: 'Interview Request',
+        classificationConfidence: 95,
+        interviewDetected: true,
+        emailText:
+          'Next is a 60-minute technical interview with the team. Please be ready to share your screen.',
+      })?.proposedStatus,
+    ).toBe('interviewing');
   });
 });
 

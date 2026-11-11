@@ -40,11 +40,11 @@ export function isForwardTransition(from: PipelineStatus, to: PipelineStatus): b
 
 // A meeting with the hiring team (not a recruiter screen).
 const HIRING_TEAM =
-  /hiring manager|\bpanel\b|technical (?:interview|round|assessment)|\bon-?site\b|final round|meet (?:with )?the team|\bvp of\b|director of/;
+  /hiring manager|\bpanel\b|technical (?:interview|round|assessment)|\bon-?site\b|final round|meet (?:with )?the team/;
 // Words that name a recruiter screen outright. They win over hiring-team
-// words, which also turn up in recruiter titles ("Director of Talent").
+// words. A bare "screen" is not one ("share your screen").
 const SCREENING =
-  /\bscreen(?:ing)?\b|initial (?:zoom |phone |video )?(?:call|chat|conversation)|intro(?:ductory)? call/;
+  /\bscreening\b|\b(?:phone|recruiter|initial|intro) screen\b|initial (?:zoom |phone |video )?(?:call|chat|conversation)|intro(?:ductory)? call/;
 // A short call is a screen unless the email names the hiring team.
 const SHORT_CALL = /\b(?:15|20|30)[- ]min(?:ute)?s?\b/;
 

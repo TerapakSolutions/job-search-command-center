@@ -1539,7 +1539,7 @@ export function resolvePendingApproval(
           status: approval.proposedStatus,
           senderName: email.originalSenderName ?? email.recruiterName,
           company: app.company,
-          text: extractTextBody(email.payload),
+          text: emailTextForStage(email),
         }),
       )
     : app.notes;
