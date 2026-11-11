@@ -35,6 +35,8 @@ export function defaultSuggestedAction(
       return 'No action needed — application received';
     case 'Agreed to Submission':
       return 'Wait for the recruiter to confirm the submission';
+    case 'Already Submitted Elsewhere':
+      return 'Already submitted through another vendor';
     case 'Rejection':
       return 'Archive the application and move on';
     case 'Offer':
