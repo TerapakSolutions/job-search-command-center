@@ -5,7 +5,10 @@ import {
   classifyInboundEmailWithLlm,
   classifyInboundEmailWithRules,
 } from './emailClassificationEngine.js';
-import { inferEmployerFromSenderEmail,
+import { extractInterviewDatetime,
+  inferEmployerFromSenderEmail,
+  isCalendarInvite,
+  isCancelledEvent,
   isInterviewConfirmationText ,
   resolveEmployerCompany,
   resolveRoleTitle,
@@ -220,6 +223,25 @@ function enrichClassificationFromForward(
           : result.suggestedAction,
     };
   }
+  // A booking's time is in the invite itself (a Google invite's subject, a
+  // confirmation's "Date/Time:" line). Fill it when the classifier left it
+  // empty, but only for an invite or a confirmation: an email offering
+  // several times must not book the first one.
+  if (
+    result.classification === 'Scheduling' &&
+    !result.interviewDatetime &&
+    !isCancelledEvent(classifiedInput.subject)
+  ) {
+    const haystack = `${classifiedInput.subject}\n${classifiedInput.textBody}`;
+    if (
+      isCalendarInvite({ subject: classifiedInput.subject, textBody: classifiedInput.textBody }) ||
+      isInterviewConfirmationText(haystack)
+    ) {
+      const extracted = extractInterviewDatetime(haystack);
+      if (extracted) result = { ...result, interviewDatetime: extracted };
+    }
+  }
+
   const subject = forwardMetadata.originalSubject ?? classifiedInput.subject;
   const senderEmail = forwardMetadata.originalSenderEmail ?? classifiedInput.fromEmail;
 

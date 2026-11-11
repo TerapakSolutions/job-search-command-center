@@ -1,5 +1,6 @@
 import {
   isAtsPlatformCompany,
+  isCalendarInvite,
   resolveEmployerCompany,
   resolveRoleTitle,
 } from './emailContentExtraction.js';
@@ -110,6 +111,11 @@ export function isNoReplyOrApplicationConfirmation(input: {
   }
 
   if (input.classification === 'Application Confirmation') {
+    return true;
+  }
+
+  // A calendar invitation or booking notice describes a booked meeting.
+  if (isCalendarInvite({ subject: input.subject, textBody: input.textBody })) {
     return true;
   }
 
