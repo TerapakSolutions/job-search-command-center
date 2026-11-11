@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { FiPlus } from 'react-icons/fi';
+import { useMemo, useState } from 'react';
+import { FiPlus, FiSearch } from 'react-icons/fi';
 import ContactForm, { ContactRow } from '../components/ContactForm';
 import Modal from '../components/Modal';
 import { useJobSearchStore } from '../store/useJobSearchStore';
@@ -14,6 +14,21 @@ export default function ContactsPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Contact | null>(null);
+  const [query, setQuery] = useState('');
+
+  // Matches name, company, email, title and the linked application, so a
+  // recruiter saved under their firm still shows up for the employer.
+  const visibleContacts = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return contacts;
+    const appLabel = new Map(applications.map((a) => [a.id, `${a.company} ${a.roleTitle}`]));
+    return contacts.filter((c) =>
+      [c.name, c.company, c.email, c.title ?? '', c.applicationId ? appLabel.get(c.applicationId) ?? '' : '']
+        .join(' ')
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [contacts, applications, query]);
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -37,13 +52,31 @@ export default function ContactsPage() {
         </button>
       </div>
 
+      {contacts.length > 0 && (
+        <div className="relative">
+          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="search"
+            aria-label="Filter contacts"
+            placeholder="Filter by name, company, email or application"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      )}
+
       {contacts.length === 0 ? (
         <p className="text-center text-gray-500 py-12 bg-white border rounded-lg">
           No contacts logged yet.
         </p>
+      ) : visibleContacts.length === 0 ? (
+        <p className="text-center text-gray-500 py-12 bg-white border rounded-lg">
+          No contacts match “{query.trim()}”.
+        </p>
       ) : (
         <div className="space-y-3">
-          {contacts.map((contact) => (
+          {visibleContacts.map((contact) => (
             <ContactRow
               key={contact.id}
               contact={contact}
