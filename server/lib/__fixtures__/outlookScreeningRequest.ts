@@ -70,3 +70,37 @@ Thanks for your time last week. We'd like to schedule a 45-minute interview with
 Thanks,
 Alex
 `;
+
+/**
+ * The recruiter's next reply in the same thread: a hiring-team round, with
+ * the earlier screening request quoted underneath (as Outlook sends it).
+ */
+export const NEXT_ROUND_SUBJECT = 'Fw: RE: Example Grocer Interview Request';
+
+export const outlookNextRoundReply = `
+
+________________________________
+From: Alex Rivera <alex.rivera@examplegrocer.example>
+Sent: Monday, November 16, 2026 9:12 AM
+To: Steve Terapak <steve@terapak.com>
+Subject: RE: Example Grocer Interview Request
+
+Hi Steve,
+
+Great speaking with you! Next step is a 60-minute interview with Sam and Priya from the product team. Please pick a time that works for you.
+
+Regards,
+Alex
+
+________________________________
+From: Alex Rivera <alex.rivera@examplegrocer.example>
+Sent: Tuesday, November 10, 2026 10:33 PM
+To: Steve Terapak <steve@terapak.com>
+Subject: Example Grocer Interview Request
+
+Stephen,
+
+We would love to schedule a 30-minute initial Zoom screening call to learn more about your experience.
+
+${SCREENING_CALENDLY_URL}
+`;

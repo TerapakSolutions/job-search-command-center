@@ -20,11 +20,20 @@ export function buildStageChangeNote(input: {
   company: string;
   text: string;
 }): string {
-  const who = input.senderName?.trim() ? `by ${input.senderName.trim()}` : 'via email';
+  const name = input.senderName?.trim();
+  const label = pipelineStatusLabel(input.status);
   const url = firstSchedulingUrl(input.text);
   const schedule = url ? ` Schedule: ${url}` : '';
-  return `[${input.date}] ${pipelineStatusLabel(input.status)} requested ${who} (${input.company}).${schedule}`;
+  if (!REQUESTED_STAGES.has(input.status)) {
+    const from = name ? `email from ${name}` : 'an email';
+    return `[${input.date}] Moved to ${label} after ${from} (${input.company}).${schedule}`;
+  }
+  const who = name ? `by ${name}` : 'via email';
+  return `[${input.date}] ${label} requested ${who} (${input.company}).${schedule}`;
 }
+
+// Stages a recruiter asks for (a call or an interview).
+const REQUESTED_STAGES = new Set(['recruiter_screen', 'interviewing', 'final_round']);
 
 const DATE_PREFIX = /^\[\d{4}-\d{2}-\d{2}\] /;
 

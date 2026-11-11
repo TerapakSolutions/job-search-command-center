@@ -17,8 +17,10 @@ import {
   CALENDLY_CONFIRMATION_SUBJECT,
   SCREENING_CALENDLY_URL,
   SCREENING_REQUEST_SUBJECT,
+  NEXT_ROUND_SUBJECT,
   calendlyScreeningConfirmation,
   hiringManagerInterview,
+  outlookNextRoundReply,
   outlookScreeningRequest,
 } from './__fixtures__/outlookScreeningRequest.js';
 
@@ -188,6 +190,37 @@ describe('the Calendly booking confirmation for the screening', () => {
   });
 });
 
+describe('a later reply in the same thread', () => {
+  it('reads only the newest message, not the quoted screening request', async () => {
+    const { db, userId, id } = setup({
+      status: 'recruiter_screen',
+      subject: NEXT_ROUND_SUBJECT,
+      textBody: outlookNextRoundReply,
+    });
+    await processInboundEmail(db, id, { userId });
+
+    const queued = pipelineApprovals(db);
+    expect(queued).toHaveLength(1);
+    expect(queued[0].proposedStatus).toBe('interviewing');
+  });
+});
+
+describe('a recruiter whose title names a director', () => {
+  it('still reads a screening request as a screen', () => {
+    const signed = `${outlookScreeningRequest}\nAlex Rivera\nDirector of Talent Acquisition\n`;
+    expect(
+      buildPipelineUpdateProposal({
+        applicationId: APP_ID,
+        currentStatus: 'applied',
+        classification: 'Interview Request',
+        classificationConfidence: 95,
+        interviewDetected: true,
+        emailText: signed,
+      })?.proposedStatus,
+    ).toBe('recruiter_screen');
+  });
+});
+
 describe('no backward moves', () => {
   it('rechecks the stage when an approval is applied', async () => {
     const { db, userId, id } = setup();
@@ -277,6 +310,18 @@ describe('stage change note (R2)', () => {
         text: 'no links here',
       }),
     ).toBe('[2026-11-11] Interviewing requested via email (Example Grocer).');
+  });
+
+  it('uses neutral wording for stages nobody requests', () => {
+    expect(
+      buildStageChangeNote({
+        date: '2026-11-11',
+        status: 'rejected',
+        senderName: 'Alex Rivera',
+        company: 'Example Grocer',
+        text: '',
+      }),
+    ).toBe('[2026-11-11] Moved to Rejected after email from Alex Rivera (Example Grocer).');
   });
 
   it('is not appended twice, even on a later day', () => {

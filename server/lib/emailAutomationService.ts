@@ -382,9 +382,23 @@ export function analyzeEmailAutomation(
   };
 }
 
-// Subject and body, used to tell a recruiter screen from an interview.
+// Reply history quoted under the newest message.
+const QUOTED_HISTORY =
+  /^(?:_{10,}\s*$|-{2,}\s*original message|on .+wrote:\s*$|from:\s.+$)/im;
+
+// The newest message's subject and text, used to tell a recruiter screen from
+// an interview. Quoted history is left out: a later round quotes the screening
+// request it follows.
 function emailTextForStage(row: typeof inboundEmails.$inferSelect): string {
-  return [row.subject, row.originalSubject ?? '', extractTextBody(row.payload)].join('\n');
+  const { subject, textBody } = classificationInputFromEmail({
+    subject: row.subject,
+    fromEmail: row.fromEmail,
+    fromName: extractFromName(row.payload),
+    textBody: extractTextBody(row.payload),
+  });
+  const cut = textBody.search(QUOTED_HISTORY);
+  const newest = cut > 0 ? textBody.slice(0, cut) : textBody;
+  return `${subject}\n${newest}`;
 }
 
 // The job seeker wrote this email's top message (a forwarded thread they
@@ -836,7 +850,7 @@ export function updatePipelineFromEmail(
       message: formatAutomationActionMessage({
         actionType: 'update_pipeline',
         success: false,
-        detail: 'no matched application',
+        detail: `${app.company} stays at ${pipelineStatusLabel(app.status)}`,
       }),
     };
   }
