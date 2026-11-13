@@ -21,14 +21,20 @@ export async function logout(): Promise<void> {
 
 export interface PublicConfig {
   supportEmail: string | null;
+  /** True only when the server has "Report a problem" switched on. */
+  feedbackEnabled: boolean;
 }
 
 export async function fetchPublicConfig(): Promise<PublicConfig> {
   try {
     const res = await fetch('/auth/config');
-    if (!res.ok) return { supportEmail: null };
-    return (await res.json()) as PublicConfig;
+    if (!res.ok) return { supportEmail: null, feedbackEnabled: false };
+    const body = (await res.json()) as Partial<PublicConfig>;
+    return {
+      supportEmail: body.supportEmail ?? null,
+      feedbackEnabled: body.feedbackEnabled === true,
+    };
   } catch {
-    return { supportEmail: null };
+    return { supportEmail: null, feedbackEnabled: false };
   }
 }

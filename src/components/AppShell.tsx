@@ -16,6 +16,7 @@ import { isDemoMode } from '../api/persistence';
 import { computeReminders } from '../lib/reminders';
 import { useAuthStore } from '../store/useAuthStore';
 import { useJobSearchStore } from '../store/useJobSearchStore';
+import ReportProblem from './ReportProblem';
 
 interface AppShellProps {
   children: ReactNode;
@@ -131,14 +132,18 @@ export default function AppShell({ children }: AppShellProps) {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-16 bg-white border-b px-6 flex items-center shadow-sm shrink-0">
           <h1 className="text-xl font-semibold text-gray-800">{title}</h1>
-          <Link
-            to="/help"
-            aria-label="Help"
-            title="Help"
-            className="ml-auto text-gray-500 hover:text-blue-600"
-          >
-            <FiHelpCircle size={22} />
-          </Link>
+          <div className="ml-auto flex items-center gap-4">
+            {/* Signed in against the real API only: demo mode has no server to send to. */}
+            {user && !demoMode && <ReportProblem />}
+            <Link
+              to="/help"
+              aria-label="Help"
+              title="Help"
+              className="text-gray-500 hover:text-blue-600"
+            >
+              <FiHelpCircle size={22} />
+            </Link>
+          </div>
         </header>
         <main className="p-6 flex-1 overflow-auto">{children}</main>
       </div>

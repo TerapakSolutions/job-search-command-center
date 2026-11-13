@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
@@ -314,4 +314,26 @@ export const applicationOutcomeMetrics = sqliteTable(
       table.applicationId,
     ),
   ],
+);
+
+/** "Report a problem" submissions. Identity comes from the session, never the body. */
+export const feedback = sqliteTable(
+  'feedback',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    userEmail: text('user_email').notNull(),
+    message: text('message').notNull(),
+    pageUrl: text('page_url'),
+    userAgent: text('user_agent'),
+    appVersion: text('app_version'),
+    createdAt: text('created_at').notNull(),
+    slackNotifiedAt: text('slack_notified_at'),
+    slackError: text('slack_error'),
+    emailNotifiedAt: text('email_notified_at'),
+    emailError: text('email_error'),
+  },
+  (table) => [index('feedback_user_created_idx').on(table.userId, table.createdAt)],
 );

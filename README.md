@@ -335,6 +335,27 @@ POSTMARK_FROM_EMAIL=briefings@yourdomain.com
 
 Without `OPENAI_API_KEY`, briefings use a deterministic rule-based summary fallback. The Today page displays the latest briefing in API mode.
 
+### Report a problem
+
+Signed-in users can send a short problem report from the header (warning icon beside Help). Each report is saved to the `feedback` table first; then optional notifiers run and their result is recorded on the row (`slack_notified_at` / `slack_error`, `email_notified_at` / `email_error`). A notifier that is unset is skipped; one that fails never fails the user's request.
+
+**Ships dark.** Unless `FEEDBACK_ENABLED` is exactly `true`, the header control is hidden (`GET /auth/config` returns `feedbackEnabled: false`) and `POST /api/feedback` answers 404.
+
+| Endpoint | Auth | Description |
+|----------|------|-------------|
+| `POST /api/feedback` | Session | `{ "message": "...", "pageUrl": "..." }`; message 1–4000 chars after trimming, pageUrl ≤ 500, optional appVersion ≤ 100, other fields rejected. Identity comes from the session. 5 reports per user per hour (in-memory, single machine) → 429. |
+
+```bash
+FEEDBACK_ENABLED=true                                   # anything else keeps the feature off
+FEEDBACK_SLACK_WEBHOOK_URL=https://hooks.slack.com/...  # optional: Slack incoming webhook
+FEEDBACK_EMAIL_TO=feedback@example.com                  # optional: email each report here...
+# ...using the same Postmark settings as the daily brief (both required for email):
+POSTMARK_SERVER_TOKEN=...
+POSTMARK_FROM_EMAIL=app@example.com
+```
+
+The Slack message is plain text with `&`, `<` and `>` escaped in all user-supplied text, so a report can't ping a channel or post a disguised link. The email is plain text with `Reply-To` set to the reporter. Setting the Postmark token for feedback does not turn on the daily brief email, which has its own `DAILY_BRIEFING_EMAIL_ENABLED` gate.
+
 ## SQLite on Fly.io (cost-conscious deployment)
 
 This project uses **embedded SQLite** instead of a managed Postgres instance to keep hosting costs low for a single-user / small-team job search tool.
