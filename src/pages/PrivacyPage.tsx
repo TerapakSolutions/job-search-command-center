@@ -34,6 +34,10 @@ export default function PrivacyPage() {
           <p>
             <strong>What you enter:</strong> applications, contacts, notes, interviews, and goals.
           </p>
+          <p>
+            <strong>Problem reports:</strong> if you use Report a problem, your message, the page
+            you were on, your browser type, and the time you sent it.
+          </p>
         </Section>
 
         <Section title="Where it is stored, and who can see it">

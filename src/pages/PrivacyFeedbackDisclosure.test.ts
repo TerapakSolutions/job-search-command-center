@@ -12,3 +12,9 @@ it('privacy page discloses where problem reports go', () => {
   expect(text).toMatch(/<strong>Slack<\/strong>/);
   expect(text).toMatch(/feedback inbox/);
 });
+
+it('"What is stored" lists problem reports, including the browser type', () => {
+  const stored = text.slice(text.indexOf('title="What is stored"'), text.indexOf('title="Where it is stored'));
+  expect(stored).toMatch(/Problem reports/);
+  expect(stored).toMatch(/browser type/);
+});
