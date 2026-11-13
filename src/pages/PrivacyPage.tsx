@@ -25,7 +25,7 @@ export default function PrivacyPage() {
         <Section title="What is stored">
           <p>
             <strong>Your Google profile:</strong> your name, email address, and profile photo,
-            used only to sign you in.
+            used to sign you in and, if you send a problem report, so we can reply to you.
           </p>
           <p>
             <strong>Emails you forward:</strong> the full text of each email, plus what the app
@@ -35,8 +35,8 @@ export default function PrivacyPage() {
             <strong>What you enter:</strong> applications, contacts, notes, interviews, and goals.
           </p>
           <p>
-            <strong>Problem reports:</strong> if you use Report a problem, your message, the page
-            you were on, your browser type, and the time you sent it.
+            <strong>Problem reports:</strong> if you use Report a problem, your message, your email
+            address, the page you were on, your browser and device details, and the time you sent it.
           </p>
         </Section>
 

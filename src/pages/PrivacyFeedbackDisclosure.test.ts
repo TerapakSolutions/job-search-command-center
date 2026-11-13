@@ -13,8 +13,15 @@ it('privacy page discloses where problem reports go', () => {
   expect(text).toMatch(/feedback inbox/);
 });
 
-it('"What is stored" lists problem reports, including the browser type', () => {
-  const stored = text.slice(text.indexOf('title="What is stored"'), text.indexOf('title="Where it is stored'));
+it('"What is stored" lists problem reports, and the profile line no longer says "only to sign you in"', () => {
+  const start = text.indexOf('title="What is stored"');
+  const end = text.indexOf('title="Where it is stored');
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  const stored = text.slice(start, end);
   expect(stored).toMatch(/Problem reports/);
-  expect(stored).toMatch(/browser type/);
+  expect(stored).toMatch(/your email address/);
+  expect(stored).toMatch(/browser and device details/);
+  // The Google-profile line must no longer say the email is used ONLY to sign in.
+  expect(text).not.toMatch(/used only to sign you in/);
 });
