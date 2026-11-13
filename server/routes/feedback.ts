@@ -48,7 +48,8 @@ function validate(body: unknown): ValidBody | string {
     if (typeof record.pageUrl !== 'string' || record.pageUrl.length > PAGE_URL_MAX) {
       return `pageUrl must be a string of at most ${PAGE_URL_MAX} characters.`;
     }
-    pageUrl = record.pageUrl;
+    // A line break would forge extra lines ("From: …") in the Slack post and the email body.
+    pageUrl = record.pageUrl.replace(/[\r\n]+/g, ' ');
   }
 
   let appVersion: string | null = null;

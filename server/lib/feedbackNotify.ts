@@ -16,6 +16,21 @@ export type NotifyResult = 'sent' | 'skipped';
 const NOTIFY_TIMEOUT_MS = 5_000;
 
 /**
+ * 🔴 `fetch` quotes its input in its own error message: a quoted or scheme-less webhook URL gives
+ * `Failed to parse URL from "<the whole URL>"`, and a token with a line break gives
+ * `Headers.append: "<the whole token>" is an invalid header value`. The caller stores and logs the error, so keep
+ * only the error's name, never its message.
+ */
+async function postJson(label: string, url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(NOTIFY_TIMEOUT_MS) });
+  } catch (err) {
+    const name = err && typeof err === 'object' && 'name' in err ? String((err as { name: unknown }).name) : 'Error';
+    throw new Error(`${label} request failed (${name})`);
+  }
+}
+
+/**
  * Slack treats `<...>` as control sequences (`<!channel>`, `<@U…>`, `<url|label>`).
  * Escaping & < > in every user-supplied string makes them literal text, so a
  * report can't ping a channel or show a spoofed link. `&` must go first.
@@ -69,11 +84,10 @@ export async function sendFeedbackSlack(report: FeedbackReport): Promise<NotifyR
     escapeSlackText(report.message),
   ].join('\n');
 
-  const res = await fetch(webhookUrl, {
+  const res = await postJson('Slack webhook', webhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
-    signal: AbortSignal.timeout(NOTIFY_TIMEOUT_MS),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -99,7 +113,7 @@ export async function sendFeedbackEmail(report: FeedbackReport): Promise<NotifyR
     'Reply to this email to answer the reporter directly.',
   ].join('\n');
 
-  const res = await fetch('https://api.postmarkapp.com/email', {
+  const res = await postJson('Postmark', 'https://api.postmarkapp.com/email', {
     method: 'POST',
     headers: {
       Accept: 'application/json',
@@ -114,7 +128,6 @@ export async function sendFeedbackEmail(report: FeedbackReport): Promise<NotifyR
       TextBody: textBody,
       MessageStream: 'outbound',
     }),
-    signal: AbortSignal.timeout(NOTIFY_TIMEOUT_MS),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
