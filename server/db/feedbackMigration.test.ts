@@ -41,3 +41,20 @@ it('0016_feedback applies to a database that already has every earlier migration
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+/**
+ * 🔴 Drizzle skips any migration whose journal `when` is not newer than the last one applied. Entries from 0012 on
+ * use synthetic future values (1.86e12 … 1.90e12), while `drizzle-kit generate` writes `Date.now()` (≈1.79e12 in
+ * 2026-11). So a freshly generated migration would pass CI on an empty database and NEVER run in prod. This makes
+ * that fail CI instead: give the new entry a `when` above the previous one.
+ */
+it('every journal entry is strictly newer than the one before it', () => {
+  const journal = JSON.parse(
+    fs.readFileSync(path.join(MIGRATIONS, 'meta', '_journal.json'), 'utf8'),
+  ) as { entries: Array<{ idx: number; tag: string; when: number }> };
+  for (let i = 1; i < journal.entries.length; i++) {
+    const prev = journal.entries[i - 1];
+    const cur = journal.entries[i];
+    expect({ tag: cur.tag, newerThanPrevious: cur.when > prev.when }).toEqual({ tag: cur.tag, newerThanPrevious: true });
+  }
+});

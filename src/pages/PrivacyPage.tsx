@@ -63,7 +63,10 @@ export default function PrivacyPage() {
             </a>
             ). <strong>Fly.io</strong> hosts the server and database. <strong>OpenAI</strong>{' '}
             processes email text, as described below. <strong>Google Analytics</strong> counts
-            which screens are opened, with its own cookies but no personal data.
+            which screens are opened, with its own cookies but no personal data. If you use
+            Report a problem, your message, your email address and the page you were on go to
+            our team on <strong>Slack</strong> and, through Postmark, to our feedback inbox, so we
+            can read and answer it.
           </p>
         </Section>
 
