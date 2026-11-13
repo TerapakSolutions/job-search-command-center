@@ -48,8 +48,10 @@ function validate(body: unknown): ValidBody | string {
     if (typeof record.pageUrl !== 'string' || record.pageUrl.length > PAGE_URL_MAX) {
       return `pageUrl must be a string of at most ${PAGE_URL_MAX} characters.`;
     }
-    // A line break would forge extra lines ("From: …") in the Slack post and the email body.
-    pageUrl = record.pageUrl.replace(/[\r\n]+/g, ' ');
+    // A line break would forge extra lines ("From: …") in the Slack post and the email body. Strip every control
+    // character, not only CR/LF: U+0085, U+2028 and U+2029 also break lines in some clients, and NUL/ESC/VT/FF are noise.
+    // eslint-disable-next-line no-control-regex -- matching control characters is the point
+    pageUrl = record.pageUrl.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ');
   }
 
   let appVersion: string | null = null;

@@ -277,6 +277,17 @@ describe('POST /api/feedback', () => {
     expect(rows(db)[0].pageUrl).not.toMatch(/[\r\n]/);
   });
 
+  it('other line-breaking and control characters in pageUrl are stripped too', async () => {
+    const spy = stubExternal(async () => new Response('ok', { status: 200 }));
+    process.env.FEEDBACK_SLACK_WEBHOOK_URL = SLACK_URL;
+    const bad = '/today\u2028From: a@example.com\u2029x\u0085y\u000bz\u000c\u0000\u001b[31m';
+    const res = await post(server.baseUrl, { message: 'hi', pageUrl: bad }, cookieFor(userId));
+    expect(res.status).toBe(201);
+    // eslint-disable-next-line no-control-regex -- matching control characters is the point
+    expect(rows(db)[0].pageUrl).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/);
+    expect(spy).toHaveBeenCalled();
+  });
+
   it('records a Slack failure and still answers 201', async () => {
     process.env.FEEDBACK_SLACK_WEBHOOK_URL = SLACK_URL;
     stubExternal(async () => new Response('invalid_token', { status: 403 }));
