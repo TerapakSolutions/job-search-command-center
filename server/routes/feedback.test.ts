@@ -228,13 +228,53 @@ describe('POST /api/feedback', () => {
     expect(row.slackNotifiedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(row.slackError).toBeNull();
     expect(row.emailNotifiedAt).toBeNull();
-    expect(row.emailError).toContain('postmark unreachable');
+    expect(row.emailError).toBe('Postmark request failed (Error)');
 
     const slackBody = JSON.parse(String(spy.mock.calls.find((c) => String(c[0]) === SLACK_URL)?.[1]?.body)) as {
       text: string;
     };
     expect(slackBody.text).toContain('Hey &lt;!channel&gt;');
     expect(slackBody.text).not.toContain('<!channel>');
+  });
+
+  /**
+   * 🔴 Tier 2 on #103: `fetch` quotes its input in its own error message, so a mistyped secret was written to the row
+   * and the Fly log in full. Real `fetch` throws both of these before any network call.
+   */
+  it('a quoted Slack webhook URL never reaches the row or the log', async () => {
+    process.env.FEEDBACK_SLACK_WEBHOOK_URL = '"https://hooks.slack.test/services/T/B/SECRETPART"';
+    jest.spyOn(globalThis, 'fetch').mockImplementation((input, init) => realFetch(input, init));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = await post(server.baseUrl, { message: 'hi', pageUrl: '/today' }, cookieFor(userId));
+    expect(res.status).toBe(201);
+    const row = rows(db)[0];
+    expect(row.slackError).toBeTruthy();
+    expect(row.slackError).not.toContain('SECRETPART');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRETPART');
+  });
+
+  it('a Postmark token with a line break never reaches the row or the log', async () => {
+    process.env.FEEDBACK_EMAIL_TO = 'feedback@example.com';
+    process.env.POSTMARK_SERVER_TOKEN = 'SECRET\nTOKEN';
+    process.env.POSTMARK_FROM_EMAIL = 'app@example.com';
+    jest.spyOn(globalThis, 'fetch').mockImplementation((input, init) => realFetch(input, init));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = await post(server.baseUrl, { message: 'hi', pageUrl: '/today' }, cookieFor(userId));
+    expect(res.status).toBe(201);
+    const row = rows(db)[0];
+    expect(row.emailError).toBeTruthy();
+    expect(row.emailError).not.toContain('SECRET');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET');
+  });
+
+  it('line breaks in pageUrl cannot forge extra lines in the notification', async () => {
+    process.env.FEEDBACK_SLACK_WEBHOOK_URL = SLACK_URL;
+    const spy = stubExternal(async () => new Response('ok', { status: 200 }));
+    const res = await post(server.baseUrl, { message: 'hi', pageUrl: '/today\r\nFrom: someone@example.com' }, cookieFor(userId));
+    expect(res.status).toBe(201);
+    const slackBody = JSON.parse(String(spy.mock.calls.find((c) => String(c[0]) === SLACK_URL)?.[1]?.body)) as { text: string };
+    expect(slackBody.text).not.toMatch(/\nFrom: someone@example\.com/);
+    expect(rows(db)[0].pageUrl).not.toMatch(/[\r\n]/);
   });
 
   it('records a Slack failure and still answers 201', async () => {
