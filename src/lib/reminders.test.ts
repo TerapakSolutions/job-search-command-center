@@ -121,3 +121,58 @@ describe('interview prep after the interview', () => {
     expect(hasPrep([interviewAt(new Date(2026, 9, 20, 14, 0))])).toBe(true);
   });
 });
+
+// Steve, 2026-11-16: "Ping recruiter … No reply in 3 business days" showed although he had a meeting
+// with them on Friday. A meeting held, or one booked, is recruiter contact; only contacts' dates counted.
+describe('recruiter ping counts meetings as contact', () => {
+  // Monday 2026-11-16, local time. The contact's last date is the Wednesday before: 3 business days.
+  const MONDAY = new Date(2026, 10, 16, 9, 0);
+  const app = baseApp({ status: 'recruiter_screen' });
+  const contact: Contact = {
+    id: 'c-1',
+    applicationId: 'app-1',
+    name: 'Recruiter',
+    email: '',
+    linkedIn: '',
+    company: 'Acme',
+    source: 'manual',
+    lastContactDate: '2026-11-11',
+    messageNotes: '',
+    nextAction: '',
+    createdAt: '',
+    updatedAt: '',
+  };
+  const meetingAt = (scheduled: Date, applicationId = 'app-1'): Interview => ({
+    id: 'int-1',
+    applicationId,
+    scheduledAt: scheduled.toISOString(),
+    type: 'video',
+    location: '',
+    notes: '',
+    createdAt: '',
+    updatedAt: '',
+  });
+  const pings = (interviews: Interview[]) =>
+    computeReminders([app], [contact], MONDAY, interviews).filter((r) => r.type === 'recruiter_no_reply');
+
+  it('pings after 3 business days with no meeting (control)', () => {
+    expect(pings([])).toHaveLength(1);
+  });
+
+  it('does not ping when a meeting was held since (Friday)', () => {
+    expect(pings([meetingAt(new Date(2026, 10, 13, 11, 0))])).toHaveLength(0);
+  });
+
+  it('does not ping while a meeting is booked', () => {
+    expect(pings([meetingAt(new Date(2026, 10, 18, 11, 0))])).toHaveLength(0);
+  });
+
+  it('pings again 3 business days after the last meeting', () => {
+    // Meeting Tuesday 11-10, contact Wednesday 11-11 → still 3 business days by Monday.
+    expect(pings([meetingAt(new Date(2026, 10, 10, 11, 0))])).toHaveLength(1);
+  });
+
+  it("ignores another application's meeting", () => {
+    expect(pings([meetingAt(new Date(2026, 10, 13, 11, 0), 'app-2')])).toHaveLength(1);
+  });
+});
