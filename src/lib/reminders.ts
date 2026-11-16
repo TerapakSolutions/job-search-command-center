@@ -33,6 +33,21 @@ function latestContactDate(contacts: Contact[]): Date | null {
   return latest;
 }
 
+/** This application's meeting times, unparseable ones dropped. */
+export function meetingTimes(interviews: Interview[], applicationId: string): Date[] {
+  return interviews
+    .filter((interview) => interview.applicationId === applicationId)
+    .map((interview) => new Date(interview.scheduledAt))
+    .filter((at) => !Number.isNaN(at.getTime()));
+}
+
+/** The latest of a date and a list of dates, or null when there is none. */
+export function latestOf(first: Date | null, rest: Date[]): Date | null {
+  let latest = first;
+  for (const at of rest) if (!latest || at > latest) latest = at;
+  return latest;
+}
+
 // True when the application has interviews scheduled on `day` and every one
 // of them has already started, i.e. there is nothing left to prep for.
 function interviewsOnDayAreOver(
@@ -67,8 +82,14 @@ export function computeReminders(
     // No reminders for a plain application (applied, waiting): there is
     // nothing to act on until a recruiter is involved (Steve, 2026-10-26).
 
-    if (app.status === 'recruiter_screen' && lastContact) {
-      const businessDaysSince = businessDaysBetween(lastContact, today);
+    // A meeting is recruiter contact too (Steve, 2026-11-16: pinged the Monday after a Friday meeting).
+    // A booked one means there is nothing to chase; a held one restarts the clock.
+    const meetings = meetingTimes(interviews, app.id);
+    const meetingBooked = meetings.some((at) => at > now);
+    const lastTouch = latestOf(lastContact, meetings.filter((at) => at <= now));
+
+    if (app.status === 'recruiter_screen' && lastContact && lastTouch && !meetingBooked) {
+      const businessDaysSince = businessDaysBetween(lastTouch, today);
       if (businessDaysSince >= 3) {
         const recruiter =
           appContacts.find((c) => parseDate(c.lastContactDate)?.getTime() === lastContact.getTime()) ??
