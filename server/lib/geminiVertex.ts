@@ -57,10 +57,18 @@ export function readGeminiConfig(): GeminiConfig | null {
   };
 }
 
-/** `global` has no region prefix on the host; a regional location does. */
+/**
+ * `global` has no region prefix on the host; the us/eu multi-regions use the
+ * `.rep.` host (Vertex locations doc); a single region uses `{region}-`.
+ */
+function vertexHost(location: string): string {
+  if (location === 'global') return 'aiplatform.googleapis.com';
+  if (location === 'us' || location === 'eu') return `aiplatform.${location}.rep.googleapis.com`;
+  return `${location}-aiplatform.googleapis.com`;
+}
+
 export function vertexGenerateContentUrl(config: GeminiConfig): string {
-  const host =
-    config.location === 'global' ? 'aiplatform.googleapis.com' : `${config.location}-aiplatform.googleapis.com`;
+  const host = vertexHost(config.location);
   return (
     `https://${host}/v1/projects/${config.project}` +
     `/locations/${config.location}/publishers/google/models/${config.model}:generateContent`

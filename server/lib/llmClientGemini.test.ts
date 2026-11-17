@@ -143,6 +143,14 @@ describe('provider switch', () => {
     );
   });
 
+  it.each(['us', 'eu'])('uses the multi-region endpoint for %s', async (loc) => {
+    process.env.VERTEX_LOCATION = loc;
+    await call();
+    expect(sentUrl()).toBe(
+      `https://aiplatform.${loc}.rep.googleapis.com/v1/projects/test-project/locations/${loc}/publishers/google/models/gemini-3.8-flash:generateContent`,
+    );
+  });
+
   it('defaults the location to global, where gemini-3.8-flash is served', async () => {
     delete process.env.VERTEX_LOCATION;
     await call();
