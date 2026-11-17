@@ -73,6 +73,10 @@ function lead(item: HTMLElement): string | null {
   return item.querySelector('[data-testid="next-action-lead"]')?.textContent ?? null;
 }
 
+function badge(item: HTMLElement): HTMLElement | null {
+  return item.querySelector('[data-testid="follow-up-badge"]');
+}
+
 function names(): string[] {
   return liveItems().map((li) => li.querySelector('p')!.textContent!);
 }
@@ -119,7 +123,7 @@ describe('TodayPage contact next actions — past-dated actions stay live', () =
     ]);
 
     const past = itemFor('Orla Penhallow');
-    expect(within(past).getByText('Date passed')).not.toBeNull();
+    expect(badge(past)?.textContent).toBe('Follow up soon');
     // The follow-up leads; the stale "Confirm ..." text does not.
     expect(lead(past)).toBe('Follow up on the onsite from Nov 13.');
     // Fri Nov 13 + 3 business days = Wed Nov 18.
@@ -143,7 +147,7 @@ describe('TodayPage contact next actions — past-dated actions stay live', () =
       ['Ines Vardamir', 'Prepare for the panel on November 20, 2026.'],
     ]) {
       const item = itemFor(name);
-      expect(within(item).queryByText('Date passed')).toBeNull();
+      expect(badge(item)).toBeNull();
       expect(lead(item)).toBeNull();
       expect(item.textContent).not.toContain('Follow up');
       expect(item.textContent).not.toContain('Follow-up');
@@ -176,7 +180,7 @@ describe('TodayPage contact next actions — past-dated actions stay live', () =
     mockContacts = [contact('c-today', 'Tamsin Oakhurst', 'Call at noon on November 17, 2026')];
     renderPage();
     const item = itemFor('Tamsin Oakhurst');
-    expect(within(item).queryByText('Date passed')).toBeNull();
+    expect(badge(item)).toBeNull();
     expect(lead(item)).toBeNull();
     expect(item.textContent).not.toContain('Follow-up');
     expect(item.textContent).not.toContain('Overdue');
@@ -200,7 +204,7 @@ describe('TodayPage contact next actions — past-dated actions stay live', () =
     expect(
       within(item).getByText('Was: Confirm attendance for the meeting on Nov 13.'),
     ).not.toBeNull();
-    expect(within(item).getByText('Date passed')).not.toBeNull();
+    expect(badge(item)?.textContent).toBe('Follow up soon');
     expect(within(item).getByRole('link', { name: 'update' }).getAttribute('href')).toBe(
       '/contacts',
     );
@@ -210,8 +214,8 @@ describe('TodayPage contact next actions — past-dated actions stay live', () =
   it('orders past-dated items most overdue first, then due today, then due later', () => {
     // Today is Tue Nov 17. Events get +3 business days: Fri Nov 13 -> Wed Nov 18
     // (in 1), Thu Nov 12 -> Tue Nov 17 (today), Tue Nov 10 -> Fri Nov 13 (overdue
-    // by 2 business days). The deadline (no event word) counts calendar days from
-    // its own date: Nov 10 -> overdue by 7 days.
+    // by 2 business days). The deadline (no event word) counts business days from
+    // its own date: Tue Nov 10 -> overdue by 5 business days.
     mockContacts = [
       contact('c-undated', 'Bram Ketteridge', 'Send the portfolio link'),
       contact('c-later', 'Lark Fenwright', 'Coffee on Nov 13'),
@@ -229,7 +233,7 @@ describe('TodayPage contact next actions — past-dated actions stay live', () =
       'Bram Ketteridge',
       'Ines Vardamir',
     ]);
-    expect(itemFor('Corin Ashdale').textContent).toContain('Overdue by 7 days');
+    expect(itemFor('Corin Ashdale').textContent).toContain('Overdue by 5 business days');
     expect(itemFor('Corin Ashdale').textContent).not.toContain('Follow-up');
     expect(itemFor('Mira Thistlewood').textContent).toContain('Follow-up due today');
     expect(itemFor('Orla Penhallow').textContent).toContain(
@@ -248,12 +252,12 @@ describe('TodayPage contact next actions — past-dated actions stay live', () =
     renderPage();
     const deadline = itemFor('Sable Dunmore');
     expect(lead(deadline)).toBe('Nov 14 has passed.');
-    expect(deadline.textContent).toContain('Overdue by 3 days — update the next step.');
+    expect(deadline.textContent).toContain('Overdue by 2 business days — update the next step.');
     expect(deadline.textContent).not.toContain('Follow-up due today');
     expect(deadline.textContent).not.toContain('Follow up');
     expect(within(deadline).getByText('Was: Complete the assessment by Nov 14')).not.toBeNull();
-    expect(within(deadline).getByText('Date passed')).not.toBeNull();
-    // Deadline overdue by 3 days; the meeting follow-up is due Wed Nov 18 (in 1 business day).
+    expect(badge(deadline)?.textContent).toBe('Overdue');
+    // Deadline overdue by 2 business days; the meeting follow-up is due Wed Nov 18 (in 1 business day).
     expect(names()).toEqual(['Sable Dunmore', 'Wren Calloway', 'Bram Ketteridge']);
     expect(itemFor('Wren Calloway').textContent).toContain('Follow-up due in 1 business day');
   });
@@ -274,5 +278,95 @@ describe('TodayPage contact next actions — past-dated actions stay live', () =
     expect(
       within(contactSection()).getByText('No contact follow-ups logged.'),
     ).not.toBeNull();
+  });
+});
+
+describe('TodayPage contact next actions — the badge says where the follow-up stands', () => {
+  // Today is Tue Nov 17; follow-ups are due 3 business days after an event.
+  function expectNoDatePassed() {
+    expect(document.body.textContent).not.toContain('Date passed');
+  }
+
+  it('event, follow-up due later: "Follow up soon", not in a warning colour', () => {
+    // Fri Nov 13 + 3 business days = Wed Nov 18: due in 1 business day.
+    mockContacts = [contact('c-later', 'Lark Fenwright', 'Coffee on Nov 13')];
+    renderPage();
+    const item = itemFor('Lark Fenwright');
+    const b = badge(item);
+    expect(b?.textContent).toBe('Follow up soon');
+    expect(b?.className).not.toMatch(/\b(red|amber)-/);
+    expect(b?.className).toMatch(/\bblue-/);
+    expect(item.textContent).toContain('Follow-up due in 1 business day');
+    expectNoDatePassed();
+  });
+
+  it('event, follow-up due today: "Follow up today", amber', () => {
+    // Thu Nov 12 + 3 business days = Tue Nov 17.
+    mockContacts = [contact('c-today', 'Mira Thistlewood', 'Demo on Nov 12')];
+    renderPage();
+    const item = itemFor('Mira Thistlewood');
+    const b = badge(item);
+    expect(b?.textContent).toBe('Follow up today');
+    expect(b?.className).toMatch(/\bamber-/);
+    expect(b?.className).not.toMatch(/\bred-/);
+    expect(item.textContent).toContain('Follow-up due today');
+    expectNoDatePassed();
+  });
+
+  it('event, follow-up overdue: "Follow-up overdue", red', () => {
+    // Tue Nov 10 + 3 business days = Fri Nov 13: overdue by 2 business days.
+    mockContacts = [contact('c-over', 'Orla Penhallow', 'Interview on Nov 10')];
+    renderPage();
+    const item = itemFor('Orla Penhallow');
+    const b = badge(item);
+    expect(b?.textContent).toBe('Follow-up overdue');
+    expect(b?.className).toMatch(/\bred-/);
+    expect(item.textContent).toContain('Follow-up overdue by 2 business days');
+    expectNoDatePassed();
+  });
+
+  it('missed deadline: "Overdue", red', () => {
+    mockContacts = [contact('c-deadline', 'Sable Dunmore', 'Complete the assessment by Nov 14')];
+    renderPage();
+    const item = itemFor('Sable Dunmore');
+    const b = badge(item);
+    expect(b?.textContent).toBe('Overdue');
+    expect(b?.className).toMatch(/\bred-/);
+    expect(item.textContent).toContain('Overdue by 2 business days');
+    expectNoDatePassed();
+  });
+
+  it('badges undated and future-dated actions not at all', () => {
+    mockContacts = [
+      contact('c-undated', 'Bram Ketteridge', 'Send the portfolio link'),
+      contact('c-future', 'Ines Vardamir', 'Prepare for the panel on November 20, 2026.'),
+    ];
+    renderPage();
+    for (const item of liveItems()) expect(badge(item)).toBeNull();
+    expect(contactSection().querySelectorAll('[data-testid="follow-up-badge"]')).toHaveLength(0);
+    expectNoDatePassed();
+  });
+
+  it('renders a mixed list: deadline, overdue meeting, meeting due later', () => {
+    mockContacts = [
+      contact('c-a', 'Juniper Ashcombe', 'Follow up after the meeting on Nov 13'),
+      contact('c-b', 'Calder Wynmoor', 'Send thank-you notes after the meeting on Nov 11'),
+      contact('c-c', 'Odile Ferncastle', 'Return the signed forms by Nov 14'),
+    ];
+    renderPage();
+    const rows = liveItems().map((li) => ({
+      name: li.querySelector('p')!.textContent,
+      badge: badge(li)?.textContent ?? null,
+      lead: lead(li),
+    }));
+    expect(rows).toEqual([
+      { name: 'Odile Ferncastle', badge: 'Overdue', lead: 'Nov 14 has passed.' },
+      { name: 'Calder Wynmoor', badge: 'Follow-up overdue', lead: 'Follow up on the meeting from Nov 11.' },
+      { name: 'Juniper Ashcombe', badge: 'Follow up soon', lead: 'Follow up on the meeting from Nov 13.' },
+    ]);
+    expect(itemFor('Odile Ferncastle').textContent).toContain('Overdue by 2 business days');
+    expect(itemFor('Calder Wynmoor').textContent).toContain('Follow-up overdue by 1 business day');
+    expect(itemFor('Juniper Ashcombe').textContent).toContain('Follow-up due in 1 business day');
+    expectNoDatePassed();
   });
 });

@@ -175,7 +175,8 @@ export default function TodayPage() {
 
   // A next action whose explicit dates have ALL passed (e.g. "confirm the call on
   // <last Tuesday>") usually means the meeting HAPPENED and a follow-up is now
-  // due. It stays in the live list, goes first, is marked "Date passed", and is
+  // due. It stays in the live list, goes first, carries a badge saying where the
+  // follow-up stands (see FollowUpBadge), and is
   // shown as a follow-up (due the user's follow-up business days after its latest
   // date; see followUpFor) with the
   // stored text underneath as "Was: ...". The stored text is never modified.
@@ -330,11 +331,7 @@ export default function TodayPage() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-medium text-gray-900">{contact.name}</p>
-                  {followUp && (
-                    <span className="text-xs font-medium uppercase tracking-wide text-red-700 bg-red-50 border border-red-200 rounded px-2 py-0.5">
-                      Date passed
-                    </span>
-                  )}
+                  {followUp && <FollowUpBadge followUp={followUp} />}
                 </div>
                 <p className="text-sm text-gray-600">{contactLabel(contact)}</p>
                 {followUp ? (
@@ -367,6 +364,35 @@ export default function TodayPage() {
 
       <AutomationDashboardPanel />
     </div>
+  );
+}
+
+const BADGE_BASE =
+  'text-xs font-medium uppercase tracking-wide border rounded px-2 py-0.5';
+const BADGE_RED = 'text-red-700 bg-red-50 border-red-200';
+
+/**
+ * Where the follow-up stands, never just "the date passed": an event whose
+ * follow-up is not due yet is not late. Reads followUpFor's kind and dueInDays
+ * (whose sign always matches its status line); nothing is re-derived here.
+ */
+function followUpBadge(followUp: FollowUp): { label: string; tone: string } {
+  if (followUp.kind === 'deadline') return { label: 'Overdue', tone: BADGE_RED };
+  if (followUp.dueInDays > 0) {
+    return { label: 'Follow up soon', tone: 'text-blue-700 bg-blue-50 border-blue-200' };
+  }
+  if (followUp.dueInDays === 0) {
+    return { label: 'Follow up today', tone: 'text-amber-800 bg-amber-50 border-amber-200' };
+  }
+  return { label: 'Follow-up overdue', tone: BADGE_RED };
+}
+
+function FollowUpBadge({ followUp }: { followUp: FollowUp }) {
+  const { label, tone } = followUpBadge(followUp);
+  return (
+    <span data-testid="follow-up-badge" className={`${BADGE_BASE} ${tone}`}>
+      {label}
+    </span>
   );
 }
 
