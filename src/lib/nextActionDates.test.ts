@@ -177,6 +177,8 @@ describe('followUpFor — a past-dated action becomes a follow-up', () => {
     ['Confirm the onsite for Nov 12', 'onsite'],
     ['Prep for the Interview on November 12, 2026', 'interview'],
     ['Phone screen with the hiring lead on 11/12/2026', 'screen'],
+    ['Screening with the hiring lead on Nov 12', 'screening'],
+    ['Two screenings on Nov 12', 'screening'],
     ['Coffee with the team lead 2026-11-12', 'coffee'],
     ['Product demos on Nov 12', 'demo'],
     ['Quick chat on Nov 12', 'chat'],
@@ -193,12 +195,30 @@ describe('followUpFor — a past-dated action becomes a follow-up', () => {
   });
 
   it.each([
-    'Send the screening answers by Nov 12',
     'Request a callback by Nov 12',
     'Demonstrate the prototype by Nov 12',
     'Send the deck by Nov 12',
-  ])('uses the generic lead when no event word is present: %p', (text) => {
-    expect(followUpFor(text, NOW_F)?.lead).toBe('Follow up — Nov 12 has passed.');
+  ])('uses the deadline lead when no event word is present: %p', (text) => {
+    expect(followUpFor(text, NOW_F)?.lead).toBe('Nov 12 has passed.');
+  });
+
+  it('does not add FOLLOW_UP_AFTER_DAYS to a missed deadline (no event word)', () => {
+    // Read on Nov 17: an event on Nov 14 would be "due today"; a deadline is not.
+    const f = followUpFor('Complete the assessment by Nov 14', NOW_F);
+    expect(f?.lead).toBe('Nov 14 has passed.');
+    expect(f?.status).toBe('Overdue by 3 days');
+    expect(f?.dueInDays).toBe(-3);
+  });
+
+  it.each([
+    // [deadline date, status on Nov 17, dueInDays]: counted from the date itself
+    ['Nov 16', 'Overdue by 1 day', -1],
+    ['Nov 15', 'Overdue by 2 days', -2],
+    ['Nov 10', 'Overdue by 7 days', -7],
+  ])('a deadline on %s, seen on Nov 17: %s', (date, status, dueInDays) => {
+    const f = followUpFor(`Send the deck by ${date}`, NOW_F);
+    expect(f?.status).toBe(status);
+    expect(f?.dueInDays).toBe(dueInDays);
   });
 
   it('picks the latest date by calendar order, not by position in the text', () => {
@@ -246,7 +266,7 @@ describe('followUpFor — a past-dated action becomes a follow-up', () => {
 
   it('formats a full-year or numeric date as a short month and day', () => {
     expect(followUpFor('Send notes from 2026-09-03', NOW_F)?.lead).toBe(
-      'Follow up — Sep 3 has passed.',
+      'Sep 3 has passed.',
     );
   });
 });
