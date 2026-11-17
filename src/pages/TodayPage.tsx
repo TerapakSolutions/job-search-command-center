@@ -24,7 +24,7 @@ import {
   isMeaningfulContactNextAction,
   resolveContactCompany,
 } from '../lib/contactDisplay';
-import { isNextActionDatePast } from '../lib/nextActionDates';
+import { followUpFor, type FollowUp } from '../lib/nextActionDates';
 import DonationCard from '../components/DonationCard';
 import DailyBriefingPanel from '../components/DailyBriefingPanel';
 import AutomationDashboardPanel from '../components/AutomationDashboardPanel';
@@ -157,21 +157,26 @@ export default function TodayPage() {
 
   // A next action whose explicit dates have ALL passed (e.g. "confirm the call on
   // <last Tuesday>") usually means the meeting HAPPENED and a follow-up is now
-  // due. It stays in the live list, goes first, and is marked "Date passed" with
-  // a prompt to follow up. The stored text is untouched; undated or future-dated
-  // text keeps its existing order after the past-dated items.
+  // due. It stays in the live list, goes first, is marked "Date passed", and is
+  // shown as a follow-up (due FOLLOW_UP_AFTER_DAYS after its latest date) with the
+  // stored text underneath as "Was: ...". The stored text is never modified.
+  // Past-dated items: most overdue first, then due today, then due later (ties
+  // keep contact order; sort is stable). Undated or future-dated text keeps its
+  // existing order after them.
   const contactNextActions = useMemo(() => {
     const now = new Date();
-    const past: { contact: (typeof contacts)[number]; datePassed: boolean }[] = [];
+    const past: { contact: (typeof contacts)[number]; followUp: FollowUp | null }[] = [];
     const rest: typeof past = [];
     for (const c of contacts) {
       if (!isMeaningfulContactNextAction(c.nextAction)) continue;
-      if (isNextActionDatePast(c.nextAction, now)) {
-        past.push({ contact: c, datePassed: true });
+      const followUp = followUpFor(c.nextAction, now);
+      if (followUp) {
+        past.push({ contact: c, followUp });
       } else {
-        rest.push({ contact: c, datePassed: false });
+        rest.push({ contact: c, followUp: null });
       }
     }
+    past.sort((x, y) => x.followUp!.dueInDays - y.followUp!.dueInDays);
     return [...past, ...rest];
   }, [contacts]);
 
@@ -299,29 +304,39 @@ export default function TodayPage() {
           </p>
         ) : (
           <ul className="space-y-2" aria-label="Contact next actions">
-            {contactNextActions.map(({ contact, datePassed }) => (
+            {contactNextActions.map(({ contact, followUp }) => (
               <li
                 key={contact.id}
                 className="bg-white border rounded-lg px-4 py-3"
               >
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-medium text-gray-900">{contact.name}</p>
-                  {datePassed && (
+                  {followUp && (
                     <span className="text-xs font-medium uppercase tracking-wide text-red-700 bg-red-50 border border-red-200 rounded px-2 py-0.5">
                       Date passed
                     </span>
                   )}
                 </div>
                 <p className="text-sm text-gray-600">{contactLabel(contact)}</p>
-                <p className="text-sm text-amber-700 mt-1">{contact.nextAction}</p>
-                {datePassed && (
-                  <p className="text-sm text-gray-900 mt-1">
-                    This date has passed — follow up or{' '}
-                    <Link to="/contacts" className="text-blue-600 hover:underline">
-                      update
-                    </Link>{' '}
-                    the next step.
-                  </p>
+                {followUp ? (
+                  <>
+                    <p
+                      className="text-sm text-amber-700 mt-1"
+                      data-testid="next-action-lead"
+                    >
+                      {followUp.lead}
+                    </p>
+                    <p className="text-sm text-gray-900 mt-1">
+                      {followUp.status} —{' '}
+                      <Link to="/contacts" className="text-blue-600 hover:underline">
+                        update
+                      </Link>{' '}
+                      the next step.
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">Was: {contact.nextAction}</p>
+                  </>
+                ) : (
+                  <p className="text-sm text-amber-700 mt-1">{contact.nextAction}</p>
                 )}
               </li>
             ))}
