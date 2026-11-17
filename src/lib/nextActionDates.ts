@@ -171,19 +171,18 @@ export interface FollowUp {
   /**
    * Event, in business days: "Follow-up due today" / "Follow-up due in N
    * business day(s)" / "Follow-up overdue by N business day(s)".
-   * Deadline, in calendar days: "Overdue by N day(s)".
+   * Deadline, in business days: "Overdue by N business day(s)".
    */
   status: string;
   /**
    * Local CALENDAR days until due (for an event, until its business-day due
    * date); 0 = today, negative = overdue. One measure for both kinds, so mixed
    * items sort together (most negative first). Its sign always matches status.
+   * It never orders against the business-day counts in status: a business-day
+   * count can only shrink as the date moves later (it may tie where calendar
+   * days do not, e.g. a Fri and the Sat after it).
    */
   dueInDays: number;
-}
-
-function plural(n: number): string {
-  return `${n} ${n === 1 ? 'day' : 'days'}`;
 }
 
 function pluralBusiness(n: number): string {
@@ -243,7 +242,10 @@ function followUpDueDay(n: number, afterDays: number): number {
  *     today, where a weekend today counts as the coming Monday (a Friday due
  *     date is "overdue by 1" on Saturday, Sunday and Monday alike).
  * Deadline (no event word): due on the date itself and so already overdue,
- * counted in calendar days. afterDays does not apply.
+ * counted in business days: those after the date up to and including today,
+ * with a weekend today counting as the coming Monday (as for events). A weekend
+ * deadline is not moved, so Sat -> Mon is overdue by 1 and Sat -> Tue by 2.
+ * afterDays does not apply.
  *
  * Day arithmetic uses calendar day numbers, so DST changes and the time of day
  * do not shift it. Display only: the stored text is never changed.
@@ -266,10 +268,13 @@ export function followUpFor(
 
   if (!event) {
     const dueInDays = dateN - todayN; // always < 0: the date is past
+    // The date is NOT moved to a business day, so the business day after a
+    // weekend deadline is already overdue by 1; >= 1 whenever the date is past.
+    const overdue = businessDaysBetween(dateN, onOrNextBusinessDay(todayN));
     return {
       kind: 'deadline',
       lead: `${label} has passed.`,
-      status: `Overdue by ${plural(-dueInDays)}`,
+      status: `Overdue by ${pluralBusiness(overdue)}`,
       dueInDays,
     };
   }

@@ -208,15 +208,17 @@ describe('followUpFor — a past-dated action becomes a follow-up', () => {
     // Read on Nov 17: an event on Nov 14 would be "due today"; a deadline is not.
     const f = followUpFor('Complete the assessment by Nov 14', NOW_F);
     expect(f?.lead).toBe('Nov 14 has passed.');
-    expect(f?.status).toBe('Overdue by 3 days');
+    // Sat Nov 14 -> Mon, Tue: 2 business days. dueInDays stays in calendar days.
+    expect(f?.status).toBe('Overdue by 2 business days');
     expect(f?.dueInDays).toBe(-3);
   });
 
   it.each([
-    // [deadline date, status on Nov 17, dueInDays]: counted from the date itself
-    ['Nov 16', 'Overdue by 1 day', -1],
-    ['Nov 15', 'Overdue by 2 days', -2],
-    ['Nov 10', 'Overdue by 7 days', -7],
+    // [deadline date, status on Tue Nov 17, dueInDays]: business days after the
+    // date itself; dueInDays (the sort measure) stays in calendar days
+    ['Nov 16', 'Overdue by 1 business day', -1], // Mon -> Tue
+    ['Nov 15', 'Overdue by 2 business days', -2], // Sun -> Mon, Tue
+    ['Nov 10', 'Overdue by 5 business days', -7], // Tue -> Wed, Thu, Fri, Mon, Tue
   ])('a deadline on %s, seen on Nov 17: %s', (date, status, dueInDays) => {
     const f = followUpFor(`Send the deck by ${date}`, NOW_F);
     expect(f?.status).toBe(status);
@@ -343,16 +345,45 @@ describe('followUpFor — business days (Mon-Fri, no holidays)', () => {
     expect(FOLLOW_UP_AFTER_DAYS_MAX).toBe(14);
   });
 
-  it('leaves a missed deadline in calendar days, whatever afterDays is', () => {
+  it('counts a missed deadline in business days, whatever afterDays is', () => {
     for (const n of [1, 3, 7, 14]) {
       const f = followUpFor('Send the deck by Nov 10', TUE, n);
       expect(f).toEqual({
         kind: 'deadline',
         lead: 'Nov 10 has passed.',
-        status: 'Overdue by 7 days',
+        status: 'Overdue by 5 business days',
         dueInDays: -7,
       });
     }
-    expect(followUpFor('Send the deck by Nov 16', TUE, 7)?.status).toBe('Overdue by 1 day');
+    expect(followUpFor('Send the deck by Nov 16', TUE, 7)?.status).toBe(
+      'Overdue by 1 business day',
+    );
+  });
+});
+
+describe('followUpFor — a missed deadline is overdue in business days', () => {
+  // Overdue = business days after the deadline date, up to and including today,
+  // where a weekend today counts as the coming Monday (the event rule). The
+  // deadline date itself is NOT moved: every business day after a weekend
+  // deadline counts, so the Monday after it is already overdue by 1.
+  it.each([
+    // [label, deadline text, now, status]
+    ['Fri, seen Mon', 'Send the deck by Nov 13', new Date(2026, 10, 16, 10, 0), 'Overdue by 1 business day'],
+    ['Fri, seen Sat (counts as Mon)', 'Send the deck by Nov 13', new Date(2026, 10, 14, 10, 0), 'Overdue by 1 business day'],
+    ['Fri, seen Sun (counts as Mon)', 'Send the deck by Nov 13', new Date(2026, 10, 15, 10, 0), 'Overdue by 1 business day'],
+    ['Fri, seen Tue', 'Send the deck by Nov 13', new Date(2026, 10, 17, 10, 0), 'Overdue by 2 business days'],
+    ['Sat, seen Sun (counts as Mon)', 'Send the deck by Nov 14', new Date(2026, 10, 15, 10, 0), 'Overdue by 1 business day'],
+    ['Sat, seen Mon', 'Send the deck by Nov 14', new Date(2026, 10, 16, 10, 0), 'Overdue by 1 business day'],
+    ['Sat, seen Tue', 'Send the deck by Nov 14', new Date(2026, 10, 17, 10, 0), 'Overdue by 2 business days'],
+    ['Thu, seen Fri', 'Send the deck by Nov 12', new Date(2026, 10, 13, 10, 0), 'Overdue by 1 business day'],
+  ])('%s: %s', (_label, text, now, status) => {
+    const f = followUpFor(text, now);
+    expect(f?.kind).toBe('deadline');
+    expect(f?.status).toBe(status);
+    expect(f!.dueInDays).toBeLessThan(0); // the sign matches "Overdue"
+  });
+
+  it('does not treat a deadline dated today as past', () => {
+    expect(followUpFor('Send the deck by Nov 17', new Date(2026, 10, 17, 23, 59))).toBeNull();
   });
 });

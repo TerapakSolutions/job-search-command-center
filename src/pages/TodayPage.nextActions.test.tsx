@@ -214,8 +214,8 @@ describe('TodayPage contact next actions — past-dated actions stay live', () =
   it('orders past-dated items most overdue first, then due today, then due later', () => {
     // Today is Tue Nov 17. Events get +3 business days: Fri Nov 13 -> Wed Nov 18
     // (in 1), Thu Nov 12 -> Tue Nov 17 (today), Tue Nov 10 -> Fri Nov 13 (overdue
-    // by 2 business days). The deadline (no event word) counts calendar days from
-    // its own date: Nov 10 -> overdue by 7 days.
+    // by 2 business days). The deadline (no event word) counts business days from
+    // its own date: Tue Nov 10 -> overdue by 5 business days.
     mockContacts = [
       contact('c-undated', 'Bram Ketteridge', 'Send the portfolio link'),
       contact('c-later', 'Lark Fenwright', 'Coffee on Nov 13'),
@@ -233,7 +233,7 @@ describe('TodayPage contact next actions — past-dated actions stay live', () =
       'Bram Ketteridge',
       'Ines Vardamir',
     ]);
-    expect(itemFor('Corin Ashdale').textContent).toContain('Overdue by 7 days');
+    expect(itemFor('Corin Ashdale').textContent).toContain('Overdue by 5 business days');
     expect(itemFor('Corin Ashdale').textContent).not.toContain('Follow-up');
     expect(itemFor('Mira Thistlewood').textContent).toContain('Follow-up due today');
     expect(itemFor('Orla Penhallow').textContent).toContain(
@@ -252,12 +252,12 @@ describe('TodayPage contact next actions — past-dated actions stay live', () =
     renderPage();
     const deadline = itemFor('Sable Dunmore');
     expect(lead(deadline)).toBe('Nov 14 has passed.');
-    expect(deadline.textContent).toContain('Overdue by 3 days — update the next step.');
+    expect(deadline.textContent).toContain('Overdue by 2 business days — update the next step.');
     expect(deadline.textContent).not.toContain('Follow-up due today');
     expect(deadline.textContent).not.toContain('Follow up');
     expect(within(deadline).getByText('Was: Complete the assessment by Nov 14')).not.toBeNull();
     expect(badge(deadline)?.textContent).toBe('Overdue');
-    // Deadline overdue by 3 days; the meeting follow-up is due Wed Nov 18 (in 1 business day).
+    // Deadline overdue by 2 business days; the meeting follow-up is due Wed Nov 18 (in 1 business day).
     expect(names()).toEqual(['Sable Dunmore', 'Wren Calloway', 'Bram Ketteridge']);
     expect(itemFor('Wren Calloway').textContent).toContain('Follow-up due in 1 business day');
   });
@@ -332,7 +332,7 @@ describe('TodayPage contact next actions — the badge says where the follow-up 
     const b = badge(item);
     expect(b?.textContent).toBe('Overdue');
     expect(b?.className).toMatch(/\bred-/);
-    expect(item.textContent).toContain('Overdue by 3 days');
+    expect(item.textContent).toContain('Overdue by 2 business days');
     expectNoDatePassed();
   });
 
@@ -364,7 +364,7 @@ describe('TodayPage contact next actions — the badge says where the follow-up 
       { name: 'Calder Wynmoor', badge: 'Follow-up overdue', lead: 'Follow up on the meeting from Nov 11.' },
       { name: 'Juniper Ashcombe', badge: 'Follow up soon', lead: 'Follow up on the meeting from Nov 13.' },
     ]);
-    expect(itemFor('Odile Ferncastle').textContent).toContain('Overdue by 3 days');
+    expect(itemFor('Odile Ferncastle').textContent).toContain('Overdue by 2 business days');
     expect(itemFor('Calder Wynmoor').textContent).toContain('Follow-up overdue by 1 business day');
     expect(itemFor('Juniper Ashcombe').textContent).toContain('Follow-up due in 1 business day');
     expectNoDatePassed();
