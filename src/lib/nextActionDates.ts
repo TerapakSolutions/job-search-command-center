@@ -160,6 +160,12 @@ const SHORT_MONTHS = [
 ];
 
 export interface FollowUp {
+  /**
+   * 'event': the text names one of FOLLOW_UP_EVENT_WORDS, so a follow-up is
+   * due `afterDays` business days after it. 'deadline': no event word; it is
+   * overdue from its own date (dueInDays is always negative).
+   */
+  kind: 'event' | 'deadline';
   /** Event: "Follow up on the meeting from Nov 13." Deadline: "Nov 13 has passed." */
   lead: string;
   /**
@@ -261,6 +267,7 @@ export function followUpFor(
   if (!event) {
     const dueInDays = dateN - todayN; // always < 0: the date is past
     return {
+      kind: 'deadline',
       lead: `${label} has passed.`,
       status: `Overdue by ${plural(-dueInDays)}`,
       dueInDays,
@@ -279,5 +286,5 @@ export function followUpFor(
         : `Follow-up overdue by ${pluralBusiness(
             businessDaysBetween(dueN, onOrNextBusinessDay(todayN)),
           )}`;
-  return { lead, status, dueInDays };
+  return { kind: 'event', lead, status, dueInDays };
 }

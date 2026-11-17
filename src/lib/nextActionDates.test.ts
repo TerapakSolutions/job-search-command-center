@@ -223,6 +223,17 @@ describe('followUpFor — a past-dated action becomes a follow-up', () => {
     expect(f?.dueInDays).toBe(dueInDays);
   });
 
+  it('says which kind it is: an event follow-up or a missed deadline', () => {
+    // The page badges by kind + dueInDays, so the kind must come from here.
+    expect(followUpFor('Coffee on Nov 13', NOW_F)).toMatchObject({ kind: 'event', dueInDays: 1 });
+    expect(followUpFor('Demo on Nov 12', NOW_F)).toMatchObject({ kind: 'event', dueInDays: 0 });
+    expect(followUpFor('Interview on Nov 10', NOW_F)).toMatchObject({ kind: 'event', dueInDays: -4 });
+    expect(followUpFor('Complete the assessment by Nov 14', NOW_F)).toMatchObject({
+      kind: 'deadline',
+      dueInDays: -3,
+    });
+  });
+
   it('picks the latest date by calendar order, not by position in the text', () => {
     // The later-in-text date (Nov 3) is the EARLIER day.
     const f = followUpFor('Meeting on Nov 12, moved from Nov 3', NOW_F);
@@ -335,7 +346,12 @@ describe('followUpFor — business days (Mon-Fri, no holidays)', () => {
   it('leaves a missed deadline in calendar days, whatever afterDays is', () => {
     for (const n of [1, 3, 7, 14]) {
       const f = followUpFor('Send the deck by Nov 10', TUE, n);
-      expect(f).toEqual({ lead: 'Nov 10 has passed.', status: 'Overdue by 7 days', dueInDays: -7 });
+      expect(f).toEqual({
+        kind: 'deadline',
+        lead: 'Nov 10 has passed.',
+        status: 'Overdue by 7 days',
+        dueInDays: -7,
+      });
     }
     expect(followUpFor('Send the deck by Nov 16', TUE, 7)?.status).toBe('Overdue by 1 day');
   });
