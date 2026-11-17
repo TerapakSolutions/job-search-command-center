@@ -1,3 +1,20 @@
+import {
+  buildGeminiRequestBody,
+  geminiQuotaReason,
+  geminiResponseText,
+  getVertexAccessToken,
+  readGeminiConfig,
+  vertexGenerateContentUrl,
+} from './geminiVertex.js';
+
+/**
+ * AI_PROVIDER=gemini sends every call to Gemini on Vertex AI. Anything else,
+ * including unset, stays on OpenAI, which is the one-setting rollback.
+ */
+function aiProvider(): 'openai' | 'gemini' {
+  return process.env.AI_PROVIDER?.trim().toLowerCase() === 'gemini' ? 'gemini' : 'openai';
+}
+
 /** Which feature is calling, so each can use its own model. */
 export type LlmPurpose = 'extract' | 'brief';
 
@@ -23,7 +40,7 @@ function readApiKey(): string {
 }
 
 /**
- * OpenAI said no because the monthly budget is spent (insufficient_quota) or
+ * The provider said no because the monthly budget is spent (insufficient_quota) or
  * we're sending too fast (rate_limited). Callers fall back to rules and say
  * the AI is paused rather than treating it as a failure.
  */
@@ -38,12 +55,64 @@ export class LlmQuotaError extends Error {
 let quotaIncidentOpen = false;
 
 export function isLlmConfigured(): boolean {
+  if (aiProvider() === 'gemini') {
+    return readGeminiConfig() !== null;
+  }
   return Boolean(readApiKey());
+}
+
+function quotaExceeded(reason: LlmQuotaError['reason'], body: string): LlmQuotaError {
+  if (!quotaIncidentOpen) {
+    quotaIncidentOpen = true;
+    console.warn(`[llm] AI paused: budget or rate limit reached: ${body.slice(0, 200)}`);
+  }
+  return new LlmQuotaError(reason);
+}
+
+async function generateGeminiCompletion(
+  options: LlmCompletionOptions,
+): Promise<string | null> {
+  const config = readGeminiConfig();
+  if (!config) {
+    return null;
+  }
+
+  const token = await getVertexAccessToken(config);
+  const res = await fetch(vertexGenerateContentUrl(config), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(
+      buildGeminiRequestBody({
+        systemPrompt: options.systemPrompt,
+        userPrompt: options.userPrompt,
+        json: options.responseFormat === 'json_object',
+      }),
+    ),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    const reason = geminiQuotaReason(res.status, body);
+    if (reason) {
+      throw quotaExceeded(reason, `(${res.status}) ${body}`);
+    }
+    throw new Error(`LLM request failed (${res.status}): ${body.slice(0, 200)}`);
+  }
+
+  quotaIncidentOpen = false;
+  return geminiResponseText(await res.json());
 }
 
 export async function generateLlmCompletion(
   options: LlmCompletionOptions,
 ): Promise<string | null> {
+  if (aiProvider() === 'gemini') {
+    return generateGeminiCompletion(options);
+  }
+
   const apiKey = readApiKey();
   if (!apiKey) {
     return null;
