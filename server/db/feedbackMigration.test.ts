@@ -20,11 +20,12 @@ it('0016_feedback applies to a database that already has every earlier migration
     fs.cpSync(MIGRATIONS, before, { recursive: true });
     const journalPath = path.join(before, 'meta', '_journal.json');
     const journal = JSON.parse(fs.readFileSync(journalPath, 'utf8')) as {
-      entries: Array<{ tag: string }>;
+      entries: Array<{ idx: number; tag: string }>;
     };
-    journal.entries = journal.entries.filter((e) => e.tag !== '0016_feedback');
+    // Keep exactly 0000–0015: a later migration left in would be applied first and
+    // make drizzle skip 0016 as older than the last one applied.
+    journal.entries = journal.entries.filter((e) => e.idx <= 15);
     fs.writeFileSync(journalPath, JSON.stringify(journal));
-    fs.rmSync(path.join(before, '0016_feedback.sql'));
 
     const sqlite = new Database(':memory:');
     sqlite.pragma('foreign_keys = ON');
@@ -36,6 +37,52 @@ it('0016_feedback applies to a database that already has every earlier migration
 
     migrate(db, { migrationsFolder: MIGRATIONS });
     expect(hasTable()).toBe(1);
+    sqlite.close();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+/**
+ * 0017 only ADDS a nullable column to `users`: prod has 0000–0016 and real user
+ * rows, which must come through unchanged with the new column NULL (= default 3).
+ */
+it('0017_users_follow_up_after_days adds a nullable column and changes no rows', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jscc-migrations-'));
+  try {
+    const before = path.join(tmp, 'migrations');
+    fs.cpSync(MIGRATIONS, before, { recursive: true });
+    const journalPath = path.join(before, 'meta', '_journal.json');
+    const journal = JSON.parse(fs.readFileSync(journalPath, 'utf8')) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
+    journal.entries = journal.entries.filter((e) => e.idx <= 16);
+    fs.writeFileSync(journalPath, JSON.stringify(journal));
+
+    const sqlite = new Database(':memory:');
+    sqlite.pragma('foreign_keys = ON');
+    const db = drizzle(sqlite);
+    migrate(db, { migrationsFolder: before });
+    // Invented user.
+    sqlite
+      .prepare(
+        `INSERT INTO users (id, google_id, email, name, avatar_url, created_at, updated_at)
+         VALUES ('u-1', 'g-1', 'pella@example.test', 'Pella Wren', NULL, '2026-01-02T00:00:00.000Z', '2026-01-02T00:00:00.000Z')`,
+      )
+      .run();
+    const cols = () =>
+      (sqlite.prepare(`PRAGMA table_info('users')`).all() as Array<{ name: string; notnull: number }>);
+    expect(cols().some((c) => c.name === 'follow_up_after_days')).toBe(false);
+    const rowBefore = sqlite.prepare(`SELECT * FROM users`).all();
+
+    migrate(db, { migrationsFolder: MIGRATIONS });
+    const col = cols().find((c) => c.name === 'follow_up_after_days');
+    expect(col?.notnull).toBe(0);
+    const rowsAfter = sqlite.prepare(`SELECT * FROM users`).all() as Array<Record<string, unknown>>;
+    expect(rowsAfter).toHaveLength(1);
+    expect(rowsAfter).toEqual(
+      (rowBefore as Array<Record<string, unknown>>).map((r) => ({ ...r, follow_up_after_days: null })),
+    );
     sqlite.close();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

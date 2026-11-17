@@ -111,11 +111,25 @@ export function isNextActionDatePast(text: string, now: Date): boolean {
 }
 
 /**
- * Days after a past EVENT (a next action naming one of FOLLOW_UP_EVENT_WORDS)
- * that its follow-up is due. A missed deadline (no event word) gets no grace:
- * it is overdue from its own date. The one place this lives.
+ * Default number of BUSINESS days (Mon-Fri) after a past EVENT (a next action
+ * naming one of FOLLOW_UP_EVENT_WORDS) that its follow-up is due. The user can
+ * change it in Settings, within FOLLOW_UP_AFTER_DAYS_MIN..MAX; a stored null
+ * means this default. A missed deadline (no event word) gets no grace: it is
+ * overdue from its own date. The one place this lives on the client.
  */
 export const FOLLOW_UP_AFTER_DAYS = 3;
+export const FOLLOW_UP_AFTER_DAYS_MIN = 1;
+export const FOLLOW_UP_AFTER_DAYS_MAX = 14;
+
+/** True for a whole number of business days the setting allows. */
+export function isValidFollowUpAfterDays(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= FOLLOW_UP_AFTER_DAYS_MIN &&
+    value <= FOLLOW_UP_AFTER_DAYS_MAX
+  );
+}
 
 /**
  * Event words that let the lead name what happened ("Follow up on the meeting
@@ -149,13 +163,15 @@ export interface FollowUp {
   /** Event: "Follow up on the meeting from Nov 13." Deadline: "Nov 13 has passed." */
   lead: string;
   /**
-   * Event: "Follow-up due today" / "Follow-up due in N day(s)" /
-   * "Follow-up overdue by N day(s)". Deadline: "Overdue by N day(s)".
+   * Event, in business days: "Follow-up due today" / "Follow-up due in N
+   * business day(s)" / "Follow-up overdue by N business day(s)".
+   * Deadline, in calendar days: "Overdue by N day(s)".
    */
   status: string;
   /**
-   * Local calendar days until due; 0 = today, negative = overdue. One measure
-   * for both kinds, so mixed items sort together (most negative first).
+   * Local CALENDAR days until due (for an event, until its business-day due
+   * date); 0 = today, negative = overdue. One measure for both kinds, so mixed
+   * items sort together (most negative first). Its sign always matches status.
    */
   dueInDays: number;
 }
@@ -164,16 +180,73 @@ function plural(n: number): string {
   return `${n} ${n === 1 ? 'day' : 'days'}`;
 }
 
+function pluralBusiness(n: number): string {
+  return `${n} business ${n === 1 ? 'day' : 'days'}`;
+}
+
+/*
+ * Business days are Monday to Friday. There is NO holiday calendar: a public
+ * holiday counts as a business day. Day numbers are UTC day counts (day 0,
+ * Jan 1 1970, was a Thursday), so DST never shifts them.
+ */
+function isWeekend(n: number): boolean {
+  const weekday = (((n % 7) + 7) % 7 + 4) % 7; // 0 = Sunday ... 6 = Saturday
+  return weekday === 0 || weekday === 6;
+}
+
+/** n itself if it is a business day, else the next one (the Monday). */
+function onOrNextBusinessDay(n: number): number {
+  let d = n;
+  while (isWeekend(d)) d += 1;
+  return d;
+}
+
+/** Business days in the half-open range (from, to]. */
+function businessDaysBetween(from: number, to: number): number {
+  let count = 0;
+  for (let d = from + 1; d <= to; d += 1) if (!isWeekend(d)) count += 1;
+  return count;
+}
+
+/**
+ * The follow-up due date for an event on day `n`: N business days after it.
+ * An event on a weekend counts from the next business day (the Monday), so
+ * Sat + 3 = Thu, the same as Mon + 3. Fri + 3 = Wed.
+ */
+function followUpDueDay(n: number, afterDays: number): number {
+  let d = onOrNextBusinessDay(n);
+  for (let left = afterDays; left > 0; ) {
+    d += 1;
+    if (!isWeekend(d)) left -= 1;
+  }
+  return d;
+}
+
 /**
  * For a past-dated next action (see isNextActionDatePast), what to show instead
  * of the stale text; null otherwise. Uses the LATEST date in the text (latest by
- * calendar, not by position). If the text names an event, a follow-up is due
- * FOLLOW_UP_AFTER_DAYS local calendar days after that date; if not, it is a
- * missed deadline, due on the date itself and so already overdue. Day arithmetic uses calendar day
- * numbers, so DST changes and the time of day do not shift it. Display only:
- * the stored text is never changed.
+ * calendar, not by position).
+ *
+ * Event (the text names one): the follow-up is due `afterDays` business days
+ * after that date (default FOLLOW_UP_AFTER_DAYS; an invalid value falls back to
+ * it). Due/overdue are counted in business days:
+ *   - "due today" only when today IS the due date, so never on a weekend;
+ *   - "due in N" = business days after today up to and including the due date
+ *     (seen on a Saturday, a Monday due date is "in 1");
+ *   - "overdue by N" = business days after the due date up to and including
+ *     today, where a weekend today counts as the coming Monday (a Friday due
+ *     date is "overdue by 1" on Saturday, Sunday and Monday alike).
+ * Deadline (no event word): due on the date itself and so already overdue,
+ * counted in calendar days. afterDays does not apply.
+ *
+ * Day arithmetic uses calendar day numbers, so DST changes and the time of day
+ * do not shift it. Display only: the stored text is never changed.
  */
-export function followUpFor(text: string, now: Date): FollowUp | null {
+export function followUpFor(
+  text: string,
+  now: Date,
+  afterDays: number = FOLLOW_UP_AFTER_DAYS,
+): FollowUp | null {
   if (!isNextActionDatePast(text, now)) return null;
   const dates = findExplicitDates(text, now);
   const latest = dates.reduce((a, b) =>
@@ -195,12 +268,16 @@ export function followUpFor(text: string, now: Date): FollowUp | null {
   }
 
   const lead = `Follow up on the ${event} from ${label}.`;
-  const dueInDays = dateN + FOLLOW_UP_AFTER_DAYS - todayN;
+  const n = isValidFollowUpAfterDays(afterDays) ? afterDays : FOLLOW_UP_AFTER_DAYS;
+  const dueN = followUpDueDay(dateN, n);
+  const dueInDays = dueN - todayN;
   const status =
     dueInDays === 0
       ? 'Follow-up due today'
       : dueInDays > 0
-        ? `Follow-up due in ${plural(dueInDays)}`
-        : `Follow-up overdue by ${plural(-dueInDays)}`;
+        ? `Follow-up due in ${pluralBusiness(businessDaysBetween(todayN, dueN))}`
+        : `Follow-up overdue by ${pluralBusiness(
+            businessDaysBetween(dueN, onOrNextBusinessDay(todayN)),
+          )}`;
   return { lead, status, dueInDays };
 }

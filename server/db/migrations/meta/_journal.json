@@ -120,6 +120,13 @@
       "when": 1900000000000,
       "tag": "0016_feedback",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1910000000000,
+      "tag": "0017_users_follow_up_after_days",
+      "breakpoints": true
     }
   ]
 }

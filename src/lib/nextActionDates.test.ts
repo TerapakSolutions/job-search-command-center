@@ -2,6 +2,8 @@
 import {
   findExplicitDates,
   FOLLOW_UP_AFTER_DAYS,
+  FOLLOW_UP_AFTER_DAYS_MAX,
+  FOLLOW_UP_AFTER_DAYS_MIN,
   followUpFor,
   isNextActionDatePast,
 } from './nextActionDates';
@@ -225,16 +227,17 @@ describe('followUpFor — a past-dated action becomes a follow-up', () => {
     // The later-in-text date (Nov 3) is the EARLIER day.
     const f = followUpFor('Meeting on Nov 12, moved from Nov 3', NOW_F);
     expect(f?.lead).toBe('Follow up on the meeting from Nov 12.');
-    expect(f?.dueInDays).toBe(-2); // due Nov 15
+    expect(f?.dueInDays).toBe(0); // Thu Nov 12 + 3 business days = Tue Nov 17
   });
 
   it.each([
-    // [date in text, status on Nov 17, dueInDays]
-    ['Nov 16', 'Follow-up due in 2 days', 2], // date+1
-    ['Nov 15', 'Follow-up due in 1 day', 1], // date+2
-    ['Nov 14', 'Follow-up due today', 0], // date+3
-    ['Nov 13', 'Follow-up overdue by 1 day', -1], // date+4
-    ['Nov 10', 'Follow-up overdue by 4 days', -4], // date+7
+    // [date in text, status on Tue Nov 17, dueInDays (calendar days to the due date)]
+    ['Nov 16', 'Follow-up due in 2 business days', 2], // Mon -> Thu Nov 19
+    ['Nov 13', 'Follow-up due in 1 business day', 1], // Fri -> Wed Nov 18 (the owner's case)
+    ['Nov 12', 'Follow-up due today', 0], // Thu -> Tue Nov 17
+    ['Nov 11', 'Follow-up overdue by 1 business day', -1], // Wed -> Mon Nov 16
+    ['Nov 10', 'Follow-up overdue by 2 business days', -4], // Tue -> Fri Nov 13, across a weekend
+    ['Nov 9', 'Follow-up overdue by 3 business days', -5], // Mon -> Thu Nov 12
   ])('a meeting on %s, seen on Nov 17: %s', (date, status, dueInDays) => {
     const f = followUpFor(`Meeting on ${date}`, NOW_F);
     expect(f?.status).toBe(status);
@@ -242,24 +245,26 @@ describe('followUpFor — a past-dated action becomes a follow-up', () => {
   });
 
   it('counts local calendar days: late evening and early morning agree', () => {
+    // Fri Nov 13 + 3 business days = Wed Nov 18.
     for (const hour of [0, 23]) {
       const f = followUpFor('Meeting on Nov 13', new Date(2026, 10, 17, hour, 59));
-      expect(f?.status).toBe('Follow-up overdue by 1 day');
+      expect(f?.status).toBe('Follow-up due in 1 business day');
     }
-    // 00:01 on the due day is "today", 23:59 the night before is still "in 1 day".
-    expect(followUpFor('Meeting on Nov 13', new Date(2026, 10, 16, 0, 1))?.status).toBe(
+    // 00:01 on the due day is "today", 23:59 the night before is still "in 1".
+    expect(followUpFor('Meeting on Nov 13', new Date(2026, 10, 18, 0, 1))?.status).toBe(
       'Follow-up due today',
     );
-    expect(followUpFor('Meeting on Nov 13', new Date(2026, 10, 15, 23, 59))?.status).toBe(
-      'Follow-up due in 1 day',
+    expect(followUpFor('Meeting on Nov 13', new Date(2026, 10, 17, 23, 59))?.status).toBe(
+      'Follow-up due in 1 business day',
     );
   });
 
   it('is not thrown off by a DST change (US fall back Nov 1, spring forward Mar 8, 2026)', () => {
-    expect(followUpFor('Meeting on Oct 30', new Date(2026, 10, 2, 0, 30))?.status).toBe(
+    // Thu Oct 29 -> Tue Nov 3; Thu Mar 5 -> Tue Mar 10.
+    expect(followUpFor('Meeting on Oct 29', new Date(2026, 10, 3, 0, 30))?.status).toBe(
       'Follow-up due today',
     );
-    expect(followUpFor('Meeting on Mar 6', new Date(2026, 2, 9, 0, 30))?.status).toBe(
+    expect(followUpFor('Meeting on Mar 5', new Date(2026, 2, 10, 0, 30))?.status).toBe(
       'Follow-up due today',
     );
   });
@@ -268,5 +273,70 @@ describe('followUpFor — a past-dated action becomes a follow-up', () => {
     expect(followUpFor('Send notes from 2026-09-03', NOW_F)?.lead).toBe(
       'Sep 3 has passed.',
     );
+  });
+});
+
+describe('followUpFor — business days (Mon-Fri, no holidays)', () => {
+  // Invented events. Tue Nov 17, 2026, 9:00 local.
+  const TUE = new Date(2026, 10, 17, 9, 0);
+
+  it.each([
+    // [event, now, afterDays, dueInDays, status] - dueInDays pins the exact due date
+    ['Fri + 3 -> Wed', 'Meeting on Nov 13', TUE, 3, 1, 'Follow-up due in 1 business day'],
+    ['Mon + 3 -> Thu', 'Meeting on Nov 16', TUE, 3, 2, 'Follow-up due in 2 business days'],
+    ['Thu + 3 -> Tue', 'Meeting on Nov 12', TUE, 3, 0, 'Follow-up due today'],
+    ['Fri + 1 -> Mon', 'Meeting on Nov 13', TUE, 1, -1, 'Follow-up overdue by 1 business day'],
+    ['Fri + 7 -> Tue Nov 24', 'Meeting on Nov 13', TUE, 7, 7, 'Follow-up due in 5 business days'],
+    ['Mon + 7 -> Wed Nov 18', 'Meeting on Nov 9', TUE, 7, 1, 'Follow-up due in 1 business day'],
+  ])('%s', (_label, text, now, afterDays, dueInDays, status) => {
+    const f = followUpFor(text, now, afterDays);
+    expect(f?.dueInDays).toBe(dueInDays);
+    expect(f?.status).toBe(status);
+  });
+
+  it('counts a weekend event from the next business day (Monday), then adds N', () => {
+    // Sat Nov 14 and Sun Nov 15 both count from Mon Nov 16: + 3 = Thu Nov 19.
+    for (const date of ['Nov 14', 'Nov 15']) {
+      const f = followUpFor(`Coffee on ${date}`, TUE);
+      expect(f?.dueInDays).toBe(2);
+      expect(f?.status).toBe('Follow-up due in 2 business days');
+    }
+    // Sun Nov 8 -> Mon Nov 9 + 3 = Thu Nov 12; seen Tue Nov 17: Fri, Mon, Tue late.
+    expect(followUpFor('Coffee on Nov 8', TUE)?.status).toBe('Follow-up overdue by 3 business days');
+  });
+
+  it('never says "due today" on a weekend; overdue counts as of the coming Monday', () => {
+    // Tue Nov 10 + 3 = Fri Nov 13. Seen Sat, Sun and Mon it is 1 business day late.
+    for (const day of [14, 15, 16]) {
+      const f = followUpFor('Meeting on Nov 10', new Date(2026, 10, day, 10, 0));
+      expect(f?.status).toBe('Follow-up overdue by 1 business day');
+      expect(f?.dueInDays).toBe(13 - day);
+    }
+    // Mon Nov 9 + 3 = Thu Nov 12. Seen Sat Nov 14: Fri and Mon -> 2, same as on Monday.
+    expect(followUpFor('Meeting on Nov 9', new Date(2026, 10, 14, 10, 0))?.status).toBe(
+      'Follow-up overdue by 2 business days',
+    );
+    // Wed Nov 11 + 3 = Mon Nov 16. Seen Sat Nov 14: due Monday, 1 business day away.
+    const f = followUpFor('Meeting on Nov 11', new Date(2026, 10, 14, 10, 0));
+    expect(f?.status).toBe('Follow-up due in 1 business day');
+    expect(f?.dueInDays).toBe(2);
+  });
+
+  it('defaults afterDays to FOLLOW_UP_AFTER_DAYS and ignores an out-of-range value', () => {
+    const expected = followUpFor('Meeting on Nov 13', TUE, FOLLOW_UP_AFTER_DAYS);
+    expect(followUpFor('Meeting on Nov 13', TUE)).toEqual(expected);
+    for (const bad of [0, 15, -2, 2.5, Number.NaN]) {
+      expect(followUpFor('Meeting on Nov 13', TUE, bad)).toEqual(expected);
+    }
+    expect(FOLLOW_UP_AFTER_DAYS_MIN).toBe(1);
+    expect(FOLLOW_UP_AFTER_DAYS_MAX).toBe(14);
+  });
+
+  it('leaves a missed deadline in calendar days, whatever afterDays is', () => {
+    for (const n of [1, 3, 7, 14]) {
+      const f = followUpFor('Send the deck by Nov 10', TUE, n);
+      expect(f).toEqual({ lead: 'Nov 10 has passed.', status: 'Overdue by 7 days', dueInDays: -7 });
+    }
+    expect(followUpFor('Send the deck by Nov 16', TUE, 7)?.status).toBe('Overdue by 1 day');
   });
 });
