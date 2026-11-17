@@ -121,6 +121,11 @@ describe('/api/user-settings — follow-up business days', () => {
     expect(await (await get(cookieFor(alice))).json()).toEqual({ followUpAfterDays: 2 });
   });
 
+  it('GET answers 401, not a default 3, when the session user no longer exists', async () => {
+    const res = await get(cookieFor('user-gone'));
+    expect(res.status).toBe(401);
+  });
+
   it('answers 401, not a false "saved", when the session user no longer exists', async () => {
     const res = await put({ followUpAfterDays: 7 }, cookieFor('user-gone'));
     expect(res.status).toBe(401);

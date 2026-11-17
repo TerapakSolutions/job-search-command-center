@@ -31,6 +31,21 @@ export async function loadFollowUpAfterDays(): Promise<number> {
     : FOLLOW_UP_AFTER_DAYS;
 }
 
+/**
+ * For the Settings form, which writes back what it shows: same as
+ * loadFollowUpAfterDays, except that in API mode a missing, malformed, or
+ * out-of-range value throws instead of reading as the default. A failed read
+ * must never look like a saved 3.
+ */
+export async function loadSavedFollowUpAfterDays(): Promise<number> {
+  if (isDemoMode()) return loadFollowUpAfterDays();
+  const data = await request<UserSettings>('/user-settings');
+  if (!isValidFollowUpAfterDays(data?.followUpAfterDays)) {
+    throw new Error('The server returned an invalid follow-up setting.');
+  }
+  return data.followUpAfterDays;
+}
+
 /** Saves the value (the caller validates; the server validates again). Returns what was stored. */
 export async function saveFollowUpAfterDays(days: number): Promise<number> {
   if (isDemoMode()) {
