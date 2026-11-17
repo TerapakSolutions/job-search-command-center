@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useJobSearchStore } from '../store/useJobSearchStore';
 import AiAssistPlaceholder from '../components/AiAssistPlaceholder';
 import JobSearchGoalsSettings from '../components/JobSearchGoalsSettings';
+import FollowUpSettings from '../components/FollowUpSettings';
 import DonationCard from '../components/DonationCard';
 
 export default function SettingsPage() {
@@ -55,6 +56,8 @@ export default function SettingsPage() {
       </div>
 
       <JobSearchGoalsSettings />
+
+      <FollowUpSettings />
 
       <DonationCard />
 

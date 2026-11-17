@@ -26,6 +26,7 @@ import {
 } from './routes/jobSearchActivity.js';
 import { donateRouter } from './routes/donate.js';
 import { feedbackRouter } from './routes/feedback.js';
+import { userSettingsRouter } from './routes/userSettings.js';
 
 /** The public origin, as in public/sitemap.xml. */
 const SITE = 'https://jobsearch.terapak.com';
@@ -76,6 +77,7 @@ export function createApp(db: Db) {
   app.use('/api/activity', activityRouter(db));
   app.use('/api/donate', donateRouter());
   app.use('/api/feedback', feedbackRouter(db));
+  app.use('/api/user-settings', userSettingsRouter(db));
 
   const distPath = path.join(process.cwd(), 'dist');
 

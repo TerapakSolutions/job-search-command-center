@@ -6,6 +6,9 @@ export const users = sqliteTable('users', {
   email: text('email').notNull().unique(),
   name: text('name').notNull(),
   avatarUrl: text('avatar_url'),
+  // Business days after a meeting before its follow-up is due (1-14).
+  // NULL means the default, 3. Set only via /api/user-settings.
+  followUpAfterDays: integer('follow_up_after_days'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });

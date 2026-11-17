@@ -5,6 +5,7 @@ import { computeReminders } from '../lib/reminders';
 import { computeGoalReminders } from '../lib/goalReminders';
 import { computeLocalActivityMetrics } from '../lib/activityMetrics';
 import { fetchActivityMetrics } from '../api/activityClient';
+import { loadFollowUpAfterDays } from '../api/userSettingsClient';
 import { isDemoMode } from '../api/persistence';
 import { useJobSearchStore } from '../store/useJobSearchStore';
 import { REMINDER_TYPE_LABELS, type Reminder } from '../types/reminder';
@@ -24,7 +25,7 @@ import {
   isMeaningfulContactNextAction,
   resolveContactCompany,
 } from '../lib/contactDisplay';
-import { followUpFor, type FollowUp } from '../lib/nextActionDates';
+import { FOLLOW_UP_AFTER_DAYS, followUpFor, type FollowUp } from '../lib/nextActionDates';
 import DonationCard from '../components/DonationCard';
 import DailyBriefingPanel from '../components/DailyBriefingPanel';
 import AutomationDashboardPanel from '../components/AutomationDashboardPanel';
@@ -53,6 +54,23 @@ export default function TodayPage() {
   );
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [celebration, setCelebration] = useState<Milestone | null>(null);
+  // The user's "follow up after a meeting" business days (Settings). Starts at
+  // the default and stays there if the setting can't be read.
+  const [followUpAfterDays, setFollowUpAfterDays] = useState(FOLLOW_UP_AFTER_DAYS);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadFollowUpAfterDays()
+      .then((days) => {
+        if (!cancelled) setFollowUpAfterDays(days);
+      })
+      .catch(() => {
+        // Keep the default: Today must render without the setting.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Celebrate applications that newly advance into interviewing/final_round/
   // offer. On the very first run (no stored baseline) we seed silently so we
@@ -158,7 +176,8 @@ export default function TodayPage() {
   // A next action whose explicit dates have ALL passed (e.g. "confirm the call on
   // <last Tuesday>") usually means the meeting HAPPENED and a follow-up is now
   // due. It stays in the live list, goes first, is marked "Date passed", and is
-  // shown as a follow-up (due FOLLOW_UP_AFTER_DAYS after its latest date) with the
+  // shown as a follow-up (due the user's follow-up business days after its latest
+  // date; see followUpFor) with the
   // stored text underneath as "Was: ...". The stored text is never modified.
   // Past-dated items: most overdue first, then due today, then due later (ties
   // keep contact order; sort is stable). Undated or future-dated text keeps its
@@ -169,7 +188,7 @@ export default function TodayPage() {
     const rest: typeof past = [];
     for (const c of contacts) {
       if (!isMeaningfulContactNextAction(c.nextAction)) continue;
-      const followUp = followUpFor(c.nextAction, now);
+      const followUp = followUpFor(c.nextAction, now, followUpAfterDays);
       if (followUp) {
         past.push({ contact: c, followUp });
       } else {
@@ -178,7 +197,7 @@ export default function TodayPage() {
     }
     past.sort((x, y) => x.followUp!.dueInDays - y.followUp!.dueInDays);
     return [...past, ...rest];
-  }, [contacts]);
+  }, [contacts, followUpAfterDays]);
 
   const contactLabel = (contact: (typeof contacts)[number]) => {
     const app = contact.applicationId

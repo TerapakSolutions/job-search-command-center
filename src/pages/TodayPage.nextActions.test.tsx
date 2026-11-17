@@ -122,7 +122,8 @@ describe('TodayPage contact next actions — past-dated actions stay live', () =
     expect(within(past).getByText('Date passed')).not.toBeNull();
     // The follow-up leads; the stale "Confirm ..." text does not.
     expect(lead(past)).toBe('Follow up on the onsite from Nov 13.');
-    expect(past.textContent).toContain('Follow-up overdue by 1 day');
+    // Fri Nov 13 + 3 business days = Wed Nov 18.
+    expect(past.textContent).toContain('Follow-up due in 1 business day');
     // #109's prompt is replaced, not shown alongside.
     expect(past.textContent).not.toContain('This date has passed');
     // The stored text is still shown verbatim, labelled "Was:".
@@ -193,7 +194,9 @@ describe('TodayPage contact next actions — past-dated actions stay live', () =
     const item = itemFor('Wren Calloway');
     expect(lead(item)).toBe('Follow up on the meeting from Nov 13.');
     expect(lead(item)).not.toContain('Confirm attendance');
-    expect(within(item).getByText('Follow-up overdue by 1 day', { exact: false })).not.toBeNull();
+    expect(
+      within(item).getByText('Follow-up due in 1 business day', { exact: false }),
+    ).not.toBeNull();
     expect(
       within(item).getByText('Was: Confirm attendance for the meeting on Nov 13.'),
     ).not.toBeNull();
@@ -205,16 +208,17 @@ describe('TodayPage contact next actions — past-dated actions stay live', () =
   });
 
   it('orders past-dated items most overdue first, then due today, then due later', () => {
-    // Today is Nov 17. Events get +3 days: Nov 15 -> due Nov 18 (in 1 day),
-    // Nov 14 -> due today, Nov 13 -> overdue by 1 day. The deadline (no event
-    // word) counts from its own date: Nov 10 -> overdue by 7 days.
+    // Today is Tue Nov 17. Events get +3 business days: Fri Nov 13 -> Wed Nov 18
+    // (in 1), Thu Nov 12 -> Tue Nov 17 (today), Tue Nov 10 -> Fri Nov 13 (overdue
+    // by 2 business days). The deadline (no event word) counts calendar days from
+    // its own date: Nov 10 -> overdue by 7 days.
     mockContacts = [
       contact('c-undated', 'Bram Ketteridge', 'Send the portfolio link'),
-      contact('c-later', 'Lark Fenwright', 'Coffee on Nov 15'),
-      contact('c-today', 'Mira Thistlewood', 'Demo on Nov 14'),
+      contact('c-later', 'Lark Fenwright', 'Coffee on Nov 13'),
+      contact('c-today', 'Mira Thistlewood', 'Demo on Nov 12'),
       contact('c-future', 'Ines Vardamir', 'Prepare for the panel on November 20, 2026.'),
       contact('c-most', 'Corin Ashdale', 'Send the deck by Nov 10'),
-      contact('c-over', 'Orla Penhallow', 'Interview on Nov 13'),
+      contact('c-over', 'Orla Penhallow', 'Interview on Nov 10'),
     ];
     renderPage();
     expect(names()).toEqual([
@@ -228,7 +232,10 @@ describe('TodayPage contact next actions — past-dated actions stay live', () =
     expect(itemFor('Corin Ashdale').textContent).toContain('Overdue by 7 days');
     expect(itemFor('Corin Ashdale').textContent).not.toContain('Follow-up');
     expect(itemFor('Mira Thistlewood').textContent).toContain('Follow-up due today');
-    expect(itemFor('Lark Fenwright').textContent).toContain('Follow-up due in 1 day');
+    expect(itemFor('Orla Penhallow').textContent).toContain(
+      'Follow-up overdue by 2 business days',
+    );
+    expect(itemFor('Lark Fenwright').textContent).toContain('Follow-up due in 1 business day');
     expect(lead(itemFor('Corin Ashdale'))).toBe('Nov 10 has passed.');
   });
 
@@ -246,9 +253,9 @@ describe('TodayPage contact next actions — past-dated actions stay live', () =
     expect(deadline.textContent).not.toContain('Follow up');
     expect(within(deadline).getByText('Was: Complete the assessment by Nov 14')).not.toBeNull();
     expect(within(deadline).getByText('Date passed')).not.toBeNull();
-    // Deadline overdue by 3 days, meeting follow-up overdue by 1 day (due Nov 16).
+    // Deadline overdue by 3 days; the meeting follow-up is due Wed Nov 18 (in 1 business day).
     expect(names()).toEqual(['Sable Dunmore', 'Wren Calloway', 'Bram Ketteridge']);
-    expect(itemFor('Wren Calloway').textContent).toContain('Follow-up overdue by 1 day');
+    expect(itemFor('Wren Calloway').textContent).toContain('Follow-up due in 1 business day');
   });
 
   it('keeps contact order among past-dated items due on the same day', () => {
