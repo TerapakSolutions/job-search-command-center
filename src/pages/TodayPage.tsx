@@ -156,17 +156,23 @@ export default function TodayPage() {
   }, [applications]);
 
   // A next action whose explicit dates have ALL passed (e.g. "confirm the call on
-  // <last Tuesday>") is out of date, not a to-do. It moves to a muted "Past dates"
-  // group. The stored text is untouched; undated or future-dated text stays live.
-  const { contactsWithNextAction, contactsWithPastDatedAction } = useMemo(() => {
+  // <last Tuesday>") usually means the meeting HAPPENED and a follow-up is now
+  // due. It stays in the live list, goes first, and is marked "Date passed" with
+  // a prompt to follow up. The stored text is untouched; undated or future-dated
+  // text keeps its existing order after the past-dated items.
+  const contactNextActions = useMemo(() => {
     const now = new Date();
-    const live: typeof contacts = [];
-    const past: typeof contacts = [];
+    const past: { contact: (typeof contacts)[number]; datePassed: boolean }[] = [];
+    const rest: typeof past = [];
     for (const c of contacts) {
       if (!isMeaningfulContactNextAction(c.nextAction)) continue;
-      (isNextActionDatePast(c.nextAction, now) ? past : live).push(c);
+      if (isNextActionDatePast(c.nextAction, now)) {
+        past.push({ contact: c, datePassed: true });
+      } else {
+        rest.push({ contact: c, datePassed: false });
+      }
     }
-    return { contactsWithNextAction: live, contactsWithPastDatedAction: past };
+    return [...past, ...rest];
   }, [contacts]);
 
   const contactLabel = (contact: (typeof contacts)[number]) => {
@@ -285,54 +291,41 @@ export default function TodayPage() {
       <section>
         <h3 className="flex items-center gap-2 text-lg font-medium text-gray-800 mb-3">
           <FiClock className="text-amber-500" />
-          Contact next actions ({contactsWithNextAction.length})
+          Contact next actions ({contactNextActions.length})
         </h3>
-        {contactsWithNextAction.length === 0 ? (
+        {contactNextActions.length === 0 ? (
           <p className="text-sm text-gray-500 bg-white border rounded-lg p-4">
-            {contactsWithPastDatedAction.length > 0
-              ? 'No current contact follow-ups.'
-              : 'No contact follow-ups logged.'}
+            No contact follow-ups logged.
           </p>
         ) : (
-          <ul className="space-y-2" aria-label="Live contact next actions">
-            {contactsWithNextAction.map((contact) => (
+          <ul className="space-y-2" aria-label="Contact next actions">
+            {contactNextActions.map(({ contact, datePassed }) => (
               <li
                 key={contact.id}
                 className="bg-white border rounded-lg px-4 py-3"
               >
-                <p className="font-medium text-gray-900">{contact.name}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-medium text-gray-900">{contact.name}</p>
+                  {datePassed && (
+                    <span className="text-xs font-medium uppercase tracking-wide text-red-700 bg-red-50 border border-red-200 rounded px-2 py-0.5">
+                      Date passed
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-gray-600">{contactLabel(contact)}</p>
                 <p className="text-sm text-amber-700 mt-1">{contact.nextAction}</p>
+                {datePassed && (
+                  <p className="text-sm text-gray-900 mt-1">
+                    This date has passed — follow up or{' '}
+                    <Link to="/contacts" className="text-blue-600 hover:underline">
+                      update
+                    </Link>{' '}
+                    the next step.
+                  </p>
+                )}
               </li>
             ))}
           </ul>
-        )}
-        {contactsWithPastDatedAction.length > 0 && (
-          <details className="mt-3" data-testid="past-dated-next-actions">
-            <summary className="cursor-pointer text-sm text-gray-500">
-              Past dates ({contactsWithPastDatedAction.length})
-            </summary>
-            <ul className="space-y-2 mt-2">
-              {contactsWithPastDatedAction.map((contact) => (
-                <li
-                  key={contact.id}
-                  className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-gray-500"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-medium text-gray-600">{contact.name}</p>
-                    <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                      Date passed
-                    </span>
-                  </div>
-                  <p className="text-sm">{contactLabel(contact)}</p>
-                  <p className="text-sm mt-1">{contact.nextAction}</p>
-                  <Link to="/contacts" className="text-xs text-blue-600 hover:underline">
-                    Update in Contacts
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </details>
         )}
       </section>
 

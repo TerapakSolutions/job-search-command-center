@@ -56,65 +56,102 @@ function contactSection(): HTMLElement {
   return screen.getByRole('heading', { name: /Contact next actions/ }).closest('section')!;
 }
 
-describe('TodayPage contact next actions — out-of-date dated actions', () => {
-  it('moves an action whose only date has passed into the past group, marked "Date passed"', () => {
+const PROMPT = 'This date has passed — follow up or update the next step.';
+
+function renderPage() {
+  render(
+    <MemoryRouter>
+      <TodayPage />
+    </MemoryRouter>,
+  );
+}
+
+function liveItems(): HTMLElement[] {
+  const list = within(contactSection()).getByRole('list', { name: 'Contact next actions' });
+  return within(list).getAllByRole('listitem');
+}
+
+function itemFor(name: string): HTMLElement {
+  return within(contactSection()).getByText(name).closest('li')!;
+}
+
+describe('TodayPage contact next actions — past-dated actions stay live', () => {
+  it('keeps an action whose only date has passed in the live list, first, badged and prompted', () => {
     mockContacts = [
+      contact('c-undated', 'Bram Ketteridge', 'Send the portfolio link'),
+      contact('c-future', 'Ines Vardamir', `Prepare for the panel on ${longDate(3)}.`),
       contact('c-past', 'Orla Penhallow', `Confirm the onsite for ${longDate(-4)}.`),
+    ];
+    renderPage();
+    const section = contactSection();
+
+    // The heading counts every meaningful next action, past-dated included.
+    expect(
+      within(section).getByRole('heading', { name: 'Contact next actions (3)' }),
+    ).not.toBeNull();
+
+    const items = liveItems();
+    expect(items).toHaveLength(3);
+    // Past-dated first; the rest keep their existing order.
+    expect(items.map((li) => li.querySelector('p')!.textContent)).toEqual([
+      'Orla Penhallow',
+      'Bram Ketteridge',
+      'Ines Vardamir',
+    ]);
+
+    const past = itemFor('Orla Penhallow');
+    expect(within(past).getByText('Date passed')).not.toBeNull();
+    expect(past.textContent).toContain(PROMPT);
+    // The stored text is still shown verbatim.
+    expect(past.textContent).toContain(`Confirm the onsite for ${longDate(-4)}.`);
+    const update = within(past).getByRole('link', { name: 'update' });
+    expect(update.getAttribute('href')).toBe('/contacts');
+  });
+
+  it('does not badge or prompt undated and future-dated actions', () => {
+    mockContacts = [
       contact('c-undated', 'Bram Ketteridge', 'Send the portfolio link'),
       contact('c-future', 'Ines Vardamir', `Prepare for the panel on ${longDate(3)}.`),
     ];
-    render(
-      <MemoryRouter>
-        <TodayPage />
-      </MemoryRouter>,
-    );
-    const section = contactSection();
-
-    expect(
-      within(section).getByRole('heading', { name: 'Contact next actions (2)' }),
-    ).not.toBeNull();
-
-    const live = within(section).getByRole('list', { name: 'Live contact next actions' });
-    expect(within(live).getByText('Bram Ketteridge')).not.toBeNull();
-    expect(within(live).getByText('Ines Vardamir')).not.toBeNull();
-    expect(within(live).queryByText('Orla Penhallow')).toBeNull();
-    expect(within(live).queryByText('Date passed')).toBeNull();
-
-    const past = within(section).getByTestId('past-dated-next-actions');
-    expect(within(past).getByText('Past dates (1)')).not.toBeNull();
-    const pastItem = within(past).getByText('Orla Penhallow').closest('li')!;
-    expect(within(pastItem).getByText('Date passed')).not.toBeNull();
-    // The stored text is still shown verbatim.
-    expect(pastItem.textContent).toContain(`Confirm the onsite for ${longDate(-4)}.`);
-    expect(within(past).queryByText('Bram Ketteridge')).toBeNull();
-    expect(within(past).queryByText('Ines Vardamir')).toBeNull();
+    renderPage();
+    for (const name of ['Bram Ketteridge', 'Ines Vardamir']) {
+      const item = itemFor(name);
+      expect(within(item).queryByText('Date passed')).toBeNull();
+      expect(item.textContent).not.toContain('This date has passed');
+    }
+    expect(liveItems().map((li) => li.querySelector('p')!.textContent)).toEqual([
+      'Bram Ketteridge',
+      'Ines Vardamir',
+    ]);
   });
 
-  it('keeps an action dated today live', () => {
-    mockContacts = [contact('c-today', 'Tamsin Oakhurst', `Call at noon on ${longDate(0)}`)];
-    render(
-      <MemoryRouter>
-        <TodayPage />
-      </MemoryRouter>,
-    );
-    const section = contactSection();
-    const live = within(section).getByRole('list', { name: 'Live contact next actions' });
-    expect(within(live).getByText('Tamsin Oakhurst')).not.toBeNull();
-    expect(within(section).queryByTestId('past-dated-next-actions')).toBeNull();
-  });
-
-  it('still shows the past group when every action is out of date', () => {
+  it('renders no separate "Past dates" group', () => {
     mockContacts = [contact('c-past', 'Orla Penhallow', `Confirm the onsite for ${longDate(-4)}.`)];
-    render(
-      <MemoryRouter>
-        <TodayPage />
-      </MemoryRouter>,
-    );
+    renderPage();
     const section = contactSection();
+    expect(within(section).queryByText(/Past dates/)).toBeNull();
+    expect(within(section).queryByTestId('past-dated-next-actions')).toBeNull();
+    expect(section.querySelector('details')).toBeNull();
     expect(
-      within(section).getByRole('heading', { name: 'Contact next actions (0)' }),
+      within(section).getByRole('heading', { name: 'Contact next actions (1)' }),
     ).not.toBeNull();
-    const past = within(section).getByTestId('past-dated-next-actions');
-    expect(within(past).getByText('Orla Penhallow')).not.toBeNull();
+    expect(within(section).queryByText('No contact follow-ups logged.')).toBeNull();
+  });
+
+  it('does not mark an action dated today', () => {
+    mockContacts = [contact('c-today', 'Tamsin Oakhurst', `Call at noon on ${longDate(0)}`)];
+    renderPage();
+    const item = itemFor('Tamsin Oakhurst');
+    expect(within(item).queryByText('Date passed')).toBeNull();
+    expect(item.textContent).not.toContain('This date has passed');
+    expect(liveItems()).toHaveLength(1);
+  });
+
+  it('shows the empty line when no contact has a next action', () => {
+    mockContacts = [];
+    renderPage();
+    expect(
+      within(contactSection()).getByText('No contact follow-ups logged.'),
+    ).not.toBeNull();
   });
 });
