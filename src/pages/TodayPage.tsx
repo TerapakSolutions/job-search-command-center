@@ -24,6 +24,7 @@ import {
   isMeaningfulContactNextAction,
   resolveContactCompany,
 } from '../lib/contactDisplay';
+import { isNextActionDatePast } from '../lib/nextActionDates';
 import DonationCard from '../components/DonationCard';
 import DailyBriefingPanel from '../components/DailyBriefingPanel';
 import AutomationDashboardPanel from '../components/AutomationDashboardPanel';
@@ -154,10 +155,35 @@ export default function TodayPage() {
       });
   }, [applications]);
 
-  const contactsWithNextAction = useMemo(
-    () => contacts.filter((c) => isMeaningfulContactNextAction(c.nextAction)),
-    [contacts],
-  );
+  // A next action whose explicit dates have ALL passed (e.g. "confirm the call on
+  // <last Tuesday>") is out of date, not a to-do. It moves to a muted "Past dates"
+  // group. The stored text is untouched; undated or future-dated text stays live.
+  const { contactsWithNextAction, contactsWithPastDatedAction } = useMemo(() => {
+    const now = new Date();
+    const live: typeof contacts = [];
+    const past: typeof contacts = [];
+    for (const c of contacts) {
+      if (!isMeaningfulContactNextAction(c.nextAction)) continue;
+      (isNextActionDatePast(c.nextAction, now) ? past : live).push(c);
+    }
+    return { contactsWithNextAction: live, contactsWithPastDatedAction: past };
+  }, [contacts]);
+
+  const contactLabel = (contact: (typeof contacts)[number]) => {
+    const app = contact.applicationId
+      ? applications.find((a) => a.id === contact.applicationId)
+      : null;
+    return contactApplicationLabel({
+      applicationId: contact.applicationId,
+      company: resolveContactCompany({
+        contactCompany: contact.company,
+        applicationCompany: app?.company,
+      }),
+      roleTitle: app?.roleTitle,
+      source: contact.source,
+      linkedIn: contact.linkedIn,
+    });
+  };
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
@@ -263,36 +289,50 @@ export default function TodayPage() {
         </h3>
         {contactsWithNextAction.length === 0 ? (
           <p className="text-sm text-gray-500 bg-white border rounded-lg p-4">
-            No contact follow-ups logged.
+            {contactsWithPastDatedAction.length > 0
+              ? 'No current contact follow-ups.'
+              : 'No contact follow-ups logged.'}
           </p>
         ) : (
-          <ul className="space-y-2">
-            {contactsWithNextAction.map((contact) => {
-              const app = contact.applicationId
-                ? applications.find((a) => a.id === contact.applicationId)
-                : null;
-              const label = contactApplicationLabel({
-                applicationId: contact.applicationId,
-                company: resolveContactCompany({
-                  contactCompany: contact.company,
-                  applicationCompany: app?.company,
-                }),
-                roleTitle: app?.roleTitle,
-                source: contact.source,
-                linkedIn: contact.linkedIn,
-              });
-              return (
+          <ul className="space-y-2" aria-label="Live contact next actions">
+            {contactsWithNextAction.map((contact) => (
+              <li
+                key={contact.id}
+                className="bg-white border rounded-lg px-4 py-3"
+              >
+                <p className="font-medium text-gray-900">{contact.name}</p>
+                <p className="text-sm text-gray-600">{contactLabel(contact)}</p>
+                <p className="text-sm text-amber-700 mt-1">{contact.nextAction}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+        {contactsWithPastDatedAction.length > 0 && (
+          <details className="mt-3" data-testid="past-dated-next-actions">
+            <summary className="cursor-pointer text-sm text-gray-500">
+              Past dates ({contactsWithPastDatedAction.length})
+            </summary>
+            <ul className="space-y-2 mt-2">
+              {contactsWithPastDatedAction.map((contact) => (
                 <li
                   key={contact.id}
-                  className="bg-white border rounded-lg px-4 py-3"
+                  className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-gray-500"
                 >
-                  <p className="font-medium text-gray-900">{contact.name}</p>
-                  <p className="text-sm text-gray-600">{label}</p>
-                  <p className="text-sm text-amber-700 mt-1">{contact.nextAction}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-medium text-gray-600">{contact.name}</p>
+                    <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                      Date passed
+                    </span>
+                  </div>
+                  <p className="text-sm">{contactLabel(contact)}</p>
+                  <p className="text-sm mt-1">{contact.nextAction}</p>
+                  <Link to="/contacts" className="text-xs text-blue-600 hover:underline">
+                    Update in Contacts
+                  </Link>
                 </li>
-              );
-            })}
-          </ul>
+              ))}
+            </ul>
+          </details>
         )}
       </section>
 
