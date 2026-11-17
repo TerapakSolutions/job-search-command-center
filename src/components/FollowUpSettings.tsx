@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { isDemoMode } from '../api/persistence';
-import { loadFollowUpAfterDays, saveFollowUpAfterDays } from '../api/userSettingsClient';
+import { loadSavedFollowUpAfterDays, saveFollowUpAfterDays } from '../api/userSettingsClient';
 import {
   FOLLOW_UP_AFTER_DAYS,
   FOLLOW_UP_AFTER_DAYS_MAX,
@@ -11,26 +11,46 @@ import {
 /** Settings section: business days after a meeting before Today says to follow up. */
 export default function FollowUpSettings() {
   const demoMode = isDemoMode();
-  const [value, setValue] = useState(String(FOLLOW_UP_AFTER_DAYS));
+  // API mode starts empty and unsaveable: a value the user did not load (or
+  // deliberately type after loading) must never be PUT over their stored one.
+  // Demo mode keeps its old behaviour: the default on screen, Save enabled.
+  const [value, setValue] = useState(demoMode ? String(FOLLOW_UP_AFTER_DAYS) : '');
+  const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'failed'>(
+    demoMode ? 'loaded' : 'loading',
+  );
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    loadFollowUpAfterDays()
+  const load = useCallback((isCancelled: () => boolean) => {
+    loadSavedFollowUpAfterDays()
       .then((days) => {
-        if (!cancelled) setValue(String(days));
+        if (isCancelled()) return;
+        setValue(String(days));
+        setLoadState('loaded');
       })
       .catch(() => {
-        // Keep the default on screen; Today uses the same default.
+        if (!isCancelled()) setLoadState('failed');
       });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    load(() => cancelled);
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [load]);
+
+  const handleRetry = () => {
+    setLoadState('loading');
+    load(() => false);
+  };
+
+  const loaded = loadState === 'loaded';
 
   const handleSave = async () => {
+    if (!loaded) return;
     setMessage(null);
     setError(null);
     const days = Number(value);
@@ -73,6 +93,7 @@ export default function FollowUpSettings() {
           step={1}
           value={value}
           onChange={(e) => setValue(e.target.value)}
+          disabled={!loaded}
           className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
         />
       </label>
@@ -80,12 +101,29 @@ export default function FollowUpSettings() {
         <button
           type="button"
           onClick={() => void handleSave()}
-          disabled={saving}
+          disabled={saving || !loaded}
           aria-label="Save follow-up days"
           className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Save'}
         </button>
+        {loadState === 'loading' && (
+          <p className="text-sm text-gray-500">Loading your follow-up setting…</p>
+        )}
+        {loadState === 'failed' && (
+          <>
+            <p className="text-sm text-red-600" role="alert">
+              Couldn&apos;t load your follow-up setting. Reload to try again.
+            </p>
+            <button
+              type="button"
+              onClick={handleRetry}
+              className="px-3 py-2 text-sm font-medium text-blue-700 border border-blue-600 rounded-lg hover:bg-blue-50"
+            >
+              Retry
+            </button>
+          </>
+        )}
         {message && (
           <p className="text-sm text-green-700" role="status">
             {message}

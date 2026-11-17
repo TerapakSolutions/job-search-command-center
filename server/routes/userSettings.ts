@@ -32,10 +32,19 @@ function readFollowUpAfterDays(db: Db, userId: string): number {
   return row?.followUpAfterDays ?? DEFAULT_FOLLOW_UP_AFTER_DAYS;
 }
 
+function userExists(db: Db, userId: string): boolean {
+  return db.select({ id: users.id }).from(users).where(eq(users.id, userId)).all().length > 0;
+}
+
 export function userSettingsRouter(db: Db): Router {
   const router = Router();
 
   router.get('/', (req: Request, res: Response) => {
+    if (!userExists(db, req.userId!)) {
+      // A valid session for a deleted user: match the PUT, don't invent a default.
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     res.json({ followUpAfterDays: readFollowUpAfterDays(db, req.userId!) });
   });
 
