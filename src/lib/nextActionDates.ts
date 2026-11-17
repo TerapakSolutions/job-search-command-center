@@ -109,3 +109,78 @@ export function isNextActionDatePast(text: string, now: Date): boolean {
   const todayN = dayNumber(t.year, t.month, t.day);
   return dates.every((d) => dayNumber(d.year, d.month, d.day) < todayN);
 }
+
+/** Days after the latest past date that a follow-up is due. The one place this lives. */
+export const FOLLOW_UP_AFTER_DAYS = 3;
+
+/**
+ * Event words that let the lead name what happened ("Follow up on the meeting
+ * from Nov 13."). Matched as whole words, case-insensitive, with an optional
+ * plural "s"; the FIRST one in the text wins. Deliberately simple, so
+ * "screening", "callback" and "demonstrate" do NOT match and fall back to the
+ * generic lead. "call" also matches the verb ("Call back on Nov 12"), which
+ * reads fine as "the call".
+ */
+export const FOLLOW_UP_EVENT_WORDS = [
+  'meeting',
+  'interview',
+  'call',
+  'chat',
+  'coffee',
+  'onsite',
+  'panel',
+  'screen',
+  'demo',
+] as const;
+
+const EVENT_RE = new RegExp(`\\b(${FOLLOW_UP_EVENT_WORDS.join('|')})s?\\b`, 'i');
+
+const SHORT_MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+export interface FollowUp {
+  /** "Follow up on the meeting from Nov 13." or "Follow up — Nov 13 has passed." */
+  lead: string;
+  /** "Follow-up due today" / "Follow-up due in N day(s)" / "Follow-up overdue by N day(s)" */
+  status: string;
+  /** Local calendar days until the follow-up is due; 0 = today, negative = overdue. */
+  dueInDays: number;
+}
+
+function plural(n: number): string {
+  return `${n} ${n === 1 ? 'day' : 'days'}`;
+}
+
+/**
+ * For a past-dated next action (see isNextActionDatePast), the follow-up to show
+ * instead of the stale text; null otherwise. The follow-up is due
+ * FOLLOW_UP_AFTER_DAYS local calendar days after the LATEST date in the text
+ * (latest by calendar, not by position). Day arithmetic uses calendar day
+ * numbers, so DST changes and the time of day do not shift it. Display only:
+ * the stored text is never changed.
+ */
+export function followUpFor(text: string, now: Date): FollowUp | null {
+  if (!isNextActionDatePast(text, now)) return null;
+  const dates = findExplicitDates(text, now);
+  const latest = dates.reduce((a, b) =>
+    dayNumber(b.year, b.month, b.day) > dayNumber(a.year, a.month, a.day) ? b : a,
+  );
+  const label = `${SHORT_MONTHS[latest.month - 1]} ${latest.day}`;
+  const event = EVENT_RE.exec(text)?.[1].toLowerCase();
+  const lead = event
+    ? `Follow up on the ${event} from ${label}.`
+    : `Follow up — ${label} has passed.`;
+
+  const t = todayOf(now);
+  const dueN = dayNumber(latest.year, latest.month, latest.day) + FOLLOW_UP_AFTER_DAYS;
+  const dueInDays = dueN - dayNumber(t.year, t.month, t.day);
+  const status =
+    dueInDays === 0
+      ? 'Follow-up due today'
+      : dueInDays > 0
+        ? `Follow-up due in ${plural(dueInDays)}`
+        : `Follow-up overdue by ${plural(-dueInDays)}`;
+  return { lead, status, dueInDays };
+}

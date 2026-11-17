@@ -1,5 +1,10 @@
 /** @jest-environment node */
-import { findExplicitDates, isNextActionDatePast } from './nextActionDates';
+import {
+  findExplicitDates,
+  FOLLOW_UP_AFTER_DAYS,
+  followUpFor,
+  isNextActionDatePast,
+} from './nextActionDates';
 
 // Every "now" is injected. Invented dates only; none of these refer to real events.
 const NOW = new Date(2031, 1, 10, 9, 30); // Mon Feb 10, 2031, 9:30 local
@@ -143,5 +148,105 @@ describe('isNextActionDatePast', () => {
 
   it('is NOT past when the only date is invalid', () => {
     expect(isNextActionDatePast('Panel on Feb 30, 2030', NOW)).toBe(false);
+  });
+});
+
+describe('followUpFor — a past-dated action becomes a follow-up', () => {
+  // Invented events. NOW_F is Tue Nov 17, 2026, 9:00 local.
+  const NOW_F = new Date(2026, 10, 17, 9, 0);
+
+  it('uses FOLLOW_UP_AFTER_DAYS = 3', () => {
+    expect(FOLLOW_UP_AFTER_DAYS).toBe(3);
+  });
+
+  it('returns null for undated, future-dated and today-dated text', () => {
+    expect(followUpFor('Send the portfolio link', NOW_F)).toBeNull();
+    expect(followUpFor('Prepare for the panel on Nov 20', NOW_F)).toBeNull();
+    expect(followUpFor('Call at noon on Nov 17', NOW_F)).toBeNull();
+    // One date past, one still ahead: not past-dated, so no follow-up.
+    expect(followUpFor('Meeting on Nov 10 or Nov 24', NOW_F)).toBeNull();
+  });
+
+  it('names the event when the text names one', () => {
+    expect(
+      followUpFor('Confirm attendance for the meeting on Nov 13.', NOW_F)?.lead,
+    ).toBe('Follow up on the meeting from Nov 13.');
+  });
+
+  it.each([
+    ['Confirm the onsite for Nov 12', 'onsite'],
+    ['Prep for the Interview on November 12, 2026', 'interview'],
+    ['Phone screen with the hiring lead on 11/12/2026', 'screen'],
+    ['Coffee with the team lead 2026-11-12', 'coffee'],
+    ['Product demos on Nov 12', 'demo'],
+    ['Quick chat on Nov 12', 'chat'],
+    ['Panel on Nov 12', 'panel'],
+    ['Call back on Nov 12', 'call'],
+  ])('detects the event in %p', (text, event) => {
+    expect(followUpFor(text, NOW_F)?.lead).toBe(`Follow up on the ${event} from Nov 12.`);
+  });
+
+  it('takes the first event word in the text', () => {
+    expect(followUpFor('Coffee before the interview on Nov 12', NOW_F)?.lead).toBe(
+      'Follow up on the coffee from Nov 12.',
+    );
+  });
+
+  it.each([
+    'Send the screening answers by Nov 12',
+    'Request a callback by Nov 12',
+    'Demonstrate the prototype by Nov 12',
+    'Send the deck by Nov 12',
+  ])('uses the generic lead when no event word is present: %p', (text) => {
+    expect(followUpFor(text, NOW_F)?.lead).toBe('Follow up — Nov 12 has passed.');
+  });
+
+  it('picks the latest date by calendar order, not by position in the text', () => {
+    // The later-in-text date (Nov 3) is the EARLIER day.
+    const f = followUpFor('Meeting on Nov 12, moved from Nov 3', NOW_F);
+    expect(f?.lead).toBe('Follow up on the meeting from Nov 12.');
+    expect(f?.dueInDays).toBe(-2); // due Nov 15
+  });
+
+  it.each([
+    // [date in text, status on Nov 17, dueInDays]
+    ['Nov 16', 'Follow-up due in 2 days', 2], // date+1
+    ['Nov 15', 'Follow-up due in 1 day', 1], // date+2
+    ['Nov 14', 'Follow-up due today', 0], // date+3
+    ['Nov 13', 'Follow-up overdue by 1 day', -1], // date+4
+    ['Nov 10', 'Follow-up overdue by 4 days', -4], // date+7
+  ])('a meeting on %s, seen on Nov 17: %s', (date, status, dueInDays) => {
+    const f = followUpFor(`Meeting on ${date}`, NOW_F);
+    expect(f?.status).toBe(status);
+    expect(f?.dueInDays).toBe(dueInDays);
+  });
+
+  it('counts local calendar days: late evening and early morning agree', () => {
+    for (const hour of [0, 23]) {
+      const f = followUpFor('Meeting on Nov 13', new Date(2026, 10, 17, hour, 59));
+      expect(f?.status).toBe('Follow-up overdue by 1 day');
+    }
+    // 00:01 on the due day is "today", 23:59 the night before is still "in 1 day".
+    expect(followUpFor('Meeting on Nov 13', new Date(2026, 10, 16, 0, 1))?.status).toBe(
+      'Follow-up due today',
+    );
+    expect(followUpFor('Meeting on Nov 13', new Date(2026, 10, 15, 23, 59))?.status).toBe(
+      'Follow-up due in 1 day',
+    );
+  });
+
+  it('is not thrown off by a DST change (US fall back Nov 1, spring forward Mar 8, 2026)', () => {
+    expect(followUpFor('Meeting on Oct 30', new Date(2026, 10, 2, 0, 30))?.status).toBe(
+      'Follow-up due today',
+    );
+    expect(followUpFor('Meeting on Mar 6', new Date(2026, 2, 9, 0, 30))?.status).toBe(
+      'Follow-up due today',
+    );
+  });
+
+  it('formats a full-year or numeric date as a short month and day', () => {
+    expect(followUpFor('Send notes from 2026-09-03', NOW_F)?.lead).toBe(
+      'Follow up — Sep 3 has passed.',
+    );
   });
 });
