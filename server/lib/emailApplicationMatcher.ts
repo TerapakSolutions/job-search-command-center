@@ -180,6 +180,17 @@ export function matchEmailToApplications(
   const matches: ApplicationMatch[] = [];
 
   for (const app of apps) {
+    // An email that names a role is about that role: an application for a
+    // different known role at the same company is not a candidate, however
+    // well the sender and company match (same rule as the booking path).
+    if (
+      !isUnknownRole(input.positionTitle) &&
+      !isUnknownRole(app.roleTitle) &&
+      roleMatchScore(input.positionTitle ?? '', app.roleTitle) === 0
+    ) {
+      continue;
+    }
+
     const reasons: string[] = [];
     let score = 0;
 
