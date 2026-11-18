@@ -129,6 +129,19 @@ describe('Gemini concurrency limit', () => {
     expect(spent()).toBe(0);
   });
 
+  it('keeps the worst case when Vertex answers 2xx with a body that cannot be read (Google billed it)', async () => {
+    global.fetch = slowVertex(() => ({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new SyntaxError('Unexpected end of JSON input');
+      },
+    })) as unknown as typeof fetch;
+    await expect(call()).rejects.toThrow();
+    expect(spent()).toBe(reservation());
+    expect(spent()).toBeGreaterThan(0);
+  });
+
   it('refunds when the token fetch fails (no Vertex call was made)', async () => {
     (GoogleAuth as unknown as jest.Mock).mockImplementationOnce(() => ({
       getAccessToken: jest.fn().mockRejectedValue(new Error('token endpoint down')),
