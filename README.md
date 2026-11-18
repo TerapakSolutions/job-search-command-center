@@ -332,6 +332,7 @@ GOOGLE_CLOUD_PROJECT=your-project-id
 GOOGLE_APPLICATION_CREDENTIALS_JSON='{"type":"service_account",...}'  # service-account key JSON
 VERTEX_LOCATION=global            # optional, default global (gemini-3.8-flash is not served on us-central1)
 GEMINI_MODEL=gemini-3.8-flash     # optional
+AI_DAILY_BUDGET_USD=1.00          # optional Gemini daily spend cap (Pacific day); unset/0/invalid = 1.00
 
 # Scheduling
 DAILY_BRIEFING_AUTO_SCHEDULE=true  # set false to disable in-process scheduler
@@ -344,7 +345,7 @@ POSTMARK_SERVER_TOKEN=...
 POSTMARK_FROM_EMAIL=briefings@yourdomain.com
 ```
 
-Without AI configured (`OPENAI_API_KEY` for OpenAI; `GOOGLE_CLOUD_PROJECT` plus valid `GOOGLE_APPLICATION_CREDENTIALS_JSON` for Gemini), briefings use a deterministic rule-based summary fallback. The Today page displays the latest briefing in API mode.
+Without AI configured (`OPENAI_API_KEY` for OpenAI; `GOOGLE_CLOUD_PROJECT` plus valid `GOOGLE_APPLICATION_CREDENTIALS_JSON` for Gemini), briefings use a deterministic rule-based summary fallback. With Gemini, once a Pacific day's spend reaches `AI_DAILY_BUDGET_USD`, AI pauses until the next Pacific day: briefs are marked paused and email is classified by rules. The running total is kept in the `ai_spend_daily` table, so a restart does not reset it. The Today page displays the latest briefing in API mode.
 
 ### Report a problem
 

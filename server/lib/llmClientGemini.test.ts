@@ -1,6 +1,8 @@
 /** @jest-environment node */
 import { GoogleAuth } from 'google-auth-library';
+import { registerAiSpendLedger } from './aiSpend.js';
 import { generateLlmCompletion, isLlmConfigured, LlmQuotaError } from './llmClient.js';
+import { createTestDb } from './testDb.js';
 
 // The real library would POST to Google's token endpoint through the mocked
 // global fetch, so calls[0] would be the OAuth request, not Vertex. Every test
@@ -74,6 +76,7 @@ beforeEach(() => {
   fetchMock = jest.fn().mockResolvedValue(vertexOk());
   global.fetch = fetchMock as unknown as typeof fetch;
   GoogleAuthMock.mockClear();
+  registerAiSpendLedger(createTestDb()); // a fresh day's budget per test
 });
 afterEach(() => {
   process.env = { ...saved };

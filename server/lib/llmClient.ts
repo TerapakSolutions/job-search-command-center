@@ -1,4 +1,14 @@
 import {
+  callCostMicros,
+  dailyBudgetMicros,
+  estimateCallCostMicros,
+  getAiSpendLedger,
+  pacificDay,
+  type GeminiUsage,
+} from './aiSpend.js';
+import {
+  GEMINI_MAX_OUTPUT_TOKENS,
+  type GeminiResponse,
   buildGeminiRequestBody,
   geminiQuotaReason,
   geminiResponseText,
@@ -56,7 +66,8 @@ let quotaIncidentOpen = false;
 
 export function isLlmConfigured(): boolean {
   if (aiProvider() === 'gemini') {
-    return readGeminiConfig() !== null;
+    // No spend ledger means no cap, so Gemini stays off rather than uncapped.
+    return readGeminiConfig() !== null && getAiSpendLedger() !== null;
   }
   return Boolean(readApiKey());
 }
@@ -69,14 +80,62 @@ function quotaExceeded(reason: LlmQuotaError['reason'], body: string): LlmQuotaE
   return new LlmQuotaError(reason);
 }
 
+// One warning per Pacific day (per process) when the daily budget trips.
+let budgetWarnedDay: string | null = null;
+
 async function generateGeminiCompletion(
   options: LlmCompletionOptions,
 ): Promise<string | null> {
   const config = readGeminiConfig();
-  if (!config) {
+  const ledger = getAiSpendLedger();
+  if (!config || !ledger) {
     return null;
   }
 
+  // Reserve the worst case before calling (atomic, so a burst cannot all slip
+  // under the cap), then settle to the real cost once Vertex says what it was.
+  const now = new Date();
+  const day = pacificDay(now);
+  const budget = dailyBudgetMicros();
+  const reserved = estimateCallCostMicros(
+    options.systemPrompt.length + options.userPrompt.length,
+    GEMINI_MAX_OUTPUT_TOKENS,
+    config.model,
+    now,
+  );
+  if (!ledger.reserve(day, reserved, budget)) {
+    if (budgetWarnedDay !== day) {
+      budgetWarnedDay = day;
+      const usd = (budget / 1_000_000).toFixed(2);
+      console.warn(`[llm] AI paused: daily AI budget of USD ${usd} reached for ${day} (Pacific)`);
+    }
+    throw new LlmQuotaError('insufficient_quota');
+  }
+
+  let billed = false;
+  try {
+    return await callGemini(options, config, (usage) => {
+      billed = true;
+      const actual = callCostMicros(usage, config.model, now, reserved);
+      ledger.settle(day, actual - reserved, {
+        calls: 1,
+        inputTokens: usage?.promptTokenCount ?? 0,
+        outputTokens: (usage?.candidatesTokenCount ?? 0) + (usage?.thoughtsTokenCount ?? 0),
+      });
+    });
+  } finally {
+    if (!billed) {
+      // Failed before Vertex answered 2xx: Google does not bill it.
+      ledger.settle(day, -reserved, { calls: 0, inputTokens: 0, outputTokens: 0 });
+    }
+  }
+}
+
+async function callGemini(
+  options: LlmCompletionOptions,
+  config: NonNullable<ReturnType<typeof readGeminiConfig>>,
+  recordUsage: (usage: GeminiUsage | undefined) => void,
+): Promise<string | null> {
   const token = await getVertexAccessToken(config);
   const res = await fetch(vertexGenerateContentUrl(config), {
     method: 'POST',
@@ -102,8 +161,18 @@ async function generateGeminiCompletion(
     throw new Error(`LLM request failed (${res.status}): ${body.slice(0, 200)}`);
   }
 
+  // A 2xx is billed even if the body is unreadable or cut off at MAX_TOKENS;
+  // an unreadable body keeps the worst-case reservation.
+  let json: GeminiResponse & { usageMetadata?: GeminiUsage };
+  try {
+    json = (await res.json()) as GeminiResponse & { usageMetadata?: GeminiUsage };
+  } catch (err) {
+    recordUsage(undefined);
+    throw err;
+  }
+  recordUsage(json.usageMetadata);
   quotaIncidentOpen = false;
-  return geminiResponseText(await res.json());
+  return geminiResponseText(json);
 }
 
 export async function generateLlmCompletion(

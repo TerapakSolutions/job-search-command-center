@@ -96,7 +96,7 @@ export function buildGeminiRequestBody(options: {
   };
 }
 
-interface GeminiResponse {
+export interface GeminiResponse {
   candidates?: Array<{
     content?: { parts?: Array<{ text?: string; thought?: boolean }> };
     finishReason?: string;

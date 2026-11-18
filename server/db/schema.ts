@@ -340,3 +340,13 @@ export const feedback = sqliteTable(
   },
   (table) => [index('feedback_user_created_idx').on(table.userId, table.createdAt)],
 );
+
+/** Daily AI spend (Gemini path), one row per Pacific day, in micro-dollars. See server/lib/aiSpend.ts. */
+export const aiSpendDaily = sqliteTable('ai_spend_daily', {
+  day: text('day').primaryKey(),
+  costMicros: integer('cost_micros').notNull().default(0),
+  calls: integer('calls').notNull().default(0),
+  inputTokens: integer('input_tokens').notNull().default(0),
+  outputTokens: integer('output_tokens').notNull().default(0),
+  updatedAt: text('updated_at').notNull(),
+});
