@@ -115,7 +115,7 @@ export function getBriefingForDate(
 
 async function generateAiSummary(
   data: BriefingData,
-): Promise<{ text: string; source: 'llm' | 'rules' | 'paused' }> {
+): Promise<{ text: string; source: 'llm' | 'rules' | 'paused'; pausedReason?: 'daily_cap' }> {
   const fallback = { text: buildFallbackSummary(data), source: 'rules' as const };
 
   if (!isLlmConfigured()) {
@@ -135,7 +135,10 @@ async function generateAiSummary(
     // is "paused"; a rate limit clears in seconds, so it's an ordinary
     // rules-only brief.
     if (err instanceof LlmQuotaError) {
-      return err.reason === 'insufficient_quota' ? { ...fallback, source: 'paused' } : fallback;
+      if (err.reason !== 'insufficient_quota') return fallback;
+      return err.limit === 'daily_cap'
+        ? { ...fallback, source: 'paused', pausedReason: 'daily_cap' }
+        : { ...fallback, source: 'paused' };
     }
     console.error('[daily-briefing] LLM generation failed, using fallback', err);
     return fallback;
@@ -166,7 +169,11 @@ export async function generateDailyBriefingForUser(
     data = aggregateBriefingData(db, userId, now);
     const summary = await generateAiSummary(data);
     aiSummary = summary.text;
-    data = { ...data, summarySource: summary.source };
+    data = {
+      ...data,
+      summarySource: summary.source,
+      ...(summary.pausedReason ? { pausedReason: summary.pausedReason } : {}),
+    };
   } catch (err) {
     console.error('[daily-briefing] Failed to generate briefing for user', {
       userId,

@@ -57,6 +57,7 @@ export interface BriefingData {
   changesSincePrevious: string[];
   goalProgress?: BriefingGoalProgress;
   summarySource?: 'llm' | 'rules' | 'paused';
+  pausedReason?: 'daily_cap';
 }
 
 export interface BriefingGoalProgress {

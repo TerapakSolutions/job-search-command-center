@@ -77,6 +77,9 @@ export interface BriefingData {
   // Who wrote aiSummary: the LLM, or the rule-based fallback (no key, or the
   // call failed). Absent on briefs written before this was recorded.
   summarySource?: 'llm' | 'rules' | 'paused';
+  // Set when summarySource is 'paused' because our own daily AI budget
+  // (AI_DAILY_BUDGET_USD) was reached; absent for a provider's monthly limit.
+  pausedReason?: 'daily_cap';
 }
 
 export interface DailyBriefingRecord {

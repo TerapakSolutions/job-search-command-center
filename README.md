@@ -251,7 +251,7 @@ The **Inbound Emails** page (`/inbound-emails`) lets authenticated users browse 
 
 List responses include classification summary fields (`classification`, `classificationConfidence`, `suggestedAction`, `requiresResponse`, `processedAt`) and processing fields (`processingStatus`, `processingError`, `lastProcessedAt`, `needsApproval`). Detail responses add full extraction (`companyName`, `positionTitle`, `recruiterName`, `actionDueAt`, `interviewDetected`, `interviewDatetime`, `aiSummary`) plus processing timestamps (`processingStartedAt`, `processingCompletedAt`, `processingAttempts`). Emails belonging to other users return `404`.
 
-**Classification behavior:** When `OPENAI_API_KEY` is set, the app calls an OpenAI-compatible chat API with structured JSON output. If the LLM is unavailable or fails, a deterministic keyword-based fallback classifies common patterns (e.g. “thank you for applying” → Application Confirmation). Classification failures mark the email `processingStatus: failed` but never block email ingestion.
+**Classification behavior:** When AI is configured (see `AI_PROVIDER` below), the app calls the selected model with structured JSON output. If the LLM is unavailable or fails, a deterministic keyword-based fallback classifies common patterns (e.g. “thank you for applying” → Application Confirmation). Classification failures mark the email `processingStatus: failed` but never block email ingestion.
 
 **Automatic processing:** After persist, a background worker classifies the email, matches applications, applies **safe** automation rules, and queues **risky** actions for approval. Safe auto-actions include LinkedIn application confirmations, high-confidence rejections, application-confirmation timeline events, and recruiter outreach contact/suggestion handling. Risky actions (ambiguous matches, low confidence, offers, salary negotiation, interview scheduling, outbound email, protected pipeline statuses) go to the pending-approval queue with audit records.
 
@@ -317,10 +317,22 @@ Each authenticated user receives at most **one briefing per calendar day (UTC)**
 **Optional env vars:**
 
 ```bash
-# AI summary (OpenAI-compatible API)
+# AI provider: openai (default when unset) or gemini
+AI_PROVIDER=openai
+
+# OpenAI (AI_PROVIDER=openai)
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini          # optional
 OPENAI_BASE_URL=https://api.openai.com/v1  # optional
+LLM_MODEL_EXTRACT=...             # optional, OpenAI model for email extraction
+LLM_MODEL_BRIEF=...               # optional, OpenAI model for the brief
+
+# Gemini on Vertex AI (AI_PROVIDER=gemini)
+GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_APPLICATION_CREDENTIALS_JSON='{"type":"service_account",...}'  # service-account key JSON
+VERTEX_LOCATION=global            # optional, default global (gemini-3.8-flash is not served on us-central1)
+GEMINI_MODEL=gemini-3.8-flash     # optional
+AI_DAILY_BUDGET_USD=1.00          # optional Gemini daily spend cap (Pacific day); unset/0/invalid = 1.00
 
 # Scheduling
 DAILY_BRIEFING_AUTO_SCHEDULE=true  # set false to disable in-process scheduler
@@ -333,7 +345,7 @@ POSTMARK_SERVER_TOKEN=...
 POSTMARK_FROM_EMAIL=briefings@yourdomain.com
 ```
 
-Without `OPENAI_API_KEY`, briefings use a deterministic rule-based summary fallback. The Today page displays the latest briefing in API mode.
+Without AI configured (`OPENAI_API_KEY` for OpenAI; `GOOGLE_CLOUD_PROJECT` plus valid `GOOGLE_APPLICATION_CREDENTIALS_JSON` for Gemini), briefings use a deterministic rule-based summary fallback. With Gemini, once a Pacific day's spend reaches `AI_DAILY_BUDGET_USD`, AI pauses until the next Pacific day: briefs are marked paused and email is classified by rules. The running total is kept in the `ai_spend_daily` table, so a restart does not reset it. The Today page displays the latest briefing in API mode.
 
 ### Report a problem
 

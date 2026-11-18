@@ -35,6 +35,7 @@
     "drizzle-orm": "^0.44.2",
     "express": "^5.1.0",
     "framer-motion": "^10.18.0",
+    "google-auth-library": "11.0.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-icons": "^5.5.0",
