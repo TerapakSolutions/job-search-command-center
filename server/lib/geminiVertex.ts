@@ -133,6 +133,21 @@ export function geminiQuotaReason(
   return null;
 }
 
+/**
+ * google-auth-library 11.0.2 sets no timeout on the token request (gtoken's
+ * request options carry no `timeout`, so gaxios adds no abort signal) and
+ * retries the POST. The fetch runs while holding a Gemini slot, so bound it.
+ */
+export const TOKEN_TIMEOUT_MS = 15_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('token fetch timed out')), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 // google-auth-library caches and refreshes the token itself; we only keep one
 // client per credential value.
 let authClient: { key: string; auth: GoogleAuth } | null = null;
@@ -145,7 +160,7 @@ export async function getVertexAccessToken(config: GeminiConfig): Promise<string
         auth: new GoogleAuth({ credentials: config.credentials, scopes: [VERTEX_SCOPE] }),
       };
     }
-    const token = await authClient.auth.getAccessToken();
+    const token = await withTimeout(authClient.auth.getAccessToken(), TOKEN_TIMEOUT_MS);
     if (token) return token;
   } catch {
     // fall through to the fixed message below

@@ -1,5 +1,7 @@
 /** @jest-environment node */
-import { getAiSpendLedger, pacificDay, registerAiSpendLedger } from './aiSpend.js';
+import { GoogleAuth } from 'google-auth-library';
+import { estimateCallCostMicros, getAiSpendLedger, pacificDay, registerAiSpendLedger } from './aiSpend.js';
+import { GEMINI_MAX_OUTPUT_TOKENS } from './geminiVertex.js';
 import { generateDailyBriefingForUser } from './briefingGenerator.js';
 import { generateLlmCompletion, LlmQuotaError } from './llmClient.js';
 import { createTestDb, seedTestUser } from './testDb.js';
@@ -64,6 +66,8 @@ afterEach(() => {
 });
 
 const call = () => generateLlmCompletion({ purpose: 'extract', systemPrompt: 's', userPrompt: 'u' });
+/** The worst case one call('s', 'u') reserves before calling. */
+const reservation = () => estimateCallCostMicros(2, GEMINI_MAX_OUTPUT_TOKENS, 'gemini-3.8-flash', new Date());
 const spent = () => getAiSpendLedger()!.spentMicros(pacificDay(new Date()));
 
 describe('Gemini concurrency limit', () => {
@@ -94,13 +98,13 @@ describe('Gemini concurrency limit', () => {
     expect(timeout).toHaveBeenCalledWith(30_000);
   });
 
-  it('a timed-out call frees its slot and refunds its reservation', async () => {
+  it('a timed-out call frees its slot and keeps its reservation counted (Google may have billed it)', async () => {
     global.fetch = slowVertex(() => {
       throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
     }) as unknown as typeof fetch;
     const timedOut = await Promise.allSettled(Array.from({ length: 8 }, () => call()));
     expect(timedOut.every((r) => r.status === 'rejected')).toBe(true);
-    expect(spent()).toBe(0);
+    expect(spent()).toBe(8 * reservation());
 
     global.fetch = slowVertex(ok) as unknown as typeof fetch;
     await expect(call()).resolves.toBe('hello');
@@ -115,7 +119,52 @@ describe('Gemini concurrency limit', () => {
 
     global.fetch = slowVertex(ok) as unknown as typeof fetch;
     await expect(call()).resolves.toBe('hello');
-    expect(spent()).toBe(TYPICAL_COST); // the 8 failures were refunded
+    // A network error after sending may still be billed: those 8 stay counted.
+    expect(spent()).toBe(8 * reservation() + TYPICAL_COST);
+  });
+
+  it('refunds when Vertex answers with an error status (an answered error is not billed)', async () => {
+    global.fetch = slowVertex(() => ({ ok: false, status: 500, text: async () => 'boom' })) as unknown as typeof fetch;
+    await Promise.allSettled(Array.from({ length: 8 }, () => call()));
+    expect(spent()).toBe(0);
+  });
+
+  it('refunds when the token fetch fails (no Vertex call was made)', async () => {
+    (GoogleAuth as unknown as jest.Mock).mockImplementationOnce(() => ({
+      getAccessToken: jest.fn().mockRejectedValue(new Error('token endpoint down')),
+    }));
+    process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON = JSON.stringify({ type: 'service_account', private_key: 'k', client_email: 'a@test-project.iam.gserviceaccount.com', private_key_id: 'token-fails' });
+    await expect(call()).rejects.toThrow('Gemini authentication failed');
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(spent()).toBe(0);
+  });
+
+  it('gives up on a hung token fetch after 15s, frees the slot and refunds', async () => {
+    (GoogleAuth as unknown as jest.Mock).mockImplementationOnce(() => ({
+      getAccessToken: jest.fn().mockReturnValue(new Promise(() => {})), // never answers
+    }));
+    process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON = JSON.stringify({ type: 'service_account', private_key: 'k', client_email: 'a@test-project.iam.gserviceaccount.com', private_key_id: 'token-hangs' });
+    jest.useFakeTimers();
+    try {
+      const outcomes: string[] = [];
+      const hung = Array.from({ length: 4 }, () =>
+        call().then(
+          () => outcomes.push('ok'),
+          (e: Error) => outcomes.push(e.message),
+        ),
+      );
+      await jest.advanceTimersByTimeAsync(14_999);
+      expect(outcomes).toHaveLength(0);
+      await jest.advanceTimersByTimeAsync(1);
+      await Promise.all(hung);
+      expect(outcomes.every((m) => m.startsWith('Gemini authentication failed'))).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(spent()).toBe(0);
+
+    await expect(call()).resolves.toBe('hello'); // all 4 slots came back
   });
 
   it('frees the slot when Vertex answers with an error status', async () => {

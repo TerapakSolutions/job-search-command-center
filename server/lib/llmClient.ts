@@ -160,20 +160,31 @@ async function reserveAndCallGemini(
     throw new LlmQuotaError('insufficient_quota', 'daily_cap');
   }
 
-  let billed = false;
+  // Refund ONLY when we know Google did not bill: no request was sent (token
+  // fetch failed) or Vertex answered with an error status. A timeout, abort or
+  // network error after sending may still be billed, so the worst-case
+  // reservation stays counted.
+  let phase: 'not_sent' | 'sent' | 'answered_error' | 'billed' = 'not_sent';
   try {
-    return await callGemini(options, config, (usage) => {
-      billed = true;
-      const actual = callCostMicros(usage, config.model, now, reserved);
-      ledger.settle(day, actual - reserved, {
-        calls: 1,
-        inputTokens: usage?.promptTokenCount ?? 0,
-        outputTokens: (usage?.candidatesTokenCount ?? 0) + (usage?.thoughtsTokenCount ?? 0),
-      });
+    return await callGemini(options, config, {
+      sending: () => {
+        phase = 'sent';
+      },
+      answeredError: () => {
+        phase = 'answered_error';
+      },
+      billed: (usage) => {
+        phase = 'billed';
+        const actual = callCostMicros(usage, config.model, now, reserved);
+        ledger.settle(day, actual - reserved, {
+          calls: 1,
+          inputTokens: usage?.promptTokenCount ?? 0,
+          outputTokens: (usage?.candidatesTokenCount ?? 0) + (usage?.thoughtsTokenCount ?? 0),
+        });
+      },
     });
   } finally {
-    if (!billed) {
-      // Failed before Vertex answered 2xx: Google does not bill it.
+    if (phase === 'not_sent' || phase === 'answered_error') {
       ledger.settle(day, -reserved, { calls: 0, inputTokens: 0, outputTokens: 0 });
     }
   }
@@ -182,9 +193,14 @@ async function reserveAndCallGemini(
 async function callGemini(
   options: LlmCompletionOptions,
   config: NonNullable<ReturnType<typeof readGeminiConfig>>,
-  recordUsage: (usage: GeminiUsage | undefined) => void,
+  report: {
+    sending: () => void;
+    answeredError: () => void;
+    billed: (usage: GeminiUsage | undefined) => void;
+  },
 ): Promise<string | null> {
   const token = await getVertexAccessToken(config);
+  report.sending();
   const res = await fetch(vertexGenerateContentUrl(config), {
     method: 'POST',
     // A hung call would hold one of the 4 slots; the SEO engine measured
@@ -204,6 +220,7 @@ async function callGemini(
   });
 
   if (!res.ok) {
+    report.answeredError();
     const body = await res.text();
     const reason = geminiQuotaReason(res.status, body);
     if (reason) {
@@ -218,10 +235,10 @@ async function callGemini(
   try {
     json = (await res.json()) as GeminiResponse & { usageMetadata?: GeminiUsage };
   } catch (err) {
-    recordUsage(undefined);
+    report.billed(undefined);
     throw err;
   }
-  recordUsage(json.usageMetadata);
+  report.billed(json.usageMetadata);
   quotaIncidentOpen = false;
   return geminiResponseText(json);
 }
