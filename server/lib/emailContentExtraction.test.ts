@@ -52,6 +52,10 @@ describe('emailContentExtraction', () => {
     expect(
       extractEmployerFromSubject('Fw: Your application to Senior Engineer at Globex'),
     ).toBe('Globex');
+    // a role that itself contains "at": the company follows the LAST "at"
+    expect(
+      extractEmployerFromSubject('Your application to Head of AI at Scale at Acme'),
+    ).toBe('Acme');
     // the connector itself is "at": the company follows it directly
     expect(extractEmployerFromSubject('Thanks for applying at Initech')).toBe('Initech');
   });
