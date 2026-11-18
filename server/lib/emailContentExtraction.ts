@@ -133,14 +133,18 @@ export function extractEmployerFromSubject(subject: string): string | null {
   }
 
   // Application-confirmation subjects: "Thank you for applying to {Company}",
-  // "Thanks for applying to {Company}", "Your application to {Company}".
+  // "Thanks for applying to {Company}", "Your application to {Company}",
+  // "Your application to {Role} at {Company}".
   // Only "to"/"at" connectors (never "for", which introduces a role, e.g.
   // "application for the Data Analyst position").
   const applyingMatch = trimmed.match(
     /\bappl(?:ying|ication)\s+(?:to|at)\s+(.+?)(?:\s+for\b|\s*[-–—|(:]|$)/i,
   );
   if (applyingMatch) {
-    const candidate = applyingMatch[1]?.trim().replace(/[.!,]+$/, '');
+    // "Your application to {Role} at {Company}": the company follows the last "at".
+    const captured = applyingMatch[1]?.trim() ?? '';
+    const roleAtCompany = captured.match(/^.+\s+at\s+(.+)$/i);
+    const candidate = (roleAtCompany?.[1] ?? captured).trim().replace(/[.!,]+$/, '');
     if (candidate && !isAtsPlatformCompany(candidate)) {
       return candidate;
     }

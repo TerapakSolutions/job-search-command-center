@@ -43,6 +43,35 @@ describe('emailContentExtraction', () => {
     expect(extractEmployerFromSubject('Thank you for applying to Ashby')).toBeNull();
   });
 
+  it('takes the company after "at" in "Your application to {Role} at {Company}"', () => {
+    expect(
+      extractEmployerFromSubject(
+        'Your application to Engineering Manager, Search & AI Platform at Acme Corp',
+      ),
+    ).toBe('Acme Corp');
+    expect(
+      extractEmployerFromSubject('Fw: Your application to Senior Engineer at Globex'),
+    ).toBe('Globex');
+    // a role that itself contains "at": the company follows the LAST "at"
+    expect(
+      extractEmployerFromSubject('Your application to Head of AI at Scale at Acme'),
+    ).toBe('Acme');
+    // the connector itself is "at": the company follows it directly
+    expect(extractEmployerFromSubject('Thanks for applying at Initech')).toBe('Initech');
+  });
+
+  it('resolves the company, not the role, for a forwarded "{Role} at {Company}" rejection', () => {
+    const subject = 'Your application to Engineering Manager, Search & AI Platform at Acme Corp';
+    expect(
+      resolveEmployerCompany({
+        companyName: 'Acme Corp',
+        originalCompany: extractEmployerFromSubject(subject),
+        subject: `Fw: ${subject}`,
+        senderEmail: 'no-reply@appreview.gem.com',
+      }),
+    ).toBe('Acme Corp');
+  });
+
   it('resolves Valon over the ATS sender for an application confirmation', () => {
     expect(
       resolveEmployerCompany({
