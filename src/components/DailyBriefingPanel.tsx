@@ -235,8 +235,10 @@ export default function DailyBriefingPanel() {
 
           {briefing.data.summarySource === 'paused' && (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
-              AI features are paused until the monthly limit resets. This brief was written without
-              AI. Questions? <ContactLine />.
+              {briefing.data.pausedReason === 'daily_cap'
+                ? 'AI features are paused until tomorrow (daily limit reached).'
+                : 'AI features are paused until the monthly limit resets.'}{' '}
+              This brief was written without AI. Questions? <ContactLine />.
             </p>
           )}
 

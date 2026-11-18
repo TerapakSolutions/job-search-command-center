@@ -55,7 +55,12 @@ function readApiKey(): string {
  * the AI is paused rather than treating it as a failure.
  */
 export class LlmQuotaError extends Error {
-  constructor(readonly reason: 'insufficient_quota' | 'rate_limited') {
+  constructor(
+    readonly reason: 'insufficient_quota' | 'rate_limited',
+    // 'daily_cap' = our own AI_DAILY_BUDGET_USD (resets tomorrow, Pacific);
+    // 'provider' = the provider refused (OpenAI's monthly budget, Vertex 402).
+    readonly limit: 'provider' | 'daily_cap' = 'provider',
+  ) {
     super(`AI paused: ${reason}`);
     this.name = 'LlmQuotaError';
   }
@@ -83,6 +88,35 @@ function quotaExceeded(reason: LlmQuotaError['reason'], body: string): LlmQuotaE
 // One warning per Pacific day (per process) when the daily budget trips.
 let budgetWarnedDay: string | null = null;
 
+/**
+ * At most this many Gemini calls in flight; the rest wait in FIFO order, none
+ * dropped. Each in-flight call holds a worst-case reservation against the
+ * daily cap, so an unbounded burst (inbound email is processed one
+ * setImmediate per email) would fill the cap with reservations and refuse
+ * calls on a cheap day. It also keeps bursts under Vertex's rate limit.
+ */
+const GEMINI_MAX_IN_FLIGHT = 4;
+let geminiInFlight = 0;
+const geminiWaiting: Array<() => void> = [];
+
+async function acquireGeminiSlot(): Promise<void> {
+  if (geminiInFlight < GEMINI_MAX_IN_FLIGHT) {
+    geminiInFlight++;
+    return;
+  }
+  // The releasing call hands its slot straight to the next waiter.
+  await new Promise<void>((resolve) => geminiWaiting.push(resolve));
+}
+
+function releaseGeminiSlot(): void {
+  const next = geminiWaiting.shift();
+  if (next) {
+    next();
+  } else {
+    geminiInFlight--;
+  }
+}
+
 async function generateGeminiCompletion(
   options: LlmCompletionOptions,
 ): Promise<string | null> {
@@ -92,6 +126,19 @@ async function generateGeminiCompletion(
     return null;
   }
 
+  await acquireGeminiSlot();
+  try {
+    return await reserveAndCallGemini(options, config, ledger);
+  } finally {
+    releaseGeminiSlot();
+  }
+}
+
+async function reserveAndCallGemini(
+  options: LlmCompletionOptions,
+  config: NonNullable<ReturnType<typeof readGeminiConfig>>,
+  ledger: NonNullable<ReturnType<typeof getAiSpendLedger>>,
+): Promise<string | null> {
   // Reserve the worst case before calling (atomic, so a burst cannot all slip
   // under the cap), then settle to the real cost once Vertex says what it was.
   const now = new Date();
@@ -109,7 +156,7 @@ async function generateGeminiCompletion(
       const usd = (budget / 1_000_000).toFixed(2);
       console.warn(`[llm] AI paused: daily AI budget of USD ${usd} reached for ${day} (Pacific)`);
     }
-    throw new LlmQuotaError('insufficient_quota');
+    throw new LlmQuotaError('insufficient_quota', 'daily_cap');
   }
 
   let billed = false;
