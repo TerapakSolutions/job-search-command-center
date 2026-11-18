@@ -96,6 +96,7 @@ let budgetWarnedDay: string | null = null;
  * calls on a cheap day. It also keeps bursts under Vertex's rate limit.
  */
 const GEMINI_MAX_IN_FLIGHT = 4;
+const GEMINI_TIMEOUT_MS = 30_000;
 let geminiInFlight = 0;
 const geminiWaiting: Array<() => void> = [];
 
@@ -186,6 +187,9 @@ async function callGemini(
   const token = await getVertexAccessToken(config);
   const res = await fetch(vertexGenerateContentUrl(config), {
     method: 'POST',
+    // A hung call would hold one of the 4 slots; the SEO engine measured
+    // Vertex hangs in prod and bounds the same call at 30s.
+    signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',

@@ -86,6 +86,26 @@ describe('Gemini concurrency limit', () => {
     expect(sent).toEqual(prompts);
   });
 
+  it('gives every Vertex call a timeout, so a hung call cannot hold a slot forever', async () => {
+    const timeout = jest.spyOn(AbortSignal, 'timeout');
+    await call();
+    const init = (global.fetch as jest.Mock).mock.calls[0][1] as { signal?: unknown };
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(timeout).toHaveBeenCalledWith(30_000);
+  });
+
+  it('a timed-out call frees its slot and refunds its reservation', async () => {
+    global.fetch = slowVertex(() => {
+      throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    }) as unknown as typeof fetch;
+    const timedOut = await Promise.allSettled(Array.from({ length: 8 }, () => call()));
+    expect(timedOut.every((r) => r.status === 'rejected')).toBe(true);
+    expect(spent()).toBe(0);
+
+    global.fetch = slowVertex(ok) as unknown as typeof fetch;
+    await expect(call()).resolves.toBe('hello');
+  });
+
   it('frees the slot when a call throws, so later calls still run', async () => {
     global.fetch = slowVertex(() => {
       throw new Error('network down');
