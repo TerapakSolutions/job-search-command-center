@@ -61,6 +61,46 @@ describe('generateReplyDraft', () => {
     expect(result.draft).toContain('Hi Nick,');
   });
 
+  it('reports our own daily cap as paused with pausedReason daily_cap', async () => {
+    jest.resetModules();
+    jest.doMock('./llmClient.js', () => {
+      const actual = jest.requireActual('./llmClient.js');
+      return {
+        ...actual,
+        isLlmConfigured: () => true,
+        generateLlmCompletion: async () => {
+          throw new actual.LlmQuotaError('insufficient_quota', 'daily_cap');
+        },
+      };
+    });
+    const { generateReplyDraft: generate } = await import('./replyDraftGenerator.js');
+    const result = await generate(input);
+    expect(result).toMatchObject({ source: 'paused', pausedReason: 'daily_cap' });
+    jest.dontMock('./llmClient.js');
+  });
+
+  it('uses the template on a rate limit, not paused', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test';
+    openAiAnswers(429, { error: { code: 'rate_limit_exceeded' } });
+    const result = await generateReplyDraft(input);
+    expect(result.source).toBe('template');
+  });
+
+  it('uses the template when the AI takes too long', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test';
+    global.fetch = jest.fn(() => new Promise(() => {})) as unknown as typeof fetch;
+    const result = await generateReplyDraft(input, { timeoutMs: 20 });
+    expect(result.source).toBe('template');
+    expect(result.draft).toContain('Hi Nick,');
+  });
+
+  it('uses the template when the AI answers with nothing', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test';
+    openAiAnswers(200, { choices: [{ message: { content: '   ' } }], usage: {} });
+    const result = await generateReplyDraft(input);
+    expect(result.source).toBe('template');
+  });
+
   it('falls back to the template when the AI call fails', async () => {
     process.env.OPENAI_API_KEY = 'sk-test';
     openAiAnswers(500, { error: { message: 'boom' } });

@@ -1,4 +1,4 @@
-import { and, desc, eq, gte } from 'drizzle-orm';
+import { and, desc, eq, gte, like } from 'drizzle-orm';
 import type {
   AuditLogEntry,
   AutomationActionResult,
@@ -20,7 +20,12 @@ import {
   interviews,
   users,
 } from '../db/schema.js';
-import { generateReplyDraft, type ReplyDraftResult } from './replyDraftGenerator.js';
+import {
+  generateReplyDraft,
+  templateReplyDraft,
+  type ReplyDraftInput,
+  type ReplyDraftResult,
+} from './replyDraftGenerator.js';
 import {
   findDuplicateApplication,
   matchEmailToApplications,
@@ -1125,13 +1130,45 @@ export function draftReplyFromEmail(
   return { draft, auditLogId };
 }
 
+// AI drafts one user may ask for in any 24 hours. The AI budget is shared by
+// every user, so one user (or a script) can't spend it on drafts alone.
+export const AI_DRAFTS_PER_USER_PER_DAY = 20;
+
+// Marks audit rows written by the AI path, so the limit counts only those.
+const AI_DRAFT_MARKER = 'ai_draft_button';
+
+function aiDraftsInLastDay(db: Db, userId: string, now: Date): number {
+  const since = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  return db
+    .select({ id: emailAutomationAuditLog.id })
+    .from(emailAutomationAuditLog)
+    .where(
+      and(
+        eq(emailAutomationAuditLog.userId, userId),
+        eq(emailAutomationAuditLog.actionType, 'draft_reply'),
+        gte(emailAutomationAuditLog.createdAt, since),
+        like(emailAutomationAuditLog.detailsJson, `%${AI_DRAFT_MARKER}%`),
+      ),
+    )
+    .all().length;
+}
+
 // The Draft reply button: an AI-written draft, falling back to the template
 // above. The approval queue still uses the synchronous template version.
 export async function aiDraftReplyFromEmail(
   db: Db,
   userId: string,
   emailId: string,
-): Promise<{ draft: string; source: ReplyDraftResult['source']; auditLogId: string } | null> {
+  now: Date = new Date(),
+): Promise<
+  | {
+      draft: string;
+      source: ReplyDraftResult['source'];
+      pausedReason?: ReplyDraftResult['pausedReason'];
+      auditLogId: string;
+    }
+  | null
+> {
   const row = getEmailForUser(db, userId, emailId);
   if (!row) return null;
 
@@ -1140,7 +1177,8 @@ export async function aiDraftReplyFromEmail(
   try {
     const payload = JSON.parse(row.payload) as Record<string, unknown>;
     textBody = typeof payload.TextBody === 'string' ? payload.TextBody : '';
-    fromName = typeof payload.FromName === 'string' ? payload.FromName : null;
+    fromName =
+      typeof payload.FromName === 'string' && payload.FromName.trim() ? payload.FromName : null;
   } catch {
     // Unparseable payload: draft from the stored fields alone.
   }
@@ -1150,31 +1188,69 @@ export async function aiDraftReplyFromEmail(
     fromName,
     textBody,
   });
-  const user = db.select({ name: users.name }).from(users).where(eq(users.id, userId)).get();
+  const user = db
+    .select({ name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.id, userId))
+    .get();
 
-  const { draft, source } = await generateReplyDraft({
+  // Who the draft goes to: the original sender of a forward, else the sender.
+  // If that's the user themself (a forward of their own sent message, or an
+  // email they sent the inbox), write to the person they wrote to instead, as
+  // a follow-up.
+  // A forward's sender is the forwarder (the user); a direct email's is the
+  // other person.
+  const selfEmails = new Set(
+    [user?.email, fwd.isForwarded ? row.fromEmail : null]
+      .filter((e): e is string => Boolean(e))
+      .map((e) => e.trim().toLowerCase()),
+  );
+  const isSelf = (email: string | null | undefined) =>
+    Boolean(email && selfEmails.has(email.trim().toLowerCase()));
+  let recipientName = fwd.isForwarded ? fwd.originalSenderName : fromName;
+  let recipientEmail = fwd.isForwarded ? fwd.originalSenderEmail : row.fromEmail;
+  let lastMessageFromUser = fwd.topMessageFromForwarder;
+  if (isSelf(recipientEmail)) {
+    const other = fwd.originalRecipient && !isSelf(fwd.originalRecipient) ? fwd.originalRecipient : null;
+    recipientName = null;
+    recipientEmail = other;
+    lastMessageFromUser = true;
+  }
+
+  const input: ReplyDraftInput = {
     userName: user?.name ?? null,
     classification: row.classification,
     recruiterName: row.recruiterName,
-    recipientName: fwd.isForwarded ? fwd.originalSenderName : fromName,
-    recipientEmail: fwd.isForwarded ? fwd.originalSenderEmail : row.fromEmail,
+    recipientName,
+    recipientEmail,
     companyName: row.companyName ?? row.originalCompany,
     positionTitle: row.positionTitle,
     subject: fwd.originalSubject ?? row.subject,
     // The whole forward, quoted thread included, so the draft has context.
     textBody,
-    lastMessageFromUser: fwd.topMessageFromForwarder,
-  });
+    lastMessageFromUser,
+  };
+
+  const result: ReplyDraftResult =
+    aiDraftsInLastDay(db, userId, now) >= AI_DRAFTS_PER_USER_PER_DAY
+      ? { draft: templateReplyDraft(input), source: 'limited' }
+      : await generateReplyDraft(input);
 
   const auditLogId = recordAuditLog(db, {
     userId,
     inboundEmailId: emailId,
     actionType: 'draft_reply',
     confidence: row.classificationConfidence,
-    resultingChanges: { draftLength: draft.length, source },
+    details: { via: AI_DRAFT_MARKER },
+    resultingChanges: { draftLength: result.draft.length, source: result.source },
   });
 
-  return { draft, source, auditLogId };
+  return {
+    draft: result.draft,
+    source: result.source,
+    ...(result.pausedReason ? { pausedReason: result.pausedReason } : {}),
+    auditLogId,
+  };
 }
 
 export function runEmailAutomation(
