@@ -31,11 +31,24 @@ describe('outlookComposeUrl', () => {
     expect(url.searchParams.get('subject')).toBe('Re: Café #1');
   });
 
-  it("adds login_hint for the user's own account so Outlook opens that mailbox", () => {
+  it("adds login_hint for the user's work account so Outlook opens that mailbox", () => {
     const url = new URL(
-      outlookComposeUrl({ to: 'a@b.example', subject: 'Re: x', body: 'Hi', account: 'steve@terapak.com' }),
+      outlookComposeUrl({ to: 'a@b.example', subject: 'Re: x', body: 'Hi', account: 'Steve@Terapak.com' }),
     );
     expect(url.searchParams.get('login_hint')).toBe('steve@terapak.com');
-    expect(new URL(outlookComposeUrl({ to: null, subject: null, body: 'Hi' })).searchParams.has('login_hint')).toBe(false);
   });
+
+  it('encodes a plus address in login_hint', () => {
+    const url = outlookComposeUrl({ to: null, subject: null, body: 'Hi', account: 'steve+jobs@terapak.com' });
+    expect(url).toContain('login_hint=steve%2Bjobs%40terapak.com');
+    expect(new URL(url).searchParams.get('login_hint')).toBe('steve+jobs@terapak.com');
+  });
+
+  it.each([null, undefined, '', '   ', 'me@gmail.com', 'me@outlook.com', 'me@hotmail.com'])(
+    'leaves login_hint out for %p',
+    (account) => {
+      const url = new URL(outlookComposeUrl({ to: null, subject: null, body: 'Hi', account }));
+      expect(url.searchParams.has('login_hint')).toBe(false);
+    },
+  );
 });
