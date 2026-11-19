@@ -122,3 +122,27 @@ describe('buildReplyDraftPrompt', () => {
     expect(prompt.email.endsWith('[truncated]')).toBe(true);
   });
 });
+
+describe('buildReplyDraftPrompt application context', () => {
+  it('includes today, the email date and the application, defaulting to null', () => {
+    const bare = JSON.parse(buildReplyDraftPrompt(input));
+    expect(bare).toMatchObject({ today: null, emailDate: null, application: null });
+
+    const withApp = JSON.parse(
+      buildReplyDraftPrompt({
+        ...input,
+        today: '2026-11-19',
+        emailDate: '2026-11-10',
+        application: {
+          stage: 'Recruiter Screen',
+          agency: 'Code Talent',
+          submittedDate: '2026-11-16',
+          dateApplied: null,
+          interviews: [{ date: '2026-11-13', type: 'video', past: true }],
+        },
+      }),
+    );
+    expect(withApp.today).toBe('2026-11-19');
+    expect(withApp.application.interviews[0].past).toBe(true);
+  });
+});

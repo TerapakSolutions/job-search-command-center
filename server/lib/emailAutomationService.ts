@@ -24,6 +24,7 @@ import { isLlmConfigured } from './llmClient.js';
 import {
   generateReplyDraft,
   templateReplyDraft,
+  type ReplyDraftApplication,
   type ReplyDraftInput,
   type ReplyDraftResult,
 } from './replyDraftGenerator.js';
@@ -62,6 +63,7 @@ import {
   isInboundEmailDeleted,
 } from './inboundEmailService.js';
 import { createId, nowIso } from './id.js';
+import { pacificDay } from './aiSpend.js';
 import { parseSenderSignature } from './emailSignature.js';
 
 // The calendar day an ISO timestamp falls on in server local time (Pacific in
@@ -1155,6 +1157,70 @@ function aiDraftsInLastDay(db: Db, userId: string, now: Date): number {
     .all().length;
 }
 
+function dayOrNull(value: string | null): string | null {
+  if (!value) return null;
+  const at = Date.parse(value);
+  return Number.isNaN(at) ? null : pacificDay(new Date(at));
+}
+
+// Where the email's linked application stands now, for the reply draft. Only
+// an explicit link (the user's choice), never a fuzzy match. Dates only: no
+// notes, salary or contacts go to the AI provider.
+export function linkedApplicationForDraft(
+  db: Db,
+  userId: string,
+  emailId: string,
+  now: Date,
+): ReplyDraftApplication | null {
+  const app = db
+    .select({
+      id: applications.id,
+      status: applications.status,
+      agency: applications.agency,
+      submittedDate: applications.submittedDate,
+      dateApplied: applications.dateApplied,
+      interviewDate: applications.interviewDate,
+    })
+    .from(emailApplicationLinks)
+    .innerJoin(applications, eq(applications.id, emailApplicationLinks.applicationId))
+    .where(
+      and(
+        eq(emailApplicationLinks.userId, userId),
+        eq(emailApplicationLinks.inboundEmailId, emailId),
+        eq(applications.userId, userId),
+      ),
+    )
+    .get();
+  if (!app) return null;
+
+  const today = pacificDay(now);
+  const rows = db
+    .select({ scheduledAt: interviews.scheduledAt, type: interviews.type })
+    .from(interviews)
+    .where(and(eq(interviews.applicationId, app.id), eq(interviews.userId, userId)))
+    .all()
+    .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
+  const list = rows.map((row) => {
+    const at = Date.parse(row.scheduledAt);
+    const past = Number.isNaN(at) ? row.scheduledAt.slice(0, 10) < today : at < now.getTime();
+    const date = Number.isNaN(at) ? row.scheduledAt.slice(0, 10) : pacificDay(new Date(at));
+    return { date, type: row.type, past };
+  });
+  // Older rows can carry only the denormalized date.
+  if (list.length === 0 && app.interviewDate) {
+    const date = app.interviewDate.slice(0, 10);
+    list.push({ date, type: 'interview', past: date < today });
+  }
+
+  return {
+    stage: pipelineStatusLabel(app.status),
+    agency: app.agency?.trim() || null,
+    submittedDate: app.submittedDate?.slice(0, 10) ?? null,
+    dateApplied: app.dateApplied?.slice(0, 10) ?? null,
+    interviews: list,
+  };
+}
+
 // The Draft reply button: an AI-written draft, falling back to the template
 // above. The approval queue still uses the synchronous template version.
 export async function aiDraftReplyFromEmail(
@@ -1251,6 +1317,10 @@ export async function aiDraftReplyFromEmail(
     // The whole forward, quoted thread included, so the draft has context.
     textBody,
     lastMessageFromUser,
+    today: pacificDay(now),
+    // A forward's own date is when the user forwarded it; prefer the original's.
+    emailDate: dayOrNull(row.originalSentAt) ?? dayOrNull(row.receivedAt),
+    application: linkedApplicationForDraft(db, userId, emailId, now),
   };
 
   // Reserve the AI attempt before awaiting, so parallel clicks see each
