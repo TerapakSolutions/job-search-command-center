@@ -1157,6 +1157,8 @@ function aiDraftsInLastDay(db: Db, userId: string, now: Date): number {
     .all().length;
 }
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
 function dayOrNull(value: string | null): string | null {
   if (!value) return null;
   const at = Date.parse(value);
@@ -1171,6 +1173,7 @@ export function linkedApplicationForDraft(
   userId: string,
   emailId: string,
   now: Date,
+  emailDate: string | null,
 ): ReplyDraftApplication | null {
   const app = db
     .select({
@@ -1201,23 +1204,36 @@ export function linkedApplicationForDraft(
     .all()
     .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
   const list = rows.map((row) => {
-    const at = Date.parse(row.scheduledAt);
+    // A date-only value (manual entry) is a calendar day, not UTC midnight.
+    const at = DATE_ONLY.test(row.scheduledAt) ? Number.NaN : Date.parse(row.scheduledAt);
     const past = Number.isNaN(at) ? row.scheduledAt.slice(0, 10) < today : at < now.getTime();
     const date = Number.isNaN(at) ? row.scheduledAt.slice(0, 10) : pacificDay(new Date(at));
     return { date, type: row.type, past };
   });
-  // Older rows can carry only the denormalized date.
+  // Older rows can carry only the denormalized date. Day-level only: an
+  // interview earlier today reads as upcoming until tomorrow (known limit).
   if (list.length === 0 && app.interviewDate) {
     const date = app.interviewDate.slice(0, 10);
     list.push({ date, type: 'interview', past: date < today });
   }
 
+  const submittedDate = app.submittedDate?.slice(0, 10) ?? null;
+  // Decided here, not left to the model: something happened after the email
+  // was sent, so its ask is likely stale. Strictly after, so an email sent
+  // the day of a screen ("great chat, let's book round two") stays current.
+  const movedOnSinceEmail = Boolean(
+    emailDate &&
+      (list.some((i) => i.past && i.date > emailDate) ||
+        (submittedDate !== null && submittedDate > emailDate && submittedDate <= today)),
+  );
+
   return {
     stage: pipelineStatusLabel(app.status),
     agency: app.agency?.trim() || null,
-    submittedDate: app.submittedDate?.slice(0, 10) ?? null,
+    submittedDate,
     dateApplied: app.dateApplied?.slice(0, 10) ?? null,
     interviews: list,
+    movedOnSinceEmail,
   };
 }
 
@@ -1305,6 +1321,11 @@ export async function aiDraftReplyFromEmail(
     recipientName = null;
   }
 
+  // A recruiter's reply that quotes the thread also parses as "forwarded";
+  // only the user's own forward carries an older original date.
+  const emailDate =
+    (isUserForward ? dayOrNull(row.originalSentAt) : null) ?? dayOrNull(row.receivedAt);
+
   const input: ReplyDraftInput = {
     userName: user?.name ?? null,
     classification: row.classification,
@@ -1318,9 +1339,8 @@ export async function aiDraftReplyFromEmail(
     textBody,
     lastMessageFromUser,
     today: pacificDay(now),
-    // A forward's own date is when the user forwarded it; prefer the original's.
-    emailDate: dayOrNull(row.originalSentAt) ?? dayOrNull(row.receivedAt),
-    application: linkedApplicationForDraft(db, userId, emailId, now),
+    emailDate,
+    application: linkedApplicationForDraft(db, userId, emailId, now, emailDate),
   };
 
   // Reserve the AI attempt before awaiting, so parallel clicks see each

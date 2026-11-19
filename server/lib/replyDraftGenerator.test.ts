@@ -139,10 +139,12 @@ describe('buildReplyDraftPrompt application context', () => {
           submittedDate: '2026-11-16',
           dateApplied: null,
           interviews: [{ date: '2026-11-13', type: 'video', past: true }],
+          movedOnSinceEmail: true,
         },
       }),
     );
     expect(withApp.today).toBe('2026-11-19');
     expect(withApp.application.interviews[0].past).toBe(true);
+    expect(withApp.application.movedOnSinceEmail).toBe(true);
   });
 });
