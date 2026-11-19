@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { FiCheck, FiInbox, FiMail, FiRefreshCw, FiPlay, FiUserPlus, FiBriefcase, FiTrendingUp, FiEdit3, FiList, FiTrash2, FiExternalLink } from 'react-icons/fi';
 import { outlookComposeUrl } from '../lib/outlookCompose';
+import { useAuthStore } from '../store/useAuthStore';
 import {
   deleteInboundEmail,
   fetchInboundEmailAuditLog,
@@ -76,6 +77,7 @@ export default function InboundEmailsPage() {
   const detailRef = useRef<HTMLElement>(null);
   // The email on screen, so a late Draft reply answer for another email is dropped.
   const openEmailIdRef = useRef<string | null>(null);
+  const userEmail = useAuthStore((s) => s.user?.email ?? null);
   const [detail, setDetail] = useState<InboundEmailDetail | null>(null);
   const [loading, setLoading] = useState(!demoMode);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -1167,6 +1169,7 @@ export default function InboundEmailsPage() {
                                 to: draftReplyTo.to,
                                 subject: draftReplyTo.subject,
                                 body: draftReply,
+                                account: userEmail,
                               })}
                               target="_blank"
                               rel="noopener noreferrer"

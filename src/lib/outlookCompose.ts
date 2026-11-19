@@ -8,8 +8,12 @@ export function outlookComposeUrl(input: {
   to: string | null | undefined;
   subject: string | null | undefined;
   body: string;
+  // The user's own address. Outlook opens that account even when the
+  // browser is signed into another work account first.
+  account?: string | null;
 }): string {
   const params = new URLSearchParams();
+  if (input.account) params.set('login_hint', input.account);
   if (input.to) params.set('to', input.to);
   if (input.subject) params.set('subject', input.subject);
   params.set('body', input.body);

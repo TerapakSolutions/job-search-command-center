@@ -30,4 +30,12 @@ describe('outlookComposeUrl', () => {
     expect(url.searchParams.get('body')).toBe(body);
     expect(url.searchParams.get('subject')).toBe('Re: Café #1');
   });
+
+  it("adds login_hint for the user's own account so Outlook opens that mailbox", () => {
+    const url = new URL(
+      outlookComposeUrl({ to: 'a@b.example', subject: 'Re: x', body: 'Hi', account: 'steve@terapak.com' }),
+    );
+    expect(url.searchParams.get('login_hint')).toBe('steve@terapak.com');
+    expect(new URL(outlookComposeUrl({ to: null, subject: null, body: 'Hi' })).searchParams.has('login_hint')).toBe(false);
+  });
 });
