@@ -1221,6 +1221,8 @@ export function linkedApplicationForDraft(
   // Decided here, not left to the model: something happened after the email
   // was sent, so its ask is likely stale. Strictly after, so an email sent
   // the day of a screen ("great chat, let's book round two") stays current.
+  // Known limits: an event the same day as the email reads as current, and
+  // a forward whose original date didn't parse is dated by the forward.
   const movedOnSinceEmail = Boolean(
     emailDate &&
       (list.some((i) => i.past && i.date > emailDate) ||

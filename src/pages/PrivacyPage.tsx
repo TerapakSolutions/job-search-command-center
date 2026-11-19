@@ -79,7 +79,7 @@ export default function PrivacyPage() {
             To sort and summarize your email, the app sends the text of each forwarded email,
             and a summary of your job search for the daily brief, to OpenAI. When you click
             Draft reply, it sends that email and, if you&apos;ve linked it to an application, the
-            application&apos;s stage, agency and key dates. OpenAI&apos;s own
+            application&apos;s stage, agency, and applied, submitted and interview dates. OpenAI&apos;s own
             terms cover how it handles that data; see{' '}
             <a
               href="https://openai.com/policies/"

@@ -606,5 +606,23 @@ Checking in on next steps.`;
       expect(prompts[0].application).toBeNull();
       expect(JSON.stringify(prompts[0])).not.toContain('Secret Agency');
     });
+  
+    it('counts a submission after the email, but not one dated in the future', async () => {
+      const prompts = mockOpenAi();
+      const db = createTestDb();
+      const userId = seedTestUser(db, { email: 'seeker@example.com' });
+      const first = seedInboundEmail(db, { toEmail: 'seeker@example.com', receivedAt: '2026-11-11T18:00:00.000Z' });
+      const second = seedInboundEmail(db, { toEmail: 'seeker@example.com', receivedAt: '2026-11-11T18:00:00.000Z' });
+      const submitted = seedApplication(db, userId, { id: 'app-s', submittedDate: '2026-11-16' });
+      const future = seedApplication(db, userId, { id: 'app-f', submittedDate: '2026-11-25' });
+      setEmailApplicationLink(db, userId, first, submitted);
+      setEmailApplicationLink(db, userId, second, future);
+
+      await aiDraftReplyFromEmail(db, userId, first, NOW);
+      await aiDraftReplyFromEmail(db, userId, second, NOW);
+
+      const flags = prompts.map((p) => (p.application as { movedOnSinceEmail: boolean }).movedOnSinceEmail);
+      expect(flags).toEqual([true, false]);
+    });
   });
 });
