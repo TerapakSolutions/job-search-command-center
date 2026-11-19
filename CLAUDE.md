@@ -15,10 +15,11 @@ This is the default for every bug fix, not just complex ones.
 
 This applies to Claude too. Self-checks (tests, type check, lint) don't count as review.
 
-- **Every PR gets an independent review** from a reviewer that hasn't seen the work being produced: a fresh agent given only the diff and a read-only checkout.
-- **Complicated or risky PRs get multiple layers, including Fable.** Risky means new LLM calls or prompts, auth or ownership checks, public endpoints, money or AI spend, data migrations, or changes that span several files or stages. Run an Opus-class review and a separate Fable review, in parallel and without seeing each other's findings.
-- **Post the findings on the PR** as a comment, ranked blocking / should-fix / nit. Fix blocking findings before merge, then rerun the tests. Should-fix items outside the PR's scope become their own tickets, per the one-surface rule.
-- **Get the review before calling a PR ready.** A PR opened without one isn't done yet.
+- **Every PR gets an independent review** from a reviewer that hasn't seen the work being produced: a fresh agent given only the diff and a read-only checkout. Docs-only PRs included.
+- **Complicated or risky PRs get multiple layers, including Fable.** Risky means new LLM calls or prompts, changes to agent instructions (CLAUDE.md, skills, prompts), auth or ownership checks, public endpoints, money or AI spend, data migrations, or changes that span several stages or services (not just several files). Run an Opus-class review and a separate Fable review, in parallel and without seeing each other's findings. This overrides Escalation's default-model rule: on risky PRs the Fable review is worth the cost.
+- **Post the findings on the PR** as a comment, ranked blocking / should-fix / nit.
+- **Fix blocking findings, then get the fix reviewed.** Rerun the tests, then have a fresh reviewer check the new commits against the findings. Repeat until nothing is blocking. Fix in-scope should-fix items before merge, or say on the PR why not. Should-fix items outside the PR's scope become their own tickets, per the one-surface rule.
+- **Open as a draft; mark ready only after the review is posted** and nothing is blocking.
 
 ## Escalation
 
