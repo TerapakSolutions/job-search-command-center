@@ -164,6 +164,63 @@ Sam`;
     expect(prompts[0].lastMessageFromUser).toBe(false);
   });
 
+  // Fable second re-review: the user's forward of a recruiter's email must
+  // reply to the recruiter whatever the subject prefix.
+  it.each([['Fw: Afresh Interview Request'], ['WG: Afresh Interview Request'], ['[EXT] Fwd: Afresh'], ['Afresh - please read']])(
+    'replies to the recruiter of a forward the user sent with subject %s',
+    async (subject) => {
+      const prompts = mockOpenAi();
+      const db = createTestDb();
+      const userId = seedTestUser(db, { email: FORWARDER });
+      const body = `________________________________
+From: Nick Gasparro <nick@afresh.example>
+Sent: Tuesday, 10 November 2026 07:03:47
+To: Steve Terapak <steve@terapak.com>
+Subject: Afresh Interview Request
+
+Hi Steve, are you free for an interview next week?
+
+Nick`;
+      const emailId = seedInboundEmail(db, {
+        subject,
+        fromEmail: FORWARDER,
+        toEmail: 'jobinfo@jobs.terapak.com',
+        payload: payload(body),
+      });
+
+      await aiDraftReplyFromEmail(db, userId, emailId);
+
+      expect((prompts[0].replyTo as { email: string }).email).toBe('nick@afresh.example');
+      expect(prompts[0].lastMessageFromUser).toBe(false);
+    },
+  );
+
+  it('replies to a recruiter who sends the user an FW: of the user\'s own message', async () => {
+    const prompts = mockOpenAi();
+    const db = createTestDb();
+    const userId = seedTestUser(db, { email: 'seeker@example.com' });
+    const body = `Sam, passing this along with my notes: looks good.
+
+________________________________
+From: Sam Seeker <seeker@example.com>
+Sent: Tuesday, 10 November 2026 07:03:47
+To: Nick Gasparro <nick@afresh.example>
+Subject: Afresh Interview Request
+
+Hi Nick, I'm free Thursday afternoon.`;
+    const emailId = seedInboundEmail(db, {
+      subject: 'FW: Afresh Interview Request',
+      fromEmail: 'nick@afresh.example',
+      toEmail: 'seeker@example.com',
+      payload: payload(body, 'Nick Gasparro'),
+    });
+
+    await aiDraftReplyFromEmail(db, userId, emailId);
+
+    expect(prompts[0].replyTo).toEqual({ name: 'Nick Gasparro', email: 'nick@afresh.example' });
+    expect(prompts[0].lastMessageFromUser).toBe(false);
+  });
+
   it.each([
     ['the inbound address', 'Jobs Inbox <jobinfo@jobs.terapak.com>', null, null],
     ['a name only', 'Nick Gasparro', 'Nick Gasparro', null],

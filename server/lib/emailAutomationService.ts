@@ -1196,12 +1196,17 @@ export async function aiDraftReplyFromEmail(
     .where(eq(users.id, userId))
     .get();
 
-  // Who the draft goes to. Only a real forward (an "Fw:"/"Fwd:" subject) has
-  // the user as its envelope sender; a recruiter's direct reply that quotes
-  // the user's message also parses as "forwarded", and its sender is the
-  // person to answer.
+  // Who the draft goes to. A recruiter's direct reply that quotes the user
+  // also parses as "forwarded", and its sender is the person to answer. Treat
+  // it as the user's forward when the user sent it, or when it has an
+  // "Fw:"/"Fwd:" subject and doesn't simply quote the user back to them.
   const userEmail = user?.email?.trim().toLowerCase() ?? '';
-  const isUserForward = fwd.isForwarded && /^\s*fwd?:/i.test(row.subject);
+  const sender = emailAddressesIn(row.fromEmail)[0] ?? '';
+  const parsedSender = fwd.originalSenderEmail?.trim().toLowerCase() ?? '';
+  const isUserForward =
+    fwd.isForwarded &&
+    (sender === userEmail ||
+      (/^\s*fwd?:/i.test(row.subject) && !(userEmail && parsedSender === userEmail)));
   const selfEmails = new Set(
     [userEmail, isUserForward ? emailAddressesIn(row.fromEmail)[0] : '']
       .filter((e): e is string => Boolean(e)),
