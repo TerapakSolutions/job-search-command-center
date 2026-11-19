@@ -20,6 +20,7 @@ import {
   interviews,
   users,
 } from '../db/schema.js';
+import { isLlmConfigured } from './llmClient.js';
 import {
   generateReplyDraft,
   templateReplyDraft,
@@ -55,6 +56,7 @@ import {
 } from './approvalReason.js';
 import { formatAutomationActionMessage } from './automationOutcomeMessages.js';
 import {
+  emailAddressesIn,
   getUserEmailContext,
   inboundEmailBelongsToUser,
   isInboundEmailDeleted,
@@ -1134,7 +1136,7 @@ export function draftReplyFromEmail(
 // every user, so one user (or a script) can't spend it on drafts alone.
 export const AI_DRAFTS_PER_USER_PER_DAY = 20;
 
-// Marks audit rows written by the AI path, so the limit counts only those.
+// Marks audit rows for an AI attempt, so the limit counts only those.
 const AI_DRAFT_MARKER = 'ai_draft_button';
 
 function aiDraftsInLastDay(db: Db, userId: string, now: Date): number {
@@ -1194,27 +1196,46 @@ export async function aiDraftReplyFromEmail(
     .where(eq(users.id, userId))
     .get();
 
-  // Who the draft goes to: the original sender of a forward, else the sender.
-  // If that's the user themself (a forward of their own sent message, or an
-  // email they sent the inbox), write to the person they wrote to instead, as
-  // a follow-up.
-  // A forward's sender is the forwarder (the user); a direct email's is the
-  // other person.
+  // Who the draft goes to. Only a real forward (an "Fw:"/"Fwd:" subject) has
+  // the user as its envelope sender; a recruiter's direct reply that quotes
+  // the user's message also parses as "forwarded", and its sender is the
+  // person to answer.
+  const userEmail = user?.email?.trim().toLowerCase() ?? '';
+  const isUserForward = fwd.isForwarded && /^\s*fwd?:/i.test(row.subject);
   const selfEmails = new Set(
-    [user?.email, fwd.isForwarded ? row.fromEmail : null]
-      .filter((e): e is string => Boolean(e))
-      .map((e) => e.trim().toLowerCase()),
+    [userEmail, isUserForward ? emailAddressesIn(row.fromEmail)[0] : '']
+      .filter((e): e is string => Boolean(e)),
   );
-  const isSelf = (email: string | null | undefined) =>
-    Boolean(email && selfEmails.has(email.trim().toLowerCase()));
-  let recipientName = fwd.isForwarded ? fwd.originalSenderName : fromName;
-  let recipientEmail = fwd.isForwarded ? fwd.originalSenderEmail : row.fromEmail;
-  let lastMessageFromUser = fwd.topMessageFromForwarder;
-  if (isSelf(recipientEmail)) {
-    const other = fwd.originalRecipient && !isSelf(fwd.originalRecipient) ? fwd.originalRecipient : null;
-    recipientName = null;
-    recipientEmail = other;
+  // The app's inbound address is never someone to write to.
+  const notRecipients = new Set([...selfEmails, ...emailAddressesIn(row.toEmail)]);
+
+  let recipientName: string | null;
+  let recipientEmail: string | null;
+  let lastMessageFromUser: boolean;
+  if (!isUserForward) {
+    recipientName = fromName;
+    recipientEmail = emailAddressesIn(row.fromEmail)[0] ?? null;
+    lastMessageFromUser = Boolean(recipientEmail && selfEmails.has(recipientEmail));
+  } else {
+    recipientName = fwd.originalSenderName;
+    recipientEmail = fwd.originalSenderEmail?.trim().toLowerCase() ?? null;
+    lastMessageFromUser = fwd.topMessageFromForwarder;
+    // A name-only header can come back in the email field.
+    if (recipientEmail && !emailAddressesIn(recipientEmail)[0]) {
+      recipientName = recipientName ?? fwd.originalSenderEmail?.trim() ?? null;
+      recipientEmail = null;
+    }
+  }
+  if (recipientEmail && selfEmails.has(recipientEmail)) {
+    // The user wrote the message: write to the person they wrote to, as a
+    // follow-up. originalRecipient can be a name only, or several addresses.
+    const to = fwd.originalRecipient ?? '';
+    recipientEmail = emailAddressesIn(to).find((a) => !notRecipients.has(a)) ?? null;
+    recipientName = recipientEmail || !to.trim() || to.includes('@') ? null : to.trim();
     lastMessageFromUser = true;
+  } else if (recipientEmail && notRecipients.has(recipientEmail)) {
+    recipientEmail = null;
+    recipientName = null;
   }
 
   const input: ReplyDraftInput = {
@@ -1231,19 +1252,37 @@ export async function aiDraftReplyFromEmail(
     lastMessageFromUser,
   };
 
-  const result: ReplyDraftResult =
-    aiDraftsInLastDay(db, userId, now) >= AI_DRAFTS_PER_USER_PER_DAY
-      ? { draft: templateReplyDraft(input), source: 'limited' }
-      : await generateReplyDraft(input);
-
+  // Reserve the AI attempt before awaiting, so parallel clicks see each
+  // other: SQLite writes here are synchronous, so the count and the insert
+  // can't interleave with another request. Only AI attempts carry the marker.
+  const attemptAi =
+    isLlmConfigured() && aiDraftsInLastDay(db, userId, now) < AI_DRAFTS_PER_USER_PER_DAY;
   const auditLogId = recordAuditLog(db, {
     userId,
     inboundEmailId: emailId,
     actionType: 'draft_reply',
     confidence: row.classificationConfidence,
-    details: { via: AI_DRAFT_MARKER },
-    resultingChanges: { draftLength: result.draft.length, source: result.source },
+    details: attemptAi ? { via: AI_DRAFT_MARKER } : { via: 'draft_button' },
+    resultingChanges: {},
   });
+
+  let result: ReplyDraftResult;
+  if (attemptAi) {
+    result = await generateReplyDraft(input);
+  } else {
+    const draft = templateReplyDraft(input);
+    result = { draft, source: isLlmConfigured() ? 'limited' : 'template' };
+  }
+
+  db.update(emailAutomationAuditLog)
+    .set({
+      resultingChangesJson: JSON.stringify({
+        draftLength: result.draft.length,
+        source: result.source,
+      }),
+    })
+    .where(eq(emailAutomationAuditLog.id, auditLogId))
+    .run();
 
   return {
     draft: result.draft,
