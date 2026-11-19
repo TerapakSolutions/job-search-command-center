@@ -1252,6 +1252,9 @@ export async function aiDraftReplyFromEmail(
       source: ReplyDraftResult['source'];
       pausedReason?: ReplyDraftResult['pausedReason'];
       auditLogId: string;
+      // Who the reply goes to and its subject, for "Open in Outlook".
+      replyTo: { name: string | null; email: string | null };
+      replySubject: string;
     }
   | null
 > {
@@ -1382,7 +1385,15 @@ export async function aiDraftReplyFromEmail(
     source: result.source,
     ...(result.pausedReason ? { pausedReason: result.pausedReason } : {}),
     auditLogId,
+    replyTo: { name: recipientName, email: recipientEmail },
+    replySubject: replySubjectFor(input.subject),
   };
+}
+
+// "Re: <subject>", without stacking a second Re: or keeping a forward's Fw:.
+export function replySubjectFor(subject: string): string {
+  const base = subject.replace(/^\s*((re|fw|fwd)\s*:\s*)+/i, '').trim();
+  return base ? `Re: ${base}` : 'Re:';
 }
 
 export function runEmailAutomation(
