@@ -4,7 +4,7 @@ import {
   analyzeEmailAutomation,
   createApplicationFromEmail,
   createContactFromEmail,
-  draftReplyFromEmail,
+  aiDraftReplyFromEmail,
   listAuditLogForInboundEmail,
   runEmailAutomation,
   setEmailApplicationLink,
@@ -277,10 +277,10 @@ export function inboundEmailsRouter(db: Db): Router {
     res.json(result);
   });
 
-  router.post('/:id/automation/draft-reply', (req: Request, res: Response) => {
+  router.post('/:id/automation/draft-reply', async (req: Request, res: Response) => {
     const userId = req.userId!;
     const id = String(req.params.id);
-    const result = draftReplyFromEmail(db, userId, id);
+    const result = await aiDraftReplyFromEmail(db, userId, id);
     if (!result) {
       res.status(404).json({ error: 'Not found' });
       return;

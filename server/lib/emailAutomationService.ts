@@ -18,7 +18,9 @@ import {
   emailAutomationPendingApprovals,
   inboundEmails,
   interviews,
+  users,
 } from '../db/schema.js';
+import { generateReplyDraft, type ReplyDraftResult } from './replyDraftGenerator.js';
 import {
   findDuplicateApplication,
   matchEmailToApplications,
@@ -1121,6 +1123,58 @@ export function draftReplyFromEmail(
   });
 
   return { draft, auditLogId };
+}
+
+// The Draft reply button: an AI-written draft, falling back to the template
+// above. The approval queue still uses the synchronous template version.
+export async function aiDraftReplyFromEmail(
+  db: Db,
+  userId: string,
+  emailId: string,
+): Promise<{ draft: string; source: ReplyDraftResult['source']; auditLogId: string } | null> {
+  const row = getEmailForUser(db, userId, emailId);
+  if (!row) return null;
+
+  let textBody = '';
+  let fromName: string | null = null;
+  try {
+    const payload = JSON.parse(row.payload) as Record<string, unknown>;
+    textBody = typeof payload.TextBody === 'string' ? payload.TextBody : '';
+    fromName = typeof payload.FromName === 'string' ? payload.FromName : null;
+  } catch {
+    // Unparseable payload: draft from the stored fields alone.
+  }
+  const { forwardMetadata: fwd } = classificationInputFromEmail({
+    subject: row.subject,
+    fromEmail: row.fromEmail,
+    fromName,
+    textBody,
+  });
+  const user = db.select({ name: users.name }).from(users).where(eq(users.id, userId)).get();
+
+  const { draft, source } = await generateReplyDraft({
+    userName: user?.name ?? null,
+    classification: row.classification,
+    recruiterName: row.recruiterName,
+    recipientName: fwd.isForwarded ? fwd.originalSenderName : fromName,
+    recipientEmail: fwd.isForwarded ? fwd.originalSenderEmail : row.fromEmail,
+    companyName: row.companyName ?? row.originalCompany,
+    positionTitle: row.positionTitle,
+    subject: fwd.originalSubject ?? row.subject,
+    // The whole forward, quoted thread included, so the draft has context.
+    textBody,
+    lastMessageFromUser: fwd.topMessageFromForwarder,
+  });
+
+  const auditLogId = recordAuditLog(db, {
+    userId,
+    inboundEmailId: emailId,
+    actionType: 'draft_reply',
+    confidence: row.classificationConfidence,
+    resultingChanges: { draftLength: draft.length, source },
+  });
+
+  return { draft, source, auditLogId };
 }
 
 export function runEmailAutomation(
