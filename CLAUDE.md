@@ -11,6 +11,15 @@ This is the default for every bug fix, not just complex ones.
 - **No after-the-fact scope policing.** Once a fix is scoped and sent, let it run. Review the result against the stated scope, don't micromanage the process.
 - **Document edge cases, don't chase them.** If a fix surfaces a known limitation (DST-unaware abbreviations, a UTC date-boundary edge case, an open product decision), note it and move on. Only escalate into its own ticket if it's likely to bite for real.
 
+## Review before merge
+
+This applies to Claude too. Self-checks (tests, type check, lint) don't count as review.
+
+- **Every PR gets an independent review** from a reviewer that hasn't seen the work being produced: a fresh agent given only the diff and a read-only checkout.
+- **Complicated or risky PRs get multiple layers, including Fable.** Risky means new LLM calls or prompts, auth or ownership checks, public endpoints, money or AI spend, data migrations, or changes that span several files or stages. Run an Opus-class review and a separate Fable review, in parallel and without seeing each other's findings.
+- **Post the findings on the PR** as a comment, ranked blocking / should-fix / nit. Fix blocking findings before merge, then rerun the tests. Should-fix items outside the PR's scope become their own tickets, per the one-surface rule.
+- **Get the review before calling a PR ready.** A PR opened without one isn't done yet.
+
 ## Escalation
 
 - Default to the standard model for most fixes.
