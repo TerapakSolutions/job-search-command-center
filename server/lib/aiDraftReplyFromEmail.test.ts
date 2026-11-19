@@ -221,6 +221,32 @@ Hi Nick, I'm free Thursday afternoon.`;
     expect(prompts[0].lastMessageFromUser).toBe(false);
   });
 
+  it('replies to a recruiter who forwards the user a third party\'s message', async () => {
+    const prompts = mockOpenAi();
+    const db = createTestDb();
+    const userId = seedTestUser(db, { email: 'seeker@example.com' });
+    const body = `Sam, see the hiring manager's note below.
+
+________________________________
+From: Hannah Manager <hannah@afresh.example>
+Sent: Tuesday, 10 November 2026 07:03:47
+To: Nick Gasparro <nick@afresh.example>
+Subject: Afresh Interview Request
+
+Nick, can Sam do Thursday?`;
+    const emailId = seedInboundEmail(db, {
+      subject: 'FW: Afresh Interview Request',
+      fromEmail: 'nick@afresh.example',
+      toEmail: 'seeker@example.com',
+      payload: payload(body, 'Nick Gasparro'),
+    });
+
+    await aiDraftReplyFromEmail(db, userId, emailId);
+
+    expect(prompts[0].replyTo).toEqual({ name: 'Nick Gasparro', email: 'nick@afresh.example' });
+    expect(prompts[0].lastMessageFromUser).toBe(false);
+  });
+
   it.each([
     ['the inbound address', 'Jobs Inbox <jobinfo@jobs.terapak.com>', null, null],
     ['a name only', 'Nick Gasparro', 'Nick Gasparro', null],
