@@ -55,6 +55,8 @@ export function seedApplication(
       salaryMin: null,
       salaryMax: null,
       dateApplied: overrides.dateApplied ?? null,
+      agency: overrides.agency ?? null,
+      submittedDate: overrides.submittedDate ?? null,
       status: overrides.status ?? 'applied',
       notes: '',
       interviewDate: overrides.interviewDate ?? null,

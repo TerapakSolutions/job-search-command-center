@@ -24,6 +24,7 @@ import { isLlmConfigured } from './llmClient.js';
 import {
   generateReplyDraft,
   templateReplyDraft,
+  type ReplyDraftApplication,
   type ReplyDraftInput,
   type ReplyDraftResult,
 } from './replyDraftGenerator.js';
@@ -62,6 +63,7 @@ import {
   isInboundEmailDeleted,
 } from './inboundEmailService.js';
 import { createId, nowIso } from './id.js';
+import { pacificDay } from './aiSpend.js';
 import { parseSenderSignature } from './emailSignature.js';
 
 // The calendar day an ISO timestamp falls on in server local time (Pacific in
@@ -1155,6 +1157,88 @@ function aiDraftsInLastDay(db: Db, userId: string, now: Date): number {
     .all().length;
 }
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+function dayOrNull(value: string | null): string | null {
+  if (!value) return null;
+  const at = Date.parse(value);
+  return Number.isNaN(at) ? null : pacificDay(new Date(at));
+}
+
+// Where the email's linked application stands now, for the reply draft. Only
+// an explicit link (the user's choice), never a fuzzy match. Dates only: no
+// notes, salary or contacts go to the AI provider.
+export function linkedApplicationForDraft(
+  db: Db,
+  userId: string,
+  emailId: string,
+  now: Date,
+  emailDate: string | null,
+): ReplyDraftApplication | null {
+  const app = db
+    .select({
+      id: applications.id,
+      status: applications.status,
+      agency: applications.agency,
+      submittedDate: applications.submittedDate,
+      dateApplied: applications.dateApplied,
+      interviewDate: applications.interviewDate,
+    })
+    .from(emailApplicationLinks)
+    .innerJoin(applications, eq(applications.id, emailApplicationLinks.applicationId))
+    .where(
+      and(
+        eq(emailApplicationLinks.userId, userId),
+        eq(emailApplicationLinks.inboundEmailId, emailId),
+        eq(applications.userId, userId),
+      ),
+    )
+    .get();
+  if (!app) return null;
+
+  const today = pacificDay(now);
+  const rows = db
+    .select({ scheduledAt: interviews.scheduledAt, type: interviews.type })
+    .from(interviews)
+    .where(and(eq(interviews.applicationId, app.id), eq(interviews.userId, userId)))
+    .all()
+    .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
+  const list = rows.map((row) => {
+    // A date-only value (manual entry) is a calendar day, not UTC midnight.
+    const at = DATE_ONLY.test(row.scheduledAt) ? Number.NaN : Date.parse(row.scheduledAt);
+    const past = Number.isNaN(at) ? row.scheduledAt.slice(0, 10) < today : at < now.getTime();
+    const date = Number.isNaN(at) ? row.scheduledAt.slice(0, 10) : pacificDay(new Date(at));
+    return { date, type: row.type, past };
+  });
+  // Older rows can carry only the denormalized date. Day-level only: an
+  // interview earlier today reads as upcoming until tomorrow (known limit).
+  if (list.length === 0 && app.interviewDate) {
+    const date = app.interviewDate.slice(0, 10);
+    list.push({ date, type: 'interview', past: date < today });
+  }
+
+  const submittedDate = app.submittedDate?.slice(0, 10) ?? null;
+  // Decided here, not left to the model: something happened after the email
+  // was sent, so its ask is likely stale. Strictly after, so an email sent
+  // the day of a screen ("great chat, let's book round two") stays current.
+  // Known limits: an event the same day as the email reads as current, and
+  // a forward whose original date didn't parse is dated by the forward.
+  const movedOnSinceEmail = Boolean(
+    emailDate &&
+      (list.some((i) => i.past && i.date > emailDate) ||
+        (submittedDate !== null && submittedDate > emailDate && submittedDate <= today)),
+  );
+
+  return {
+    stage: pipelineStatusLabel(app.status),
+    agency: app.agency?.trim() || null,
+    submittedDate,
+    dateApplied: app.dateApplied?.slice(0, 10) ?? null,
+    interviews: list,
+    movedOnSinceEmail,
+  };
+}
+
 // The Draft reply button: an AI-written draft, falling back to the template
 // above. The approval queue still uses the synchronous template version.
 export async function aiDraftReplyFromEmail(
@@ -1239,6 +1323,11 @@ export async function aiDraftReplyFromEmail(
     recipientName = null;
   }
 
+  // A recruiter's reply that quotes the thread also parses as "forwarded";
+  // only the user's own forward carries an older original date.
+  const emailDate =
+    (isUserForward ? dayOrNull(row.originalSentAt) : null) ?? dayOrNull(row.receivedAt);
+
   const input: ReplyDraftInput = {
     userName: user?.name ?? null,
     classification: row.classification,
@@ -1251,6 +1340,9 @@ export async function aiDraftReplyFromEmail(
     // The whole forward, quoted thread included, so the draft has context.
     textBody,
     lastMessageFromUser,
+    today: pacificDay(now),
+    emailDate,
+    application: linkedApplicationForDraft(db, userId, emailId, now, emailDate),
   };
 
   // Reserve the AI attempt before awaiting, so parallel clicks see each
