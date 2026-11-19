@@ -141,7 +141,8 @@ export function setEmailApplicationLink(
 }
 
 export function recordEmailAutomationAudit(
-  db: Db,
+  // Db or a transaction on it; only insert is used.
+  db: Pick<Db, 'insert'>,
   input: {
     userId: string;
     inboundEmailId: string;
@@ -1417,6 +1418,7 @@ const MAX_SENT_BODY = 5000;
 // follow-up clock. Nothing touches the mailbox; the click is the record.
 // Logged once per draft: a second click for the same draft returns the first
 // entry. Synchronous throughout, so two clicks can't both log.
+// Known limit: the logged body is the draft, not any edits made in Outlook.
 export function markReplySent(
   db: Db,
   userId: string,
@@ -1442,104 +1444,134 @@ export function markReplySent(
     .get();
   if (!draft) return { status: 'invalid_draft' };
 
-  const earlier = db
-    .select()
-    .from(emailAutomationAuditLog)
-    .where(
-      and(
-        eq(emailAutomationAuditLog.userId, userId),
-        eq(emailAutomationAuditLog.inboundEmailId, emailId),
-        eq(emailAutomationAuditLog.actionType, 'record_communication'),
-      ),
-    )
-    .all()
-    .find((r) => {
-      try {
-        return (JSON.parse(r.detailsJson) as { draftAuditLogId?: string }).draftAuditLogId === draft.id;
-      } catch {
-        return false;
-      }
-    });
-  if (earlier) {
-    const changes = JSON.parse(earlier.resultingChangesJson) as {
-      communicationId: string;
-      applicationId: string;
-      contactId: string | null;
-    };
-    return { status: 'already_logged', ...changes, auditLogId: earlier.id };
-  }
+  // One transaction: the check for an earlier log and the three writes
+  // land together, so a failed audit write can't leave an unlogged row that
+  // a retry would duplicate.
+  return db.transaction((tx): MarkReplySentResult => {
+    const earlier = tx
+      .select()
+      .from(emailAutomationAuditLog)
+      .where(
+        and(
+          eq(emailAutomationAuditLog.userId, userId),
+          eq(emailAutomationAuditLog.inboundEmailId, emailId),
+          eq(emailAutomationAuditLog.actionType, 'record_communication'),
+        ),
+      )
+      .all()
+      .find((r) => {
+        try {
+          return (JSON.parse(r.detailsJson) as { draftAuditLogId?: string }).draftAuditLogId === draft.id;
+        } catch {
+          return false;
+        }
+      });
+    if (earlier) {
+      const changes = JSON.parse(earlier.resultingChangesJson) as {
+        communicationId: string;
+        applicationId: string;
+        contactId: string | null;
+      };
+      return { status: 'already_logged', ...changes, auditLogId: earlier.id };
+    }
 
-  // Only the user's explicit link, never a fuzzy match.
-  const app = db
-    .select({ id: applications.id })
-    .from(emailApplicationLinks)
-    .innerJoin(applications, eq(applications.id, emailApplicationLinks.applicationId))
-    .where(
-      and(
-        eq(emailApplicationLinks.userId, userId),
-        eq(emailApplicationLinks.inboundEmailId, emailId),
-        eq(applications.userId, userId),
-      ),
-    )
-    .get();
-  if (!app) return { status: 'no_application' };
+    // Only the user's explicit link, never a fuzzy match.
+    const app = tx
+      .select({ id: applications.id })
+      .from(emailApplicationLinks)
+      .innerJoin(applications, eq(applications.id, emailApplicationLinks.applicationId))
+      .where(
+        and(
+          eq(emailApplicationLinks.userId, userId),
+          eq(emailApplicationLinks.inboundEmailId, emailId),
+          eq(applications.userId, userId),
+        ),
+      )
+      .get();
+    if (!app) return { status: 'no_application' };
 
-  // The contact on this application with the address the reply went to.
-  const to = emailAddressesIn(input.to ?? '')[0] ?? null;
-  const contact = to
-    ? db
-        .select({ id: contacts.id, email: contacts.email })
-        .from(contacts)
-        .where(and(eq(contacts.userId, userId), eq(contacts.applicationId, app.id)))
-        .all()
-        .find((c) => c.email.trim().toLowerCase() === to)
-    : undefined;
+    // The contact on this application with the address the reply went to.
+    // Failing that, the contact this email created or merged into (a
+    // recruiter writing from a second address keeps their first one).
+    const appContacts = tx
+      .select({ id: contacts.id, email: contacts.email, lastContactDate: contacts.lastContactDate })
+      .from(contacts)
+      .where(and(eq(contacts.userId, userId), eq(contacts.applicationId, app.id)))
+      .all();
+    const to = emailAddressesIn(input.to ?? '')[0] ?? null;
+    const createdIds = tx
+      .select({ resultingChangesJson: emailAutomationAuditLog.resultingChangesJson })
+      .from(emailAutomationAuditLog)
+      .where(
+        and(
+          eq(emailAutomationAuditLog.userId, userId),
+          eq(emailAutomationAuditLog.inboundEmailId, emailId),
+          eq(emailAutomationAuditLog.actionType, 'create_contact'),
+          eq(emailAutomationAuditLog.status, 'completed'),
+        ),
+      )
+      .all()
+      .map((r) => {
+        try {
+          return (JSON.parse(r.resultingChangesJson) as { contactId?: string }).contactId ?? null;
+        } catch {
+          return null;
+        }
+      });
+    const contact =
+      (to ? appContacts.find((c) => c.email.trim().toLowerCase() === to) : undefined) ??
+      appContacts.find((c) => createdIds.includes(c.id));
 
-  const timestamp = now.toISOString();
-  const communicationId = createId();
-  db.insert(communications)
-    .values({
-      id: communicationId,
-      userId,
-      applicationId: app.id,
-      contactId: contact?.id ?? null,
-      channel: 'email',
-      direction: 'outbound',
-      subject: input.subject.trim().slice(0, MAX_SENT_SUBJECT),
-      body: input.body.slice(0, MAX_SENT_BODY),
-      occurredAt: timestamp,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    })
-    .run();
-
-  if (contact) {
-    db.update(contacts)
-      .set({ lastContactDate: pacificDay(now), updatedAt: timestamp })
-      .where(and(eq(contacts.id, contact.id), eq(contacts.userId, userId)))
+    const timestamp = now.toISOString();
+    const communicationId = createId();
+    tx.insert(communications)
+      .values({
+        id: communicationId,
+        userId,
+        applicationId: app.id,
+        contactId: contact?.id ?? null,
+        channel: 'email',
+        direction: 'outbound',
+        subject: (input.subject.trim() || replySubjectFor(row.subject)).slice(0, MAX_SENT_SUBJECT),
+        body: input.body.slice(0, MAX_SENT_BODY),
+        occurredAt: timestamp,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
       .run();
-  }
 
-  const auditLogId = recordAuditLog(db, {
-    userId,
-    inboundEmailId: emailId,
-    actionType: 'record_communication',
-    confidence: null,
-    details: { via: 'mark_sent', draftAuditLogId: draft.id },
-    resultingChanges: {
+    // Never move the date backwards: inbound emails store a UTC day, which
+    // can be a day ahead of the Pacific day in the evening, and a manually
+    // entered later date stays.
+    const today = pacificDay(now);
+    if (contact && !(contact.lastContactDate && contact.lastContactDate.slice(0, 10) >= today)) {
+      tx.update(contacts)
+        .set({ lastContactDate: today, updatedAt: timestamp })
+        .where(and(eq(contacts.id, contact.id), eq(contacts.userId, userId)))
+        .run();
+    }
+
+    const auditLogId = recordEmailAutomationAudit(tx, {
+      userId,
+      inboundEmailId: emailId,
+      actionType: 'record_communication',
+      confidence: null,
+      details: { via: 'mark_sent', draftAuditLogId: draft.id },
+      resultingChanges: {
+        communicationId,
+        applicationId: app.id,
+        contactId: contact?.id ?? null,
+      },
+    });
+
+    return {
+      status: 'logged',
       communicationId,
       applicationId: app.id,
       contactId: contact?.id ?? null,
-    },
+      auditLogId,
+    };
   });
-
-  return {
-    status: 'logged',
-    communicationId,
-    applicationId: app.id,
-    contactId: contact?.id ?? null,
-    auditLogId,
-  };
 }
 
 export function runEmailAutomation(

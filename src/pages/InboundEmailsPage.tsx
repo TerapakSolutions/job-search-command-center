@@ -92,6 +92,7 @@ export default function InboundEmailsPage() {
   const [showHtml, setShowHtml] = useState(false);
   const [automation, setAutomation] = useState<EmailAutomationAnalysis | null>(null);
   const applications = useJobSearchStore((s) => s.applications);
+  const refreshStoreData = useJobSearchStore((s) => s.refreshData);
   const [automationLoading, setAutomationLoading] = useState(false);
   const [automationRunning, setAutomationRunning] = useState(false);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
@@ -413,9 +414,13 @@ export default function InboundEmailsPage() {
         body: draftReply,
         to: draftReplyTo.to,
       });
+      // Reload contacts so the Today tab's reminders see the new
+      // last-contact date without a page reload.
+      void refreshStoreData();
       if (openEmailIdRef.current !== null && openEmailIdRef.current !== emailId) return;
       setMarkSent({ status: 'logged', contactMatched: result.contactId !== null });
     } catch (err) {
+      if (openEmailIdRef.current !== null && openEmailIdRef.current !== emailId) return;
       setMarkSent({ status: 'idle' });
       setError(err instanceof Error ? err.message : 'Failed to log the reply as sent');
     }

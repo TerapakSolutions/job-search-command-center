@@ -8,9 +8,10 @@ import * as emailAutomationClient from '../api/emailAutomationClient';
 
 jest.mock('../api/inboundEmailsClient');
 // The page reads the user's applications for the "Linked application" picker.
+const mockRefreshData = jest.fn().mockResolvedValue(undefined);
 jest.mock('../store/useJobSearchStore', () => ({
-  useJobSearchStore: (selector: (s: { applications: never[] }) => unknown) =>
-    selector({ applications: [] }),
+  useJobSearchStore: (selector: (s: { applications: never[]; refreshData: () => Promise<void> }) => unknown) =>
+    selector({ applications: [], refreshData: mockRefreshData }),
 }));
 jest.mock('../api/emailAutomationClient', () => ({
   fetchEmailAutomationAnalysis: jest.fn().mockResolvedValue({
@@ -482,6 +483,8 @@ describe('InboundEmailsPage', () => {
       const logged = await screen.findByRole('button', { name: /Logged as sent/i });
       expect((logged as HTMLButtonElement).disabled).toBe(true);
       expect(screen.getByText(/Follow-up timing restarts from today/i)).toBeTruthy();
+      // Today's reminders read contacts from the store, so it reloads.
+      expect(mockRefreshData).toHaveBeenCalled();
       await userEvent.click(logged);
       expect(mockMarkSent).toHaveBeenCalledTimes(1);
     });

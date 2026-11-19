@@ -5,6 +5,7 @@ import {
   recordEmailAutomationAudit,
   setEmailApplicationLink,
 } from './emailAutomationService.js';
+import { aggregateBriefingData } from './briefingAggregator.js';
 import { createTestDb, seedApplication, seedInboundEmail, seedTestUser } from './testDb.js';
 
 const USER_EMAIL = 'seeker@example.com';
@@ -192,5 +193,79 @@ describe('markReplySent', () => {
     const row = db.select().from(communications).all()[0];
     expect(row.subject).toHaveLength(500);
     expect(row.body).toHaveLength(5000);
+  });
+  // The point of #131: the briefing stops asking for a follow-up.
+  it('clears the "No recruiter reply" follow-up in the daily briefing', () => {
+    const { db, userId, emailId, draftId } = setup();
+    const before = aggregateBriefingData(db, userId, NOW).followUpNeeded;
+    expect(before).toHaveLength(1);
+    expect(before[0].reason).toMatch(/No recruiter reply in 9 days/);
+
+    markReplySent(db, userId, emailId, input(draftId), NOW);
+
+    expect(aggregateBriefingData(db, userId, NOW).followUpNeeded).toEqual([]);
+  });
+
+  it("falls back to the contact this email created when the address doesn't match", () => {
+    const { db, userId, appId, emailId, draftId } = setup();
+    // The recruiter wrote from a second address; the contact kept the first.
+    const contactId = seedContact(db, userId, appId, 'nick@agency.example', 'contact-2');
+    recordEmailAutomationAudit(db, {
+      userId,
+      inboundEmailId: emailId,
+      actionType: 'create_contact',
+      confidence: 90,
+      resultingChanges: { contactId, applicationId: appId, merged: true },
+    });
+
+    const result = markReplySent(db, userId, emailId, input(draftId, 'nick@new-firm.example'), NOW);
+
+    expect(result).toMatchObject({ status: 'logged', contactId });
+    const byId = Object.fromEntries(db.select().from(contacts).all().map((c) => [c.id, c.lastContactDate]));
+    expect(byId).toEqual({ 'contact-1': '2026-11-10', 'contact-2': '2026-11-19' });
+  });
+
+  it('ignores a created contact on a different application', () => {
+    const { db, userId, emailId, draftId } = setup();
+    const otherApp = seedApplication(db, userId, { id: 'app-2' });
+    const contactId = seedContact(db, userId, otherApp, 'nick@agency.example', 'contact-2');
+    recordEmailAutomationAudit(db, {
+      userId,
+      inboundEmailId: emailId,
+      actionType: 'create_contact',
+      confidence: 90,
+      resultingChanges: { contactId },
+    });
+
+    const result = markReplySent(db, userId, emailId, input(draftId, 'nick@new-firm.example'), NOW);
+
+    expect(result).toMatchObject({ status: 'logged', contactId: null });
+  });
+
+  it('never moves the last-contact date backwards', () => {
+    const { db, userId, emailId, contactId, draftId } = setup();
+    // An evening email stored as tomorrow's UTC day.
+    db.update(contacts).set({ lastContactDate: '2026-11-20' }).run();
+
+    const result = markReplySent(db, userId, emailId, input(draftId), NOW);
+
+    expect(result).toMatchObject({ status: 'logged', contactId });
+    expect(db.select().from(contacts).all()[0].lastContactDate).toBe('2026-11-20');
+  });
+
+  it('uses the Pacific day late in the evening', () => {
+    const { db, userId, emailId, draftId } = setup();
+
+    markReplySent(db, userId, emailId, input(draftId), new Date('2026-11-20T05:00:00.000Z'));
+
+    expect(db.select().from(contacts).all()[0].lastContactDate).toBe('2026-11-19');
+  });
+
+  it("falls back to a Re: of the email's subject when none is given", () => {
+    const { db, userId, emailId, draftId } = setup();
+
+    markReplySent(db, userId, emailId, { ...input(draftId), subject: '  ' }, NOW);
+
+    expect(db.select().from(communications).all()[0].subject).toBe('Re: Test subject');
   });
 });
