@@ -679,4 +679,43 @@ Please book a screen.`;
   ])('replySubjectFor(%p) is %p', (subject, expected) => {
     expect(replySubjectFor(subject)).toBe(expected);
   });
+
+  it('reduces a forward header with several addresses to one clean recipient', async () => {
+    mockOpenAi();
+    const db = createTestDb();
+    const userId = seedTestUser(db, { email: FORWARDER });
+    const body = `________________________________
+From: Nick Gasparro <nick@afresh.example, eve@other.example>
+Sent: Tuesday, 10 November 2026 22:33:00
+To: Steve Terapak <steve@terapak.com>
+Subject: Afresh Interview Request
+
+Please book a screen.`;
+    const emailId = seedInboundEmail(db, {
+      subject: 'Fw: Afresh Interview Request',
+      fromEmail: FORWARDER,
+      toEmail: FORWARDER,
+      payload: payload(body),
+    });
+
+    const result = await aiDraftReplyFromEmail(db, userId, emailId);
+
+    expect(result?.replyTo.email).toBe('nick@afresh.example');
+  });
+
+  it('leaves the recipient empty when the user wrote the only message and no one else is named', async () => {
+    mockOpenAi();
+    const db = createTestDb();
+    const userId = seedTestUser(db, { email: 'seeker@example.com' });
+    const emailId = seedInboundEmail(db, {
+      subject: 'Note to self',
+      fromEmail: 'seeker@example.com',
+      toEmail: 'seeker@example.com',
+      payload: payload('Remember to follow up.', 'Sam Seeker'),
+    });
+
+    const result = await aiDraftReplyFromEmail(db, userId, emailId);
+
+    expect(result?.replyTo.email).toBeNull();
+  });
 });

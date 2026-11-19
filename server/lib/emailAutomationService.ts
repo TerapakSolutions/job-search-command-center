@@ -1306,12 +1306,13 @@ export async function aiDraftReplyFromEmail(
     lastMessageFromUser = Boolean(recipientEmail && selfEmails.has(recipientEmail));
   } else {
     recipientName = fwd.originalSenderName;
-    recipientEmail = fwd.originalSenderEmail?.trim().toLowerCase() ?? null;
+    // One clean address: the header can hold a name only, several
+    // addresses, or junk around the address.
+    const raw = fwd.originalSenderEmail?.trim() ?? '';
+    recipientEmail = emailAddressesIn(raw)[0] ?? null;
     lastMessageFromUser = fwd.topMessageFromForwarder;
-    // A name-only header can come back in the email field.
-    if (recipientEmail && !emailAddressesIn(recipientEmail)[0]) {
-      recipientName = recipientName ?? fwd.originalSenderEmail?.trim() ?? null;
-      recipientEmail = null;
+    if (!recipientEmail && raw) {
+      recipientName = recipientName ?? raw;
     }
   }
   if (recipientEmail && selfEmails.has(recipientEmail)) {

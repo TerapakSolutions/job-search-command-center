@@ -22,4 +22,12 @@ describe('outlookComposeUrl', () => {
     expect(url.searchParams.has('subject')).toBe(false);
     expect(url.searchParams.get('body')).toBe('Hi');
   });
+
+  it('round-trips line breaks, non-ASCII, % and #', () => {
+    const body = 'Hi José,\r\n\r\n100% sure — ticket #42?\nSteve';
+    const url = new URL(outlookComposeUrl({ to: 'a@b.example', subject: 'Re: Café #1', body }));
+    expect(url.hash).toBe('');
+    expect(url.searchParams.get('body')).toBe(body);
+    expect(url.searchParams.get('subject')).toBe('Re: Café #1');
+  });
 });

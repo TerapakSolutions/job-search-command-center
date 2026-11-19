@@ -74,6 +74,8 @@ export default function InboundEmailsPage() {
   const [searchParams] = useSearchParams();
   const linkedEmailId = searchParams.get('email');
   const detailRef = useRef<HTMLElement>(null);
+  // The email on screen, so a late Draft reply answer for another email is dropped.
+  const openEmailIdRef = useRef<string | null>(null);
   const [detail, setDetail] = useState<InboundEmailDetail | null>(null);
   const [loading, setLoading] = useState(!demoMode);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -149,10 +151,12 @@ export default function InboundEmailsPage() {
   }, [loadList]);
 
   const loadDetail = useCallback(async (id: string) => {
+    openEmailIdRef.current = id;
     setDetailLoading(true);
     setError(null);
     setAutomation(null);
     setDraftReply(null);
+    setDraftReplyTo({ to: null, subject: null });
     setActionMessage(null);
     setSelectedMatchId(null);
     try {
@@ -372,7 +376,9 @@ export default function InboundEmailsPage() {
     if (!detail) return;
     setAutomationRunning(true);
     try {
-      const result = await draftReplyFromEmail(detail.id);
+      const emailId = detail.id;
+      const result = await draftReplyFromEmail(emailId);
+      if (openEmailIdRef.current !== null && openEmailIdRef.current !== emailId) return;
       setDraftReply(result.draft);
       setDraftReplyTo({ to: result.replyTo?.email ?? null, subject: result.replySubject ?? null });
       setActionMessage('Draft reply generated');
@@ -1170,9 +1176,9 @@ export default function InboundEmailsPage() {
                               Open in Outlook
                             </a>
                             <p className="mt-1 text-[11px] text-gray-500">
-                              Opens a new message in Outlook on the web for you to edit and send. The app
-                              doesn&apos;t get access to your mailbox. The message opens outside the
-                              original email thread.
+                              Opens a new message in Outlook on the web (work or school accounts) for you
+                              to edit and send. The app doesn&apos;t get access to your mailbox. The
+                              message opens outside the original email thread.
                             </p>
                           </div>
                         )}
