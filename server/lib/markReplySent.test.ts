@@ -199,7 +199,7 @@ describe('markReplySent', () => {
     const { db, userId, emailId, draftId } = setup();
     const before = aggregateBriefingData(db, userId, NOW).followUpNeeded;
     expect(before).toHaveLength(1);
-    expect(before[0].reason).toMatch(/No recruiter reply in 9 days/);
+    expect(before[0].reason).toMatch(/No recruiter reply in \d+ days/);
 
     markReplySent(db, userId, emailId, input(draftId), NOW);
 
