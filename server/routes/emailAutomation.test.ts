@@ -82,6 +82,9 @@ describe('email automation API', () => {
     expect(analysis.matches.bestMatch?.applicationId).toBe(appId);
     expect(analysis.nextActions.length).toBeGreaterThan(0);
 
+    // No AI key, so the route takes the template path without a real call.
+    const savedKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
     const draftRes = await fetch(
       `${baseUrl}/api/inbound-emails/${emailId}/automation/draft-reply`,
       {
@@ -91,8 +94,10 @@ describe('email automation API', () => {
       },
     );
     expect(draftRes.status).toBe(200);
-    const draft = (await draftRes.json()) as { draft: string };
+    if (savedKey !== undefined) process.env.OPENAI_API_KEY = savedKey;
+    const draft = (await draftRes.json()) as { draft: string; source: string };
     expect(draft.draft).toContain('Hi');
+    expect(draft.source).toBe('template');
 
     const dashboardRes = await fetch(`${baseUrl}/api/email-automation/dashboard`, {
       headers: { Cookie: cookie },
