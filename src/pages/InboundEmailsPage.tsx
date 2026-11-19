@@ -627,8 +627,8 @@ export default function InboundEmailsPage() {
           ) : detail ? (
             <>
               <div className="px-5 py-4 border-b space-y-2">
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                  <div>
+                <div className="flex flex-col gap-3">
+                  <div className="min-w-0">
                     <h3 className="text-lg font-semibold text-gray-900">
                       {detail.subject || '(No subject)'}
                     </h3>
@@ -642,7 +642,7 @@ export default function InboundEmailsPage() {
                         ` · Originally sent ${formatReceivedAt(detail.forwarded.originalSentAt)}`}
                     </p>
                   </div>
-                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-end gap-2 shrink-0">
+                  <div className="flex flex-wrap items-start gap-2">
                     <span
                       className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border ${processingStatusBadgeClass(detail.processingStatus, detail.needsApproval)}`}
                     >
