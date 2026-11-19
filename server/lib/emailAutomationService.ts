@@ -141,7 +141,8 @@ export function setEmailApplicationLink(
 }
 
 export function recordEmailAutomationAudit(
-  db: Db,
+  // Db or a transaction on it; only insert is used.
+  db: Pick<Db, 'insert'>,
   input: {
     userId: string;
     inboundEmailId: string;
@@ -1395,6 +1396,184 @@ export async function aiDraftReplyFromEmail(
 export function replySubjectFor(subject: string): string {
   const base = subject.replace(/^\s*((re|fw|fwd)\s*:\s*)+/i, '').trim();
   return base ? `Re: ${base}` : 'Re:';
+}
+
+export type MarkReplySentResult =
+  | { status: 'not_found' }
+  | { status: 'invalid_draft' }
+  | { status: 'no_application' }
+  | {
+      status: 'logged' | 'already_logged';
+      communicationId: string;
+      applicationId: string;
+      contactId: string | null;
+      auditLogId: string;
+    };
+
+const MAX_SENT_SUBJECT = 500;
+const MAX_SENT_BODY = 5000;
+
+// "Mark as sent" (#131): the user says the drafted reply went out, so log it
+// as an outbound email on the linked application and restart the contact's
+// follow-up clock. Nothing touches the mailbox; the click is the record.
+// Logged once per draft: a second click for the same draft returns the first
+// entry. Synchronous throughout, so two clicks can't both log.
+// Known limit: the logged body is the draft, not any edits made in Outlook.
+export function markReplySent(
+  db: Db,
+  userId: string,
+  emailId: string,
+  input: { draftAuditLogId: string; subject: string; body: string; to: string | null },
+  now: Date = new Date(),
+): MarkReplySentResult {
+  const row = getEmailForUser(db, userId, emailId);
+  if (!row) return { status: 'not_found' };
+
+  // The draft must be one this user made for this email.
+  const draft = db
+    .select({ id: emailAutomationAuditLog.id })
+    .from(emailAutomationAuditLog)
+    .where(
+      and(
+        eq(emailAutomationAuditLog.id, input.draftAuditLogId),
+        eq(emailAutomationAuditLog.userId, userId),
+        eq(emailAutomationAuditLog.inboundEmailId, emailId),
+        eq(emailAutomationAuditLog.actionType, 'draft_reply'),
+      ),
+    )
+    .get();
+  if (!draft) return { status: 'invalid_draft' };
+
+  // One transaction: the check for an earlier log and the three writes
+  // land together, so a failed audit write can't leave an unlogged row that
+  // a retry would duplicate.
+  return db.transaction((tx): MarkReplySentResult => {
+    const earlier = tx
+      .select()
+      .from(emailAutomationAuditLog)
+      .where(
+        and(
+          eq(emailAutomationAuditLog.userId, userId),
+          eq(emailAutomationAuditLog.inboundEmailId, emailId),
+          eq(emailAutomationAuditLog.actionType, 'record_communication'),
+        ),
+      )
+      .all()
+      .find((r) => {
+        try {
+          return (JSON.parse(r.detailsJson) as { draftAuditLogId?: string }).draftAuditLogId === draft.id;
+        } catch {
+          return false;
+        }
+      });
+    if (earlier) {
+      const changes = JSON.parse(earlier.resultingChangesJson) as {
+        communicationId: string;
+        applicationId: string;
+        contactId: string | null;
+      };
+      return { status: 'already_logged', ...changes, auditLogId: earlier.id };
+    }
+
+    // Only the user's explicit link, never a fuzzy match.
+    const app = tx
+      .select({ id: applications.id })
+      .from(emailApplicationLinks)
+      .innerJoin(applications, eq(applications.id, emailApplicationLinks.applicationId))
+      .where(
+        and(
+          eq(emailApplicationLinks.userId, userId),
+          eq(emailApplicationLinks.inboundEmailId, emailId),
+          eq(applications.userId, userId),
+        ),
+      )
+      .get();
+    if (!app) return { status: 'no_application' };
+
+    // The contact on this application with the address the reply went to.
+    // Failing that, the contact this email created or merged into (a
+    // recruiter writing from a second address keeps their first one).
+    // Known limit: a reply sent to someone else on the thread (a hiring
+    // manager, say) then restarts that contact's clock too.
+    const appContacts = tx
+      .select({ id: contacts.id, email: contacts.email, lastContactDate: contacts.lastContactDate })
+      .from(contacts)
+      .where(and(eq(contacts.userId, userId), eq(contacts.applicationId, app.id)))
+      .all();
+    const to = emailAddressesIn(input.to ?? '')[0] ?? null;
+    const createdIds = tx
+      .select({ resultingChangesJson: emailAutomationAuditLog.resultingChangesJson })
+      .from(emailAutomationAuditLog)
+      .where(
+        and(
+          eq(emailAutomationAuditLog.userId, userId),
+          eq(emailAutomationAuditLog.inboundEmailId, emailId),
+          eq(emailAutomationAuditLog.actionType, 'create_contact'),
+          eq(emailAutomationAuditLog.status, 'completed'),
+        ),
+      )
+      .all()
+      .map((r) => {
+        try {
+          return (JSON.parse(r.resultingChangesJson) as { contactId?: string }).contactId ?? null;
+        } catch {
+          return null;
+        }
+      });
+    const contact =
+      (to ? appContacts.find((c) => c.email.trim().toLowerCase() === to) : undefined) ??
+      appContacts.find((c) => createdIds.includes(c.id));
+
+    const timestamp = now.toISOString();
+    const communicationId = createId();
+    tx.insert(communications)
+      .values({
+        id: communicationId,
+        userId,
+        applicationId: app.id,
+        contactId: contact?.id ?? null,
+        channel: 'email',
+        direction: 'outbound',
+        subject: (input.subject.trim() || replySubjectFor(row.subject)).slice(0, MAX_SENT_SUBJECT),
+        body: input.body.slice(0, MAX_SENT_BODY),
+        occurredAt: timestamp,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .run();
+
+    // Never move the date backwards: inbound emails store a UTC day, which
+    // can be a day ahead of the Pacific day in the evening, and a manually
+    // entered later date stays.
+    const today = pacificDay(now);
+    if (contact && !(contact.lastContactDate && contact.lastContactDate.slice(0, 10) >= today)) {
+      tx.update(contacts)
+        .set({ lastContactDate: today, updatedAt: timestamp })
+        .where(and(eq(contacts.id, contact.id), eq(contacts.userId, userId)))
+        .run();
+    }
+
+    const auditLogId = recordEmailAutomationAudit(tx, {
+      userId,
+      inboundEmailId: emailId,
+      actionType: 'record_communication',
+      confidence: null,
+      details: { via: 'mark_sent', draftAuditLogId: draft.id },
+      resultingChanges: {
+        communicationId,
+        applicationId: app.id,
+        contactId: contact?.id ?? null,
+      },
+    });
+
+    return {
+      status: 'logged',
+      communicationId,
+      applicationId: app.id,
+      contactId: contact?.id ?? null,
+      auditLogId,
+    };
+  });
 }
 
 export function runEmailAutomation(

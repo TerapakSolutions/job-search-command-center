@@ -147,4 +147,60 @@ describe('email automation API', () => {
 
     await close();
   });
+  it('marks a drafted reply as sent: draft first, then link, then log once', async () => {
+    const db = createTestDb();
+    const userId = seedTestUser(db, { email: 'seeker@example.com' });
+    const appId = seedApplication(db, userId, { id: 'app-sent', status: 'recruiter_screen' });
+    const emailId = seedInboundEmail(db, {
+      id: 'email-sent',
+      toEmail: 'seeker@example.com',
+      fromEmail: 'recruiter@acme.com',
+      classification: 'Interview Request',
+    });
+    const { baseUrl, close } = await startServer(db);
+    const cookie = `session=${encodeURIComponent(createSessionToken(userId))}`;
+    const post = (path: string, body: unknown) =>
+      fetch(`${baseUrl}/api/inbound-emails/${emailId}/automation/${path}`, {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+    const savedKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const draft = (await (await post('draft-reply', {})).json()) as { auditLogId: string; draft: string };
+    if (savedKey !== undefined) process.env.OPENAI_API_KEY = savedKey;
+    const sent = { draftAuditLogId: draft.auditLogId, subject: 'Re: Hi', body: draft.draft, to: 'recruiter@acme.com' };
+
+    expect((await post('mark-sent', { subject: 'x', body: 'y' })).status).toBe(400);
+    expect((await post('mark-sent', { ...sent, body: '  ' })).status).toBe(400);
+    expect((await post('mark-sent', { ...sent, draftAuditLogId: 'nope' })).status).toBe(400);
+    expect((await post('mark-sent', sent)).status).toBe(409);
+
+    const link = await fetch(`${baseUrl}/api/inbound-emails/${emailId}/link`, {
+      method: 'PUT',
+      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ applicationId: appId }),
+    });
+    expect(link.status).toBe(200);
+
+    const first = await post('mark-sent', sent);
+    expect(first.status).toBe(200);
+    expect(((await first.json()) as { status: string }).status).toBe('logged');
+    const second = await post('mark-sent', sent);
+    expect(((await second.json()) as { status: string }).status).toBe('already_logged');
+
+    const otherUser = seedTestUser(db, { id: 'user-other', email: 'other@example.com' });
+    const otherRes = await fetch(`${baseUrl}/api/inbound-emails/${emailId}/automation/mark-sent`, {
+      method: 'POST',
+      headers: {
+        Cookie: `session=${encodeURIComponent(createSessionToken(otherUser))}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(sent),
+    });
+    expect(otherRes.status).toBe(404);
+
+    await close();
+  });
 });

@@ -62,6 +62,16 @@ export interface DraftReplyResponse {
   replySubject?: string;
 }
 
+export interface MarkReplySentResponse {
+  status: 'logged' | 'already_logged';
+  communicationId: string;
+  applicationId: string;
+  // Null when no contact on the application has the address the reply went
+  // to; then follow-up timing doesn't change.
+  contactId: string | null;
+  auditLogId: string;
+}
+
 export interface AuditLogEntry {
   id: string;
   inboundEmailId: string;

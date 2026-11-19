@@ -4,12 +4,14 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import InboundEmailsPage from './InboundEmailsPage';
 import * as inboundEmailsClient from '../api/inboundEmailsClient';
+import * as emailAutomationClient from '../api/emailAutomationClient';
 
 jest.mock('../api/inboundEmailsClient');
 // The page reads the user's applications for the "Linked application" picker.
+const mockRefreshData = jest.fn().mockResolvedValue(undefined);
 jest.mock('../store/useJobSearchStore', () => ({
-  useJobSearchStore: (selector: (s: { applications: never[] }) => unknown) =>
-    selector({ applications: [] }),
+  useJobSearchStore: (selector: (s: { applications: never[]; refreshData: () => Promise<void> }) => unknown) =>
+    selector({ applications: [], refreshData: mockRefreshData }),
 }));
 jest.mock('../api/emailAutomationClient', () => ({
   fetchEmailAutomationAnalysis: jest.fn().mockResolvedValue({
@@ -45,6 +47,7 @@ jest.mock('../api/emailAutomationClient', () => ({
   createContactFromEmail: jest.fn(),
   updatePipelineFromEmail: jest.fn(),
   draftReplyFromEmail: jest.fn(),
+  markReplySent: jest.fn(),
 }));
 jest.mock('../api/persistence', () => ({
   isDemoMode: () => false,
@@ -431,5 +434,66 @@ describe('InboundEmailsPage', () => {
     );
 
     confirmSpy.mockRestore();
+  });
+  describe('Mark as sent (#131)', () => {
+    const mockAnalysis = jest.mocked(emailAutomationClient.fetchEmailAutomationAnalysis);
+    const mockDraft = jest.mocked(emailAutomationClient.draftReplyFromEmail);
+    const mockMarkSent = jest.mocked(emailAutomationClient.markReplySent);
+
+    async function openDraft(linkedApplicationId: string | null) {
+      const base = await mockAnalysis.getMockImplementation()!('email-1');
+      mockAnalysis.mockResolvedValue({
+        ...base,
+        matches: { ...base.matches, linkedApplicationId },
+      });
+      mockDraft.mockResolvedValue({
+        draft: 'Hi Jane,\n\nChecking in.\n\nSam',
+        auditLogId: 'audit-draft-1',
+        replyTo: { name: 'Jane', email: 'recruiter@acme.com' },
+        replySubject: 'Re: Interview invite',
+      });
+      render(
+        <MemoryRouter>
+          <InboundEmailsPage />
+        </MemoryRouter>,
+      );
+      await userEvent.click(await screen.findByRole('button', { name: /recruiter@acme.com/i }));
+      await userEvent.click(await screen.findByRole('button', { name: /Draft reply/i }));
+      return screen.findByRole('button', { name: /Mark as sent/i });
+    }
+
+    it('logs the draft once and says the follow-up clock restarted', async () => {
+      mockMarkSent.mockResolvedValue({
+        status: 'logged',
+        communicationId: 'comm-1',
+        applicationId: 'app-1',
+        contactId: 'contact-1',
+        auditLogId: 'audit-sent-1',
+      });
+      const button = await openDraft('app-1');
+
+      await userEvent.click(button);
+
+      expect(mockMarkSent).toHaveBeenCalledWith('email-1', {
+        draftAuditLogId: 'audit-draft-1',
+        subject: 'Re: Interview invite',
+        body: 'Hi Jane,\n\nChecking in.\n\nSam',
+        to: 'recruiter@acme.com',
+      });
+      const logged = await screen.findByRole('button', { name: /Logged as sent/i });
+      expect((logged as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByText(/Follow-up timing restarts from today/i)).toBeTruthy();
+      // Today's reminders read contacts from the store, so it reloads.
+      expect(mockRefreshData).toHaveBeenCalled();
+      await userEvent.click(logged);
+      expect(mockMarkSent).toHaveBeenCalledTimes(1);
+    });
+
+    it('is disabled until the email is linked to an application', async () => {
+      const button = await openDraft(null);
+
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByText(/Link this email to an application first/i)).toBeTruthy();
+    });
   });
 });
