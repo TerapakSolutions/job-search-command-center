@@ -5,6 +5,7 @@ import {
   createApplicationFromEmail,
   createContactFromEmail,
   aiDraftReplyFromEmail,
+  markReplySent,
   listAuditLogForInboundEmail,
   runEmailAutomation,
   setEmailApplicationLink,
@@ -286,6 +287,45 @@ export function inboundEmailsRouter(db: Db): Router {
       return;
     }
     res.json(result);
+  });
+
+  // "Mark as sent" (#131): log a drafted reply the user sent from their own
+  // mail client. No mailbox access; the click is the record.
+  router.post('/:id/automation/mark-sent', (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const id = String(req.params.id);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const { draftAuditLogId, subject, body: text, to } = body;
+    if (
+      typeof draftAuditLogId !== 'string' ||
+      !draftAuditLogId ||
+      typeof subject !== 'string' ||
+      typeof text !== 'string' ||
+      !text.trim() ||
+      (to !== undefined && to !== null && typeof to !== 'string')
+    ) {
+      res.status(400).json({ error: 'draftAuditLogId, subject and body are required' });
+      return;
+    }
+    const result = markReplySent(db, userId, id, {
+      draftAuditLogId,
+      subject,
+      body: text,
+      to: typeof to === 'string' ? to : null,
+    });
+    switch (result.status) {
+      case 'not_found':
+        res.status(404).json({ error: 'Not found' });
+        return;
+      case 'invalid_draft':
+        res.status(400).json({ error: 'Draft a reply for this email first' });
+        return;
+      case 'no_application':
+        res.status(409).json({ error: 'Link this email to an application first' });
+        return;
+      default:
+        res.json(result);
+    }
   });
 
   router.post('/:id/automation/run', (req: Request, res: Response) => {

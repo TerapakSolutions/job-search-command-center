@@ -17,6 +17,7 @@ import {
   createApplicationFromEmail,
   createContactFromEmail,
   draftReplyFromEmail,
+  markReplySent,
   fetchEmailAutomationAnalysis,
   rejectPendingAutomation,
   runEmailAutomation,
@@ -100,6 +101,11 @@ export default function InboundEmailsPage() {
     to: null,
     subject: null,
   });
+  // The draft's audit id, so Mark as sent logs this exact draft once (#131).
+  const [draftAuditLogId, setDraftAuditLogId] = useState<string | null>(null);
+  const [markSent, setMarkSent] = useState<
+    { status: 'idle' | 'saving' } | { status: 'logged'; contactMatched: boolean }
+  >({ status: 'idle' });
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [resolvingApprovalId, setResolvingApprovalId] = useState<string | null>(null);
@@ -159,6 +165,8 @@ export default function InboundEmailsPage() {
     setAutomation(null);
     setDraftReply(null);
     setDraftReplyTo({ to: null, subject: null });
+    setDraftAuditLogId(null);
+    setMarkSent({ status: 'idle' });
     setActionMessage(null);
     setSelectedMatchId(null);
     try {
@@ -383,11 +391,33 @@ export default function InboundEmailsPage() {
       if (openEmailIdRef.current !== null && openEmailIdRef.current !== emailId) return;
       setDraftReply(result.draft);
       setDraftReplyTo({ to: result.replyTo?.email ?? null, subject: result.replySubject ?? null });
+      setDraftAuditLogId(result.auditLogId);
+      setMarkSent({ status: 'idle' });
       setActionMessage('Draft reply generated');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to draft reply');
     } finally {
       setAutomationRunning(false);
+    }
+  };
+
+  const handleMarkSent = async () => {
+    if (!detail || !draftReply || !draftAuditLogId || markSent.status !== 'idle') return;
+    const emailId = detail.id;
+    setMarkSent({ status: 'saving' });
+    setError(null);
+    try {
+      const result = await markReplySent(emailId, {
+        draftAuditLogId,
+        subject: draftReplyTo.subject ?? detail.subject,
+        body: draftReply,
+        to: draftReplyTo.to,
+      });
+      if (openEmailIdRef.current !== null && openEmailIdRef.current !== emailId) return;
+      setMarkSent({ status: 'logged', contactMatched: result.contactId !== null });
+    } catch (err) {
+      setMarkSent({ status: 'idle' });
+      setError(err instanceof Error ? err.message : 'Failed to log the reply as sent');
     }
   };
 
@@ -430,6 +460,8 @@ export default function InboundEmailsPage() {
       setDetail(null);
       setAutomation(null);
       setDraftReply(null);
+      setDraftAuditLogId(null);
+      setMarkSent({ status: 'idle' });
       setShowAuditLog(false);
       setAuditLog([]);
       await loadList();
@@ -1178,6 +1210,35 @@ export default function InboundEmailsPage() {
                               <FiExternalLink size={12} />
                               Open in Outlook
                             </a>
+                            <button
+                              type="button"
+                              onClick={() => void handleMarkSent()}
+                              disabled={
+                                markSent.status !== 'idle' ||
+                                !draftAuditLogId ||
+                                !automation.matches.linkedApplicationId
+                              }
+                              className="mt-2 ml-2 inline-flex items-center gap-1 px-2.5 py-1 text-xs border rounded-lg hover:bg-white disabled:opacity-60"
+                            >
+                              <FiCheck size={12} />
+                              {markSent.status === 'logged'
+                                ? 'Logged as sent'
+                                : markSent.status === 'saving'
+                                  ? 'Logging…'
+                                  : 'Mark as sent'}
+                            </button>
+                            {!automation.matches.linkedApplicationId && (
+                              <p className="mt-1 text-[11px] text-gray-500">
+                                Link this email to an application first to log the reply as sent.
+                              </p>
+                            )}
+                            {markSent.status === 'logged' && (
+                              <p className="mt-1 text-[11px] text-gray-500">
+                                {markSent.contactMatched
+                                  ? 'Logged on the application. Follow-up timing restarts from today.'
+                                  : 'Logged on the application. No contact on it has this address, so follow-up timing didn\u2019t change.'}
+                              </p>
+                            )}
                             <p className="mt-1 text-[11px] text-gray-500">
                               Opens a new message in Outlook on the web (work or school accounts) for you
                               to edit and send. The app doesn&apos;t get access to your mailbox. The

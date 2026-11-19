@@ -1397,6 +1397,151 @@ export function replySubjectFor(subject: string): string {
   return base ? `Re: ${base}` : 'Re:';
 }
 
+export type MarkReplySentResult =
+  | { status: 'not_found' }
+  | { status: 'invalid_draft' }
+  | { status: 'no_application' }
+  | {
+      status: 'logged' | 'already_logged';
+      communicationId: string;
+      applicationId: string;
+      contactId: string | null;
+      auditLogId: string;
+    };
+
+const MAX_SENT_SUBJECT = 500;
+const MAX_SENT_BODY = 5000;
+
+// "Mark as sent" (#131): the user says the drafted reply went out, so log it
+// as an outbound email on the linked application and restart the contact's
+// follow-up clock. Nothing touches the mailbox; the click is the record.
+// Logged once per draft: a second click for the same draft returns the first
+// entry. Synchronous throughout, so two clicks can't both log.
+export function markReplySent(
+  db: Db,
+  userId: string,
+  emailId: string,
+  input: { draftAuditLogId: string; subject: string; body: string; to: string | null },
+  now: Date = new Date(),
+): MarkReplySentResult {
+  const row = getEmailForUser(db, userId, emailId);
+  if (!row) return { status: 'not_found' };
+
+  // The draft must be one this user made for this email.
+  const draft = db
+    .select({ id: emailAutomationAuditLog.id })
+    .from(emailAutomationAuditLog)
+    .where(
+      and(
+        eq(emailAutomationAuditLog.id, input.draftAuditLogId),
+        eq(emailAutomationAuditLog.userId, userId),
+        eq(emailAutomationAuditLog.inboundEmailId, emailId),
+        eq(emailAutomationAuditLog.actionType, 'draft_reply'),
+      ),
+    )
+    .get();
+  if (!draft) return { status: 'invalid_draft' };
+
+  const earlier = db
+    .select()
+    .from(emailAutomationAuditLog)
+    .where(
+      and(
+        eq(emailAutomationAuditLog.userId, userId),
+        eq(emailAutomationAuditLog.inboundEmailId, emailId),
+        eq(emailAutomationAuditLog.actionType, 'record_communication'),
+      ),
+    )
+    .all()
+    .find((r) => {
+      try {
+        return (JSON.parse(r.detailsJson) as { draftAuditLogId?: string }).draftAuditLogId === draft.id;
+      } catch {
+        return false;
+      }
+    });
+  if (earlier) {
+    const changes = JSON.parse(earlier.resultingChangesJson) as {
+      communicationId: string;
+      applicationId: string;
+      contactId: string | null;
+    };
+    return { status: 'already_logged', ...changes, auditLogId: earlier.id };
+  }
+
+  // Only the user's explicit link, never a fuzzy match.
+  const app = db
+    .select({ id: applications.id })
+    .from(emailApplicationLinks)
+    .innerJoin(applications, eq(applications.id, emailApplicationLinks.applicationId))
+    .where(
+      and(
+        eq(emailApplicationLinks.userId, userId),
+        eq(emailApplicationLinks.inboundEmailId, emailId),
+        eq(applications.userId, userId),
+      ),
+    )
+    .get();
+  if (!app) return { status: 'no_application' };
+
+  // The contact on this application with the address the reply went to.
+  const to = emailAddressesIn(input.to ?? '')[0] ?? null;
+  const contact = to
+    ? db
+        .select({ id: contacts.id, email: contacts.email })
+        .from(contacts)
+        .where(and(eq(contacts.userId, userId), eq(contacts.applicationId, app.id)))
+        .all()
+        .find((c) => c.email.trim().toLowerCase() === to)
+    : undefined;
+
+  const timestamp = now.toISOString();
+  const communicationId = createId();
+  db.insert(communications)
+    .values({
+      id: communicationId,
+      userId,
+      applicationId: app.id,
+      contactId: contact?.id ?? null,
+      channel: 'email',
+      direction: 'outbound',
+      subject: input.subject.trim().slice(0, MAX_SENT_SUBJECT),
+      body: input.body.slice(0, MAX_SENT_BODY),
+      occurredAt: timestamp,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    .run();
+
+  if (contact) {
+    db.update(contacts)
+      .set({ lastContactDate: pacificDay(now), updatedAt: timestamp })
+      .where(and(eq(contacts.id, contact.id), eq(contacts.userId, userId)))
+      .run();
+  }
+
+  const auditLogId = recordAuditLog(db, {
+    userId,
+    inboundEmailId: emailId,
+    actionType: 'record_communication',
+    confidence: null,
+    details: { via: 'mark_sent', draftAuditLogId: draft.id },
+    resultingChanges: {
+      communicationId,
+      applicationId: app.id,
+      contactId: contact?.id ?? null,
+    },
+  });
+
+  return {
+    status: 'logged',
+    communicationId,
+    applicationId: app.id,
+    contactId: contact?.id ?? null,
+    auditLogId,
+  };
+}
+
 export function runEmailAutomation(
   db: Db,
   userId: string,

@@ -3,6 +3,7 @@ import type {
   AutomationDashboardSummary,
   AuditLogEntry,
   DraftReplyResponse,
+  MarkReplySentResponse,
   EmailAutomationAnalysis,
   PendingApprovalEntry,
   RunAutomationResponse,
@@ -60,6 +61,16 @@ export async function draftReplyFromEmail(
   return request<DraftReplyResponse>(
     `/inbound-emails/${emailId}/automation/draft-reply`,
     { method: 'POST', body: JSON.stringify({}) },
+  );
+}
+
+export async function markReplySent(
+  emailId: string,
+  input: { draftAuditLogId: string; subject: string; body: string; to: string | null },
+): Promise<MarkReplySentResponse> {
+  return request<MarkReplySentResponse>(
+    `/inbound-emails/${emailId}/automation/mark-sent`,
+    { method: 'POST', body: JSON.stringify(input) },
   );
 }
 
