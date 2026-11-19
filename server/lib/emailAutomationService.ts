@@ -1252,6 +1252,9 @@ export async function aiDraftReplyFromEmail(
       source: ReplyDraftResult['source'];
       pausedReason?: ReplyDraftResult['pausedReason'];
       auditLogId: string;
+      // Who the reply goes to and its subject, for "Open in Outlook".
+      replyTo: { name: string | null; email: string | null };
+      replySubject: string;
     }
   | null
 > {
@@ -1303,12 +1306,13 @@ export async function aiDraftReplyFromEmail(
     lastMessageFromUser = Boolean(recipientEmail && selfEmails.has(recipientEmail));
   } else {
     recipientName = fwd.originalSenderName;
-    recipientEmail = fwd.originalSenderEmail?.trim().toLowerCase() ?? null;
+    // One clean address: the header can hold a name only, several
+    // addresses, or junk around the address.
+    const raw = fwd.originalSenderEmail?.trim() ?? '';
+    recipientEmail = emailAddressesIn(raw)[0] ?? null;
     lastMessageFromUser = fwd.topMessageFromForwarder;
-    // A name-only header can come back in the email field.
-    if (recipientEmail && !emailAddressesIn(recipientEmail)[0]) {
-      recipientName = recipientName ?? fwd.originalSenderEmail?.trim() ?? null;
-      recipientEmail = null;
+    if (!recipientEmail && raw) {
+      recipientName = recipientName ?? raw;
     }
   }
   if (recipientEmail && selfEmails.has(recipientEmail)) {
@@ -1382,7 +1386,15 @@ export async function aiDraftReplyFromEmail(
     source: result.source,
     ...(result.pausedReason ? { pausedReason: result.pausedReason } : {}),
     auditLogId,
+    replyTo: { name: recipientName, email: recipientEmail },
+    replySubject: replySubjectFor(input.subject),
   };
+}
+
+// "Re: <subject>", without stacking a second Re: or keeping a forward's Fw:.
+export function replySubjectFor(subject: string): string {
+  const base = subject.replace(/^\s*((re|fw|fwd)\s*:\s*)+/i, '').trim();
+  return base ? `Re: ${base}` : 'Re:';
 }
 
 export function runEmailAutomation(

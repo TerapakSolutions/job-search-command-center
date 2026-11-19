@@ -58,6 +58,8 @@ export interface RunAutomationResponse {
 export interface DraftReplyResponse {
   draft: string;
   auditLogId: string;
+  replyTo?: { name: string | null; email: string | null };
+  replySubject?: string;
 }
 
 export interface AuditLogEntry {

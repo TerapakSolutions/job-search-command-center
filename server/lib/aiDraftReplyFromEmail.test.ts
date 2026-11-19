@@ -10,6 +10,7 @@ import { outlookOutboundTopNoNote } from './__fixtures__/outlookOutboundTopMessa
 import {
   AI_DRAFTS_PER_USER_PER_DAY,
   aiDraftReplyFromEmail,
+  replySubjectFor,
   setEmailApplicationLink,
 } from './emailAutomationService.js';
 import { createTestDb, seedApplication, seedInboundEmail, seedTestUser } from './testDb.js';
@@ -624,5 +625,97 @@ Checking in on next steps.`;
       const flags = prompts.map((p) => (p.application as { movedOnSinceEmail: boolean }).movedOnSinceEmail);
       expect(flags).toEqual([true, false]);
     });
+  });
+});
+
+describe('reply addressing for Open in Outlook (#127)', () => {
+  it('returns who the reply goes to and a Re: subject', async () => {
+    mockOpenAi();
+    const db = createTestDb();
+    const userId = seedTestUser(db, { email: 'seeker@example.com' });
+    const emailId = seedInboundEmail(db, {
+      subject: 'Afresh Interview Request',
+      fromEmail: 'nick@afresh.example',
+      toEmail: 'seeker@example.com',
+      payload: payload('Hi Sam, are you free?', 'Nick Gasparro'),
+    });
+
+    const result = await aiDraftReplyFromEmail(db, userId, emailId);
+
+    expect(result?.replyTo).toEqual({ name: 'Nick Gasparro', email: 'nick@afresh.example' });
+    expect(result?.replySubject).toBe('Re: Afresh Interview Request');
+  });
+
+  it("addresses the user's forward to the original sender, never the user", async () => {
+    mockOpenAi();
+    const db = createTestDb();
+    const userId = seedTestUser(db, { email: FORWARDER });
+    const body = `________________________________
+From: Nick Gasparro <nick@afresh.example>
+Sent: Tuesday, 10 November 2026 22:33:00
+To: Steve Terapak <steve@terapak.com>
+Subject: Afresh Interview Request
+
+Please book a screen.`;
+    const emailId = seedInboundEmail(db, {
+      subject: 'Fw: Afresh Interview Request',
+      fromEmail: FORWARDER,
+      toEmail: FORWARDER,
+      payload: payload(body),
+    });
+
+    const result = await aiDraftReplyFromEmail(db, userId, emailId);
+
+    expect(result?.replyTo.email).toBe('nick@afresh.example');
+    expect(result?.replySubject).toBe('Re: Afresh Interview Request');
+  });
+
+  it.each([
+    ['Afresh Interview Request', 'Re: Afresh Interview Request'],
+    ['RE: Afresh', 'Re: Afresh'],
+    ['Fw: RE: Afresh', 'Re: Afresh'],
+    ['FWD:  Afresh', 'Re: Afresh'],
+    ['', 'Re:'],
+  ])('replySubjectFor(%p) is %p', (subject, expected) => {
+    expect(replySubjectFor(subject)).toBe(expected);
+  });
+
+  it('reduces a forward header with several addresses to one clean recipient', async () => {
+    mockOpenAi();
+    const db = createTestDb();
+    const userId = seedTestUser(db, { email: FORWARDER });
+    const body = `________________________________
+From: Nick Gasparro <nick@afresh.example, eve@other.example>
+Sent: Tuesday, 10 November 2026 22:33:00
+To: Steve Terapak <steve@terapak.com>
+Subject: Afresh Interview Request
+
+Please book a screen.`;
+    const emailId = seedInboundEmail(db, {
+      subject: 'Fw: Afresh Interview Request',
+      fromEmail: FORWARDER,
+      toEmail: FORWARDER,
+      payload: payload(body),
+    });
+
+    const result = await aiDraftReplyFromEmail(db, userId, emailId);
+
+    expect(result?.replyTo.email).toBe('nick@afresh.example');
+  });
+
+  it('leaves the recipient empty when the user wrote the only message and no one else is named', async () => {
+    mockOpenAi();
+    const db = createTestDb();
+    const userId = seedTestUser(db, { email: 'seeker@example.com' });
+    const emailId = seedInboundEmail(db, {
+      subject: 'Note to self',
+      fromEmail: 'seeker@example.com',
+      toEmail: 'seeker@example.com',
+      payload: payload('Remember to follow up.', 'Sam Seeker'),
+    });
+
+    const result = await aiDraftReplyFromEmail(db, userId, emailId);
+
+    expect(result?.replyTo.email).toBeNull();
   });
 });

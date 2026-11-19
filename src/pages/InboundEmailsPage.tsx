@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { FiCheck, FiInbox, FiMail, FiRefreshCw, FiPlay, FiUserPlus, FiBriefcase, FiTrendingUp, FiEdit3, FiList, FiTrash2 } from 'react-icons/fi';
+import { FiCheck, FiInbox, FiMail, FiRefreshCw, FiPlay, FiUserPlus, FiBriefcase, FiTrendingUp, FiEdit3, FiList, FiTrash2, FiExternalLink } from 'react-icons/fi';
+import { outlookComposeUrl } from '../lib/outlookCompose';
 import {
   deleteInboundEmail,
   fetchInboundEmailAuditLog,
@@ -73,6 +74,8 @@ export default function InboundEmailsPage() {
   const [searchParams] = useSearchParams();
   const linkedEmailId = searchParams.get('email');
   const detailRef = useRef<HTMLElement>(null);
+  // The email on screen, so a late Draft reply answer for another email is dropped.
+  const openEmailIdRef = useRef<string | null>(null);
   const [detail, setDetail] = useState<InboundEmailDetail | null>(null);
   const [loading, setLoading] = useState(!demoMode);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -90,6 +93,11 @@ export default function InboundEmailsPage() {
   const [automationRunning, setAutomationRunning] = useState(false);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [draftReply, setDraftReply] = useState<string | null>(null);
+  // Who the draft goes to and its subject, for Open in Outlook.
+  const [draftReplyTo, setDraftReplyTo] = useState<{ to: string | null; subject: string | null }>({
+    to: null,
+    subject: null,
+  });
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [resolvingApprovalId, setResolvingApprovalId] = useState<string | null>(null);
@@ -143,10 +151,12 @@ export default function InboundEmailsPage() {
   }, [loadList]);
 
   const loadDetail = useCallback(async (id: string) => {
+    openEmailIdRef.current = id;
     setDetailLoading(true);
     setError(null);
     setAutomation(null);
     setDraftReply(null);
+    setDraftReplyTo({ to: null, subject: null });
     setActionMessage(null);
     setSelectedMatchId(null);
     try {
@@ -366,8 +376,11 @@ export default function InboundEmailsPage() {
     if (!detail) return;
     setAutomationRunning(true);
     try {
-      const result = await draftReplyFromEmail(detail.id);
+      const emailId = detail.id;
+      const result = await draftReplyFromEmail(emailId);
+      if (openEmailIdRef.current !== null && openEmailIdRef.current !== emailId) return;
       setDraftReply(result.draft);
+      setDraftReplyTo({ to: result.replyTo?.email ?? null, subject: result.replySubject ?? null });
       setActionMessage('Draft reply generated');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to draft reply');
@@ -1149,6 +1162,24 @@ export default function InboundEmailsPage() {
                             <pre className="whitespace-pre-wrap text-xs text-gray-800 bg-white border rounded p-2 font-sans">
                               {draftReply}
                             </pre>
+                            <a
+                              href={outlookComposeUrl({
+                                to: draftReplyTo.to,
+                                subject: draftReplyTo.subject,
+                                body: draftReply,
+                              })}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-2 inline-flex items-center gap-1 px-2.5 py-1 text-xs border rounded-lg hover:bg-white"
+                            >
+                              <FiExternalLink size={12} />
+                              Open in Outlook
+                            </a>
+                            <p className="mt-1 text-[11px] text-gray-500">
+                              Opens a new message in Outlook on the web (work or school accounts) for you
+                              to edit and send. The app doesn&apos;t get access to your mailbox. The
+                              message opens outside the original email thread.
+                            </p>
                           </div>
                         )}
                       </>
