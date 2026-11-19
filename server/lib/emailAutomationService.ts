@@ -1493,6 +1493,8 @@ export function markReplySent(
     // The contact on this application with the address the reply went to.
     // Failing that, the contact this email created or merged into (a
     // recruiter writing from a second address keeps their first one).
+    // Known limit: a reply sent to someone else on the thread (a hiring
+    // manager, say) then restarts that contact's clock too.
     const appContacts = tx
       .select({ id: contacts.id, email: contacts.email, lastContactDate: contacts.lastContactDate })
       .from(contacts)

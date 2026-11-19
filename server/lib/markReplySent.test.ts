@@ -268,4 +268,35 @@ describe('markReplySent', () => {
 
     expect(db.select().from(communications).all()[0].subject).toBe('Re: Test subject');
   });
+  it('rolls everything back when the audit write fails, so a retry logs once', () => {
+    const { db, userId, emailId, draftId } = setup();
+    db.$client.exec(`CREATE TRIGGER fail_mark_sent BEFORE INSERT ON email_automation_audit_log
+      WHEN NEW.action_type = 'record_communication'
+      BEGIN SELECT RAISE(ABORT, 'audit write failed'); END;`);
+
+    expect(() => markReplySent(db, userId, emailId, input(draftId), NOW)).toThrow(/audit write failed/);
+    expect(db.select().from(communications).all()).toHaveLength(0);
+    expect(db.select().from(contacts).all()[0].lastContactDate).toBe('2026-11-10');
+
+    db.$client.exec('DROP TRIGGER fail_mark_sent');
+    expect(markReplySent(db, userId, emailId, input(draftId), NOW).status).toBe('logged');
+    expect(db.select().from(communications).all()).toHaveLength(1);
+  });
+
+  it('ignores a create_contact the user declined', () => {
+    const { db, userId, appId, emailId, draftId } = setup();
+    const contactId = seedContact(db, userId, appId, 'nick@agency.example', 'contact-2');
+    recordEmailAutomationAudit(db, {
+      userId,
+      inboundEmailId: emailId,
+      actionType: 'create_contact',
+      confidence: 90,
+      status: 'rejected',
+      resultingChanges: { contactId },
+    });
+
+    const result = markReplySent(db, userId, emailId, input(draftId, 'nick@new-firm.example'), NOW);
+
+    expect(result).toMatchObject({ status: 'logged', contactId: null });
+  });
 });
