@@ -83,6 +83,21 @@ describe('AC2: a forward whose inner sender is you is your follow-up', () => {
   });
 });
 
+describe('AC1 + fixture A: "I followed up" survives a re-run of an older email', () => {
+  it('re-processing the 11-11 inbound never moves the clock back from the 11-19 follow-up', () => {
+    const ctx = setup();
+    const first = { id: 'a-in', subject: 'FW: Platform Engineer - Acme Bank', textBody: tpInbound, receivedAt: '2026-11-11T06:35:00.000Z' };
+    ingest(ctx, first);
+    const recruiter = contactFor(ctx, TP_RECRUITER)!;
+    expect(recruiter.lastContactDate).toBe('2026-11-11');
+    // The click (sent by direct reply, never forwarded) as the Today page stores it.
+    ctx.db.update(contacts).set({ lastContactDate: '2026-11-19' }).where(eq(contacts.id, recruiter.id)).run();
+    // Re-analyze / Run all on the old email runs "create contact" again.
+    createContactFromEmail(ctx.db, ctx.userId, first.id, ctx.appId);
+    expect(contactFor(ctx, TP_RECRUITER)?.lastContactDate).toBe('2026-11-19');
+  });
+});
+
 describe('AC3: a forwarded decline suggests closing the thread', () => {
   it('flags the vendor contact when your top message says "please don’t submit my profile"', () => {
     const ctx = setup();
@@ -152,6 +167,18 @@ describe('AC5: a bulk re-send of the same job is not a reply', () => {
       id: 'c-reply',
       subject: 'FW: RE: Solutions Architect - Initech - Remote',
       textBody: vendorBRealReply,
+      receivedAt: '2026-11-23T17:45:00.000Z',
+    });
+    expect(contactFor(ctx, VENDOR_B)?.lastContactDate).toBe('2026-11-23');
+  });
+
+  it('control: a reply whose To: is a bare display name still counts (can\'t tell who was addressed)', () => {
+    const ctx = withQuestion();
+    ingest(ctx, {
+      id: 'c-name-only',
+      subject: 'FW: RE: Solutions Architect - Initech - Remote',
+      textBody: vendorBRealReply
+        .replace(`To: Jordan Pike <${SEEKER}>`, `To: Jordan Pike\nCc: Desk <desk@vendor-b.example>`),
       receivedAt: '2026-11-23T17:45:00.000Z',
     });
     expect(contactFor(ctx, VENDOR_B)?.lastContactDate).toBe('2026-11-23');

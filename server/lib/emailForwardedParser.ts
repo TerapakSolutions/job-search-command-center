@@ -156,16 +156,26 @@ export function extractHeaderBlock(text: string): {
 
 /**
  * Every address on the To: and Cc: lines of the forwarded message (the first
- * header block in the body), lower-cased. Empty when no To: line parses, so a
- * caller can tell "not addressed to you" from "could not tell".
+ * header block in the body), lower-cased. Empty when there is no To: line or
+ * any recipient is a bare name, so a caller can tell "not addressed to you"
+ * from "could not tell".
  */
 export function forwardedMessageRecipients(textBody: string): string[] {
   const body = textBody ?? '';
   const start = findForwardBlockStart(body);
   const headers = extractHeaderBlock(start >= 0 ? body.slice(start) : body)?.headers;
   if (!headers?.to) return [];
-  const lines = [headers.to, headers.cc ?? ''].join(';').replace(/<mailto:[^>]*>/gi, '');
-  return Array.from(lines.matchAll(new RegExp(EMAIL_PLAIN.source, 'gi')), (m) => m[1].toLowerCase());
+  const entries = [headers.to, headers.cc ?? '']
+    .join(';')
+    .replace(/<mailto:[^>]*>/gi, '')
+    .split(/[;,]/)
+    .map((e) => e.trim())
+    .filter(Boolean);
+  const emails = entries.map((e) => e.match(EMAIL_PLAIN)?.[1]?.toLowerCase() ?? null);
+  // Outlook can write a recipient as a bare display name ("To: Jordan Pike").
+  // Then who was addressed can't be told: return nothing.
+  if (emails.some((e) => e === null)) return [];
+  return emails as string[];
 }
 
 export function parseForwardedEmail(

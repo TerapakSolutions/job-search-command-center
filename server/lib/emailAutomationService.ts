@@ -730,8 +730,14 @@ export function createContactFromEmail(
     db.update(contacts)
       .set({
         name,
-        // A bulk re-send is logged below but does not restart the clock.
-        lastContactDate: bulkResend ? existing.lastContactDate : row.receivedAt.slice(0, 10),
+        // A bulk re-send is logged below but does not restart the clock, and a
+        // re-run on an older email never moves the date backwards (that would
+        // undo "I followed up" and bring the nudge straight back).
+        lastContactDate:
+          bulkResend ||
+          (existing.lastContactDate && existing.lastContactDate.slice(0, 10) >= row.receivedAt.slice(0, 10))
+            ? existing.lastContactDate
+            : row.receivedAt.slice(0, 10),
         declineDetectedAt: declined ? row.receivedAt : existing.declineDetectedAt,
         messageNotes: [
           existing.messageNotes,

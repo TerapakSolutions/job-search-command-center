@@ -76,6 +76,18 @@ describe('AC1: "I followed up" restarts the clock', () => {
   });
 });
 
+describe('Fixture A: a follow-up sent by direct reply, logged with "I followed up"', () => {
+  it('11-11 inbound, click 11-19 19:08Z: quiet 11-20 and 11-23, nudges again Mon 11-24', () => {
+    const clicked = followedUpContactDate('2026-11-11', new Date('2026-11-19T19:08:00.000Z'));
+    expect(clicked).toBe('2026-11-19');
+    const cs = [contact({ lastContactDate: clicked })];
+    expect(types('2026-11-20', [app()], cs)).toEqual([]);
+    expect(types('2026-11-23', [app()], cs)).toEqual([]);
+    // Correct under N=3: 3 business days after the follow-up.
+    expect(types('2026-11-24', [app()], cs)).toEqual(['recruiter_no_reply']);
+  });
+});
+
 describe('AC3: a declined vendor thread', () => {
   const declined = contact({
     id: 'c-a',
