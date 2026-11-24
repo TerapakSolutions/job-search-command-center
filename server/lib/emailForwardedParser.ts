@@ -37,9 +37,19 @@ const FORWARD_MARKERS = [
 ];
 
 // Reply history quoted under the newest message. A mail client may wrap the
-// "On ... wrote:" line once.
+// "On ... wrote:" line once; a wrapped one must carry an address or a year and
+// not end a sentence at the wrap, so ordinary prose doesn't match.
 export const QUOTED_HISTORY =
-  /^(?:_{10,}\s*$|-{2,}\s*original message|on .+(?:\r?\n.*)?wrote:\s*$|from:\s.+$)/im;
+  /^(?:_{10,}\s*$|-{2,}\s*original message|on .+wrote:\s*$|on (?=.*(?:\r?\n.*)?(?:[@<]|\b20\d{2}\b)).*[^.!?\s][ \t]*\r?\n.*wrote:\s*$|from:\s.+$)/im;
+
+/**
+ * What the writer typed: inline quotes ("On ... wrote:", "> ...") removed. For
+ * decline detection only; the classifier reads the whole top message.
+ */
+export function ownWords(text: string): string {
+  const quoteAt = text.search(QUOTED_HISTORY);
+  return (quoteAt >= 0 ? text.slice(0, quoteAt) : text).replace(/^[ \t]*>.*$/gm, '').trim();
+}
 
 const EMAIL_PLAIN = /([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i;
 
@@ -347,11 +357,6 @@ function parseOutboundTopMessage(input: {
   )
     .replace(/\n\s*_{10,}\s*$/, '')
     .trim();
-  // Inline quotes ("On ... wrote:", "> ...") are not the forwarder's words.
-  const quoteAt = topText.search(QUOTED_HISTORY);
-  const ownText = (quoteAt >= 0 ? topText.slice(0, quoteAt) : topText)
-    .replace(/^\s*>.*$/gm, '')
-    .trim();
 
   let counterpartyHeader: string | null = null;
   for (const start of quotedStarts) {
@@ -380,7 +385,7 @@ function parseOutboundTopMessage(input: {
     originalRecipient: input.topRecipient,
     originalSentAt: input.topSentAt,
     originalCompany,
-    originalBody: ownText || null,
+    originalBody: topText || null,
     topMessageFromForwarder: true,
   };
 }

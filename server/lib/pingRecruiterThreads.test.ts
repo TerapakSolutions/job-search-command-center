@@ -89,7 +89,8 @@ describe('AC1 + fixture A: "I followed up" survives a re-run of an older email',
     const first = { id: 'a-in', subject: 'FW: Platform Engineer - Acme Bank', textBody: tpInbound, receivedAt: '2026-11-11T06:35:00.000Z' };
     ingest(ctx, first);
     const recruiter = contactFor(ctx, TP_RECRUITER)!;
-    expect(recruiter.lastContactDate).toBe('2026-11-11');
+    // 06:35Z is still 11-10 in Pacific.
+    expect(recruiter.lastContactDate).toBe('2026-11-10');
     // The click (sent by direct reply, never forwarded) as the Today page stores it.
     ctx.db.update(contacts).set({ lastContactDate: '2026-11-19' }).where(eq(contacts.id, recruiter.id)).run();
     // Re-analyze / Run all on the old email runs "create contact" again.

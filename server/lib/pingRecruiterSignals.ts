@@ -41,6 +41,12 @@ function sentenceDeclines(sentence: string): boolean {
  * True when the message you wrote declines or withdraws from the role.
  * `topMessage` is your own text only, never quoted history. Outlook writes
  * curly apostrophes; lines may be hard-wrapped.
+ *
+ * Deliberately simple, with known misses ("I'm not interested, but let me know
+ * if something else comes up", "I have withdrawn", a reply typed below the
+ * quote) and false prompts ("I was already represented last year", "no longer
+ * interested in the other contract"). A false prompt is confirmable, but until
+ * answered that contact is out of the clock.
  */
 export function isOutboundDecline(input: { topMessage: string; classification: string | null }): boolean {
   if (input.classification === 'Already Submitted Elsewhere') return true;

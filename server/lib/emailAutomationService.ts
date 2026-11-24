@@ -38,7 +38,9 @@ import {
   QUOTED_HISTORY,
   classificationInputFromEmail,
   forwardedMessageRecipients,
+  ownWords,
 } from './emailForwardedParser.js';
+import { saysSubmittedElsewhere } from './emailClassificationEngine.js';
 import { isBulkResendNotReply, isOutboundDecline } from './pingRecruiterSignals.js';
 import {
   buildPipelineUpdateProposal,
@@ -616,6 +618,12 @@ function threadSignals(db: Db, userId: string, row: typeof inboundEmails.$inferS
   const writtenByYou = forwardMetadata.topMessageFromForwarder;
   const byAccountHolder =
     writtenByYou && userEmail !== '' && row.fromEmail.trim().toLowerCase() === userEmail;
+  const top = (forwardMetadata.originalBody ?? '').trim();
+  const own = ownWords(top);
+  // The day you SENT it, not the day you forwarded it. Outlook's "Sent:" has no
+  // time zone and is read in the server's (TZ=America/Los_Angeles, fly.toml); a
+  // zone in the line is honoured. A time after receipt is a misparse.
+  const sentAt = forwardMetadata.originalSentAt;
 
   const audits = db
     .select()
@@ -642,6 +650,9 @@ function threadSignals(db: Db, userId: string, row: typeof inboundEmails.$inferS
       }
     });
   return {
+    // This email's own logged copies.
+    ownCommunicationIds: audits.flatMap((a) => a.changes.communicationId ?? []),
+    touchedAt: byAccountHolder && sentAt && sentAt <= row.receivedAt ? sentAt : row.receivedAt,
     // Whether this email was already applied can't be told.
     historyUnreadable: audits.some((a) => a.unreadable),
     writtenByYou,
@@ -649,8 +660,10 @@ function threadSignals(db: Db, userId: string, row: typeof inboundEmails.$inferS
     declined:
       byAccountHolder &&
       isOutboundDecline({
-        topMessage: forwardMetadata.originalBody ?? '',
-        classification: row.classification,
+        topMessage: own,
+        // The label was given to the whole top message. When that holds a quote,
+        // your own words must say it.
+        classification: own === top || saysSubmittedElsewhere(own) ? row.classification : null,
       }),
     counterparty: forwardMetadata.originalSenderEmail?.trim().toLowerCase() ?? '',
     alreadyApplied: audits.some((a) => a.details.threadSignals === true),
@@ -665,6 +678,7 @@ function isBulkResend(
   userId: string,
   row: typeof inboundEmails.$inferSelect,
   contactId: string,
+  ownCommunicationIds: string[],
 ): boolean {
   if (!row.isForwarded) return false;
   return isBulkResendNotReply({
@@ -673,12 +687,21 @@ function isBulkResend(
     ownAddresses: [getUserEmailContext(db, userId).userEmail, row.fromEmail],
     subject: row.subject,
     earlierSubjects: db
-      .select({ subject: communications.subject })
+      .select({ id: communications.id, subject: communications.subject })
       .from(communications)
       .where(and(eq(communications.userId, userId), eq(communications.contactId, contactId)))
       .all()
+      .filter((c) => !ownCommunicationIds.includes(c.id))
       .map((c) => c.subject),
   });
+}
+
+/** The contact's clock moved to this moment's Pacific day, never backwards. */
+function laterDay(contact: { lastContactDate: string | null }, at: string): string {
+  const day = pacificDay(new Date(at));
+  return contact.lastContactDate && contact.lastContactDate.slice(0, 10) >= day
+    ? contact.lastContactDate
+    : day;
 }
 
 /**
@@ -701,6 +724,8 @@ function threadContact(
   userId: string,
   row: typeof inboundEmails.$inferSelect,
   address: string,
+  // Skips the matching work when no contact with the address could be affected.
+  relevant: (contact: typeof contacts.$inferSelect) => boolean = () => true,
 ) {
   if (!address) return null;
   const rows = db
@@ -710,6 +735,7 @@ function threadContact(
     .where(and(eq(contacts.userId, userId), eq(applications.userId, userId)))
     .all()
     .filter((r) => r.contact.email.trim().toLowerCase() === address);
+  if (!rows.some((r) => relevant(r.contact))) return null;
   const matches = analyzeEmailAutomation(db, userId, row.id)?.matches;
   // The application you linked by hand wins.
   if (matches?.linkedApplicationId) {
@@ -741,17 +767,13 @@ export function applyThreadSignals(
   if (!row) return null;
   const signals = threadSignals(db, userId, row);
   const timestamp = nowIso();
-  const day = pacificDay(new Date(row.receivedAt));
-  const laterDay = (c: typeof contacts.$inferSelect) =>
-    c.lastContactDate && c.lastContactDate.slice(0, 10) >= day ? c.lastContactDate : day;
-
   if (!signals.writtenByYou) {
     const sender = (row.originalSenderEmail ?? row.fromEmail).trim().toLowerCase();
-    const contact = threadContact(db, userId, row, sender);
+    const contact = threadContact(db, userId, row, sender, (c) => reopenChange(c, row, false) !== null);
     const reopen = contact && reopenChange(contact, row, false);
-    if (contact && reopen && !isBulkResend(db, userId, row, contact.id)) {
+    if (contact && reopen && !isBulkResend(db, userId, row, contact.id, signals.ownCommunicationIds)) {
       db.update(contacts)
-        .set({ ...reopen, lastContactDate: laterDay(contact), updatedAt: timestamp })
+        .set({ ...reopen, lastContactDate: laterDay(contact, signals.touchedAt), updatedAt: timestamp })
         .where(and(eq(contacts.id, contact.id), eq(contacts.userId, userId)))
         .run();
     }
@@ -780,7 +802,7 @@ export function applyThreadSignals(
           direction: 'outbound',
           subject: row.subject,
           body: extractTextBody(row.payload).slice(0, 5000),
-          occurredAt: row.receivedAt,
+          occurredAt: signals.touchedAt,
           createdAt: timestamp,
           updatedAt: timestamp,
         })
@@ -788,7 +810,7 @@ export function applyThreadSignals(
     }
     tx.update(contacts)
       .set({
-        lastContactDate: laterDay(contact),
+        lastContactDate: laterDay(contact, signals.touchedAt),
         ...(signals.declined && { declineDetectedAt: row.receivedAt }),
         updatedAt: timestamp,
       })
@@ -919,7 +941,7 @@ export function createContactFromEmail(
   // apply once per email, so a re-run can't undo "Keep open".
   const signals = threadSignals(db, userId, row);
   const declined = signals.declined && !signals.alreadyApplied && !signals.historyUnreadable;
-  const bulkResend = !!existing && isBulkResend(db, userId, row, existing.id);
+  const bulkResend = !!existing && isBulkResend(db, userId, row, existing.id, signals.ownCommunicationIds);
 
   if (existing) {
     contactId = existing.id;
@@ -931,11 +953,9 @@ export function createContactFromEmail(
         // A bulk re-send is logged below but does not restart the clock, and a
         // re-run on an older email never moves the date backwards (that would
         // undo "I followed up" and bring the nudge straight back).
-        lastContactDate:
-          bulkResend ||
-          (existing.lastContactDate && existing.lastContactDate.slice(0, 10) >= row.receivedAt.slice(0, 10))
-            ? existing.lastContactDate
-            : row.receivedAt.slice(0, 10),
+        lastContactDate: bulkResend
+          ? existing.lastContactDate
+          : laterDay(existing, signals.touchedAt),
         declineDetectedAt: declined ? row.receivedAt : existing.declineDetectedAt,
         ...(bulkResend ? {} : reopenChange(existing, row, signals.writtenByYou)),
         messageNotes: [
@@ -988,7 +1008,7 @@ export function createContactFromEmail(
         title: signature.title,
         company,
         source: row.fromEmail.includes('linkedin') ? 'linkedin' : 'email',
-        lastContactDate: row.receivedAt.slice(0, 10),
+        lastContactDate: pacificDay(new Date(signals.touchedAt)),
         declineDetectedAt: declined ? row.receivedAt : null,
         messageNotes: [vendorNote, row.aiSummary].filter(Boolean).join('\n'),
         nextAction: resolvedNextAction,
@@ -1012,7 +1032,7 @@ export function createContactFromEmail(
         direction: signals.writtenByYou ? 'outbound' : 'inbound',
         subject: row.subject,
         body: textBody.slice(0, 5000),
-        occurredAt: row.receivedAt,
+        occurredAt: signals.touchedAt,
         createdAt: timestamp,
         updatedAt: timestamp,
       })
@@ -1784,9 +1804,9 @@ export function markReplySent(
       })
       .run();
 
-    // Never move the date backwards: inbound emails store a UTC day, which
-    // can be a day ahead of the Pacific day in the evening, and a manually
-    // entered later date stays.
+    // Never move the date backwards: older rows hold a UTC day, which can be a
+    // day ahead of the Pacific day in the evening, and a manually entered later
+    // date stays.
     const today = pacificDay(now);
     if (contact && !(contact.lastContactDate && contact.lastContactDate.slice(0, 10) >= today)) {
       tx.update(contacts)

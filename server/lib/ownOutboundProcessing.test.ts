@@ -7,6 +7,10 @@ import { classifyInboundEmailWithLlm } from './emailClassificationEngine.js';
 import { createContactFromEmail } from './emailAutomationService.js';
 import { processInboundEmail } from './inboundEmailProcessingService.js';
 import { ProcessingTimelineBuilder } from './processingTimeline.js';
+import { computeReminders } from '../../src/lib/reminders.js';
+import type { Application } from '../../src/types/application.js';
+import type { Contact } from '../../src/types/contact.js';
+import * as matcher from './emailApplicationMatcher.js';
 import { createTestDb, seedApplication, seedInboundEmail, seedTestUser } from './testDb.js';
 import {
   SEEKER, SEEKER_NAME, TP_RECRUITER, VENDOR_A, VENDOR_B,
@@ -17,6 +21,11 @@ import {
 jest.mock('./emailClassificationEngine.js', () => {
   const actual = jest.requireActual('./emailClassificationEngine.js') as typeof import('./emailClassificationEngine.js');
   return { ...actual, classifyInboundEmailWithLlm: jest.fn().mockResolvedValue(null) };
+});
+
+jest.mock('./emailApplicationMatcher.js', () => {
+  const actual = jest.requireActual('./emailApplicationMatcher.js') as typeof import('./emailApplicationMatcher.js');
+  return { ...actual, matchEmailToApplications: jest.fn(actual.matchEmailToApplications) };
 });
 
 const DECLINE_AT = '2026-11-10T23:18:37.000Z';
@@ -309,5 +318,94 @@ describe('a failing signal step never fails the email', () => {
     await processInboundEmail(ctx.db, 'e-1', { userId: ctx.userId, reanalysis: true, manual: true });
     expect(comms(ctx)).toHaveLength(1);
     expect(contact(ctx).declineDetectedAt).toBe(DECLINE_AT);
+  });
+});
+
+describe('the clock uses the day you sent it', () => {
+  const S = 'FW: RE: Platform Engineer - Acme Bank';
+  const pings = (ctx: Ctx, day: string) =>
+    computeReminders(
+      ctx.db.select().from(applications).all() as unknown as Application[],
+      ctx.db.select().from(contacts).all() as unknown as Contact[],
+      new Date(`${day}T12:00:00`),
+    ).map((r) => r.type);
+
+  it('AC4 forwarded late: sent 11-10, forwarded 11-23, still nudges 11-24', async () => {
+    const ctx = setup(TP_RECRUITER, { lastContactDate: '2026-10-26' });
+    await receive(ctx, 'e-1', S, tpFollowUpForward, '2026-11-23T18:00:00.000Z');
+    expect(contact(ctx).lastContactDate).toBe('2026-11-10');
+    expect(comms(ctx)[0].occurredAt).toBe('2026-11-10T16:19:00.000Z');
+    expect(pings(ctx, '2026-11-24')).toEqual(['recruiter_no_reply']);
+  });
+
+  it('the same through "create contact"', () => {
+    const ctx = setup(TP_RECRUITER, { lastContactDate: '2026-10-26' });
+    seedInboundEmail(ctx.db, {
+      id: 'e-1', fromEmail: SEEKER, toEmail: 'inbox@app.example', subject: S, receivedAt: '2026-11-23T18:00:00.000Z',
+      payload: JSON.stringify({ TextBody: tpFollowUpForward, FromName: SEEKER_NAME }),
+    });
+    ctx.db.update(inboundEmails).set({ isForwarded: true, originalSenderEmail: TP_RECRUITER }).run();
+    createContactFromEmail(ctx.db, ctx.userId, 'e-1', 'app-1');
+    expect(contact(ctx).lastContactDate).toBe('2026-11-10');
+    expect(comms(ctx)[0].occurredAt).toBe('2026-11-10T16:19:00.000Z');
+  });
+
+  it.each([
+    ['does not parse', 'Sent: sometime'],
+    ['is after we received it', 'Sent: Tuesday, December 1, 2026 8:19 AM'],
+  ])('falls back to the received day when the sent date %s', async (_l, sent) => {
+    const ctx = setup(TP_RECRUITER, { lastContactDate: '2026-10-26' });
+    await receive(ctx, 'e-1', S, tpFollowUpForward.replace('Sent: Tuesday, November 10, 2026 8:19 AM', sent), '2026-11-23T18:00:00.000Z');
+    expect(contact(ctx).lastContactDate).toBe('2026-11-23');
+  });
+
+  it('never moves backwards for a late forward of an older message', async () => {
+    const ctx = setup(TP_RECRUITER, { lastContactDate: '2026-11-20' });
+    await receive(ctx, 'e-1', S, tpFollowUpForward, '2026-11-23T18:00:00.000Z');
+    expect(contact(ctx).lastContactDate).toBe('2026-11-20');
+  });
+
+  it('"create contact" stores the Pacific day, like the rest', () => {
+    const ctx = setup('x@vendor-z.example');
+    for (const [id, from] of [['e-1', 'x@vendor-z.example'], ['e-2', 'new@vendor-z.example']]) {
+      seedInboundEmail(ctx.db, { id, fromEmail: from, toEmail: SEEKER, receivedAt: '2026-11-24T02:00:00.000Z' });
+      createContactFromEmail(ctx.db, ctx.userId, id, 'app-1');
+    }
+    expect(ctx.db.select().from(contacts).all().map((c) => c.lastContactDate)).toEqual(['2026-11-23', '2026-11-23']);
+  });
+});
+
+describe('labels, re-runs and cost', () => {
+  it('a quoted "already submitted elsewhere" does not flag you, your own words do', async () => {
+    const claim = "I've already been submitted through another vendor.";
+    const quoted = setup();
+    await decline(quoted, withTop('Any update?\n> ' + claim));
+    expect(quoted.db.select().from(inboundEmails).get()!.classification).toBe('Already Submitted Elsewhere');
+    expect(contact(quoted).declineDetectedAt).toBeNull();
+    const own = setup();
+    await decline(own, withTop(claim + '\n> Any interest?'));
+    expect(contact(own).declineDetectedAt).toBe(DECLINE_AT);
+  });
+
+  it("an email's own logged copy is not an earlier subject", async () => {
+    const ctx = setup(VENDOR_B);
+    const body = vendorBMassResend.replace('Reply with your updated resume.', 'The client would like to schedule an interview with you. Please let me know your availability.');
+    await receive(ctx, 'e-1', 'FW: Solutions Architect - Initech - Remote', body, '2026-11-23T17:45:00.000Z');
+    createContactFromEmail(ctx.db, ctx.userId, 'e-1', 'app-1');
+    expect(comms(ctx).length).toBeGreaterThan(0);
+    ctx.db.update(contacts).set({ threadClosedAt: '2026-11-14T00:00:00.000Z' }).run();
+    await processInboundEmail(ctx.db, 'e-1', { userId: ctx.userId, reanalysis: true, manual: true });
+    expect(contact(ctx).threadClosedAt).toBeNull();
+  });
+
+  it.each([
+    ['your mail to someone who is not a contact', 'x@vendor-z.example', vendorADeclineForward],
+    ['a recruiter whose thread is not closed', VENDOR_B, vendorBRealReply],
+  ])('matches applications no extra time for %s', async (_l, address, body) => {
+    const ctx = setup(address);
+    (matcher.matchEmailToApplications as jest.Mock).mockClear();
+    await receive(ctx, 'e-1', 'FW: x', body, DECLINE_AT);
+    // Once in processing, once in the automation rules.
+    expect(matcher.matchEmailToApplications).toHaveBeenCalledTimes(2);
   });
 });

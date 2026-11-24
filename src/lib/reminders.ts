@@ -41,28 +41,48 @@ function vendorKey(value: string | null | undefined): string {
 }
 
 /**
- * The contacts whose silence the "Ping recruiter" clock waits on:
+ * Known to work for a vendor other than the client. Email-created contacts often
+ * carry the client's name as their company, and some carry none, so the data
+ * can't always tell; anyone not clearly elsewhere counts as a client contact
+ * (the rule with fewer false nudges).
+ */
+function isOtherVendor(contact: Contact, app: Application): boolean {
+  const company = vendorKey(contact.company);
+  const client = vendorKey(app.company);
+  if (!company || !client) return false;
+  if (company.includes(client) || client.includes(company)) return false;
+  return !belongsToAgency(contact, client);
+}
+
+/**
+ * Who the "Ping recruiter" nudge is for (targets) and whose contact restarts its
+ * clock:
  *   - a closed thread (you confirmed) and a declined one (Today asks to close it
  *     instead) never count;
  *   - a secondary vendor (you are represented by another one) doesn't count,
  *     unless you kept the thread open;
  *   - when the application names the vendor you are represented by (agency) and
- *     has a contact there, only that vendor's dated contacts count. If all of
- *     theirs are closed, nobody is pinged; if an open one has no date to time
- *     from, the other open contacts count as before.
+ *     has a contact there, only that vendor's dated contacts are targets, and
+ *     another vendor doesn't restart the clock, while a client contact does. If
+ *     all of the agency's are closed, nobody is pinged; if an open one has no
+ *     date to time from, the other open contacts count as before.
  */
-function nudgeContacts(app: Application, appContacts: Contact[]): Contact[] {
+function nudgeContacts(
+  app: Application,
+  appContacts: Contact[],
+): { targets: Contact[]; clock: Contact[] } {
   const eligible = appContacts.filter(
     (c) => c.threadKeptOpenAt || !SECONDARY_VENDOR_NOTE.test(c.messageNotes),
   );
   const open = eligible.filter((c) => !c.threadClosedAt && !c.declineDetectedAt);
   const agency = vendorKey(app.agency);
-  if (!agency) return open;
+  if (!agency) return { targets: open, clock: open };
   const theirs = eligible.filter((c) => belongsToAgency(c, agency));
   const theirsOpen = theirs.filter((c) => open.includes(c));
-  if (theirs.length > 0 && theirsOpen.length === 0) return [];
+  if (theirs.length > 0 && theirsOpen.length === 0) return { targets: [], clock: [] };
   const dated = theirsOpen.filter((c) => parseDate(c.lastContactDate));
-  return dated.length > 0 ? dated : open;
+  if (dated.length === 0) return { targets: open, clock: open };
+  return { targets: dated, clock: open.filter((c) => dated.includes(c) || !isOtherVendor(c, app)) };
 }
 
 /** The vendor a declined contact works for: its company, else its email domain, else its name. */
@@ -157,8 +177,8 @@ export function computeReminders(
       });
     }
 
-    const appContacts = nudgeContacts(app, allAppContacts);
-    const lastContact = latestContactDate(appContacts);
+    const { targets, clock } = nudgeContacts(app, allAppContacts);
+    const lastContact = latestContactDate(clock);
 
     // No reminders for a plain application (applied, waiting): there is
     // nothing to act on until a recruiter is involved (Steve, 2026-10-26).
@@ -173,8 +193,9 @@ export function computeReminders(
       const businessDaysSince = businessDaysBetween(lastTouch, today);
       if (businessDaysSince >= 3) {
         const recruiter =
-          appContacts.find((c) => parseDate(c.lastContactDate)?.getTime() === lastContact.getTime()) ??
-          appContacts[0];
+          targets.find(
+            (c) => parseDate(c.lastContactDate)?.getTime() === latestContactDate(targets)?.getTime(),
+          ) ?? targets[0];
         reminders.push({
           id: `recruiter_no_reply-${app.id}`,
           type: 'recruiter_no_reply',

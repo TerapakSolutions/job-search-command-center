@@ -181,8 +181,30 @@ describe('agency preference and Keep open', () => {
     expect(pinged(app(agency), [c('rep', 'Vendor C', over), c('d', 'Vendor D')])).toEqual([]);
   });
 
+  describe('a contact outside the vendors still resets the clock', () => {
+    const rep = c('rep', 'Vendor C');
+    const recent = { lastContactDate: '2026-11-23' };
+    it.each([
+      ['at the client, by company', c('hm', 'Acme Bank', recent)],
+      ['at the client, by email domain', c('hm', 'Something Else', { ...recent, email: 'hm@acmebank.example' })],
+      ['at the client under a longer name', c('hm', 'Acme Bank N.A.', recent)],
+      ['with no company (cannot tell)', c('hm', '', recent)],
+    ])('%s', (_l, person) => expect(pinged(app(agency), [rep, person])).toEqual([]));
+
+    it('but another vendor does not, and the ping always names the agency contact', () => {
+      expect(pinged(app(agency), [rep, c('d', 'Vendor D', recent)])).toEqual(['rep']);
+      expect(pinged(app(agency), [rep, c('hm', 'Acme Bank', { lastContactDate: '2026-11-12' })])).toEqual(['rep']);
+    });
+
+    it('a closed or declined client contact does not', () => {
+      for (const over of [{ threadClosedAt: 'x' }, { declineDetectedAt: 'x' }]) {
+        expect(pinged(app(agency), [rep, c('hm', 'Acme Bank', { ...recent, ...over })])).toEqual(['rep']);
+      }
+    });
+  });
+
   it('matches the whole domain label, not a substring', () => {
-    const sub = c('x', '', { email: 'x@tekstaff.example', lastContactDate: '2026-11-23' });
+    const sub = c('x', 'Tekstaff', { email: 'x@tekstaff.example', lastContactDate: '2026-11-23' });
     const rep = c('rep', '', { email: 'rep@tek.example' });
     expect(pinged(app({ agency: 'TEK, Inc.' }), [sub, rep])).toEqual(['rep']);
   });
