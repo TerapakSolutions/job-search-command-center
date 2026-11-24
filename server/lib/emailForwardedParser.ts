@@ -36,6 +36,21 @@ const FORWARD_MARKERS = [
   /^-{3,}\s*original message\s*-{3,}/im,
 ];
 
+// Reply history quoted under the newest message. A mail client may wrap the
+// "On ... wrote:" line once; a wrapped one must carry an address or a year and
+// not end a sentence at the wrap, so ordinary prose doesn't match.
+export const QUOTED_HISTORY =
+  /^(?:_{10,}\s*$|-{2,}\s*original message|on .+wrote:\s*$|on (?=.*(?:\r?\n.*)?(?:[@<]|\b20\d{2}\b)).*[^.!?\s][ \t]*\r?\n.*wrote:\s*$|from:\s.+$)/im;
+
+/**
+ * What the writer typed: inline quotes ("On ... wrote:", "> ...") removed. For
+ * decline detection only; the classifier reads the whole top message.
+ */
+export function ownWords(text: string): string {
+  const quoteAt = text.search(QUOTED_HISTORY);
+  return (quoteAt >= 0 ? text.slice(0, quoteAt) : text).replace(/^[ \t]*>.*$/gm, '').trim();
+}
+
 const EMAIL_PLAIN = /([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i;
 
 export function parseEmailAddress(value: string): { name: string | null; email: string | null } {
@@ -152,6 +167,41 @@ export function extractHeaderBlock(text: string): {
 
   if (!headers.from && !headers.subject) return null;
   return { headers, bodyStart: bodyStart >= 0 ? bodyStart : lines.length };
+}
+
+/**
+ * The From: address and every To:/Cc: address of the forwarded message (the
+ * first header block in the body), lower-cased. Null whenever any of it can't
+ * be read with confidence: no To: line, a wrapped header line, a bare display
+ * name, or two addresses in one entry.
+ */
+export function forwardedMessageRecipients(
+  textBody: string,
+): { sender: string; recipients: string[] } | null {
+  const body = textBody ?? '';
+  const start = findForwardBlockStart(body);
+  if (start < 0) return null;
+  const lines = body.slice(start).split(/\r?\n/);
+  const first = lines.findIndex((l) => FROM_LINE.test(l));
+  if (first < 0) return null;
+
+  const headers: Record<string, string> = {};
+  for (let i = first; i < lines.length && lines[i].trim() !== ''; i += 1) {
+    if (!HEADER_LINE.test(lines[i])) return null;
+    const [key] = lines[i].split(':', 1);
+    headers[key.toLowerCase()] = lines[i].slice(key.length + 1);
+  }
+  const sender = parseEmailAddress(headers.from ?? '').email;
+  if (!sender || !headers.to) return null;
+
+  const recipients: string[] = [];
+  for (const raw of `${headers.to};${headers.cc ?? ''}`.replace(/<mailto:[^>]*>/gi, '').split(/[;,]/)) {
+    if (!raw.trim()) continue;
+    const found = raw.match(new RegExp(EMAIL_PLAIN.source, 'gi')) ?? [];
+    if (found.length !== 1) return null;
+    recipients.push(found[0].toLowerCase());
+  }
+  return recipients.length > 0 ? { sender, recipients } : null;
 }
 
 export function parseForwardedEmail(

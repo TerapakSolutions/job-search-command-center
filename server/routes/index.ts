@@ -104,6 +104,9 @@ export function contactsRouter(db: Db) {
         : null,
       messageNotes: String(body.messageNotes ?? ''),
       nextAction: String(body.nextAction ?? ''),
+      declineDetectedAt: optionalText(body.declineDetectedAt),
+      threadClosedAt: optionalText(body.threadClosedAt),
+      threadKeptOpenAt: optionalText(body.threadKeptOpenAt),
       createdAt: timestamp,
       updatedAt: timestamp,
     }),
@@ -128,6 +131,15 @@ export function contactsRouter(db: Db) {
       }),
       ...(body.nextAction !== undefined && {
         nextAction: String(body.nextAction),
+      }),
+      ...(body.declineDetectedAt !== undefined && {
+        declineDetectedAt: optionalText(body.declineDetectedAt),
+      }),
+      ...(body.threadClosedAt !== undefined && {
+        threadClosedAt: optionalText(body.threadClosedAt),
+      }),
+      ...(body.threadKeptOpenAt !== undefined && {
+        threadKeptOpenAt: optionalText(body.threadKeptOpenAt),
       }),
       updatedAt: timestamp,
     }),

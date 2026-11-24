@@ -1,6 +1,7 @@
 export type ReminderType =
   | 'follow_up_applied'
   | 'recruiter_no_reply'
+  | 'close_thread'
   | 'interview_prep'
   | 'stale_review'
   | 'daily_goal_behind'
@@ -25,6 +26,7 @@ export interface Reminder {
 export const REMINDER_TYPE_LABELS: Record<ReminderType, string> = {
   follow_up_applied: 'Follow up on application',
   recruiter_no_reply: 'Ping recruiter',
+  close_thread: 'Close thread',
   interview_prep: 'Interview prep',
   stale_review: 'Review stale application',
   daily_goal_behind: 'Daily goal reminder',

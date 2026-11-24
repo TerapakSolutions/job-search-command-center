@@ -31,9 +31,17 @@ import {
 import {
   findDuplicateApplication,
   matchEmailToApplications,
+  roleMatchScore,
 } from './emailApplicationMatcher.js';
 import { buildDraftReply, generateNextActions } from './emailNextActions.js';
-import { classificationInputFromEmail } from './emailForwardedParser.js';
+import {
+  QUOTED_HISTORY,
+  classificationInputFromEmail,
+  forwardedMessageRecipients,
+  ownWords,
+} from './emailForwardedParser.js';
+import { saysSubmittedElsewhere } from './emailClassificationEngine.js';
+import { isBulkResendNotReply, isOutboundDecline } from './pingRecruiterSignals.js';
 import {
   buildPipelineUpdateProposal,
   isForwardTransition,
@@ -399,10 +407,6 @@ export function analyzeEmailAutomation(
   };
 }
 
-// Reply history quoted under the newest message.
-const QUOTED_HISTORY =
-  /^(?:_{10,}\s*$|-{2,}\s*original message|on .+wrote:\s*$|from:\s.+$)/im;
-
 function normalizeName(value: string | null | undefined): string {
   return (value ?? '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
@@ -598,6 +602,245 @@ export function createApplicationFromEmail(
   };
 }
 
+/**
+ * Who wrote a stored email, and whether its "Ping recruiter" effects were
+ * already applied. "You" is the account holder forwarding their own message: a
+ * recruiter who is a saved contact can forward their own message too.
+ */
+function threadSignals(db: Db, userId: string, row: typeof inboundEmails.$inferSelect) {
+  const { forwardMetadata } = classificationInputFromEmail({
+    subject: row.subject,
+    fromEmail: row.fromEmail,
+    fromName: extractFromName(row.payload),
+    textBody: extractTextBody(row.payload),
+  });
+  const { userEmail } = getUserEmailContext(db, userId);
+  const writtenByYou = forwardMetadata.topMessageFromForwarder;
+  const byAccountHolder =
+    writtenByYou && userEmail !== '' && row.fromEmail.trim().toLowerCase() === userEmail;
+  const top = (forwardMetadata.originalBody ?? '').trim();
+  const own = ownWords(top);
+  // The day you SENT it, not the day you forwarded it. Outlook's "Sent:" has no
+  // time zone and is read in the server's (TZ=America/Los_Angeles, fly.toml); a
+  // zone in the line is honoured. A time after receipt is a misparse.
+  const sentAt = forwardMetadata.originalSentAt;
+
+  const audits = db
+    .select()
+    .from(emailAutomationAuditLog)
+    .where(
+      and(
+        eq(emailAutomationAuditLog.userId, userId),
+        eq(emailAutomationAuditLog.inboundEmailId, row.id),
+        eq(emailAutomationAuditLog.status, 'completed'),
+      ),
+    )
+    .all()
+    .filter((a) => a.actionType === 'create_contact' || a.actionType === 'record_communication')
+    .map((a) => {
+      try {
+        return {
+          type: a.actionType,
+          details: JSON.parse(a.detailsJson) as { threadSignals?: boolean; via?: string },
+          changes: JSON.parse(a.resultingChangesJson) as { communicationId?: string },
+          unreadable: false,
+        };
+      } catch {
+        return { type: a.actionType, details: {}, changes: {}, unreadable: true };
+      }
+    });
+  return {
+    // This email's own logged copies.
+    ownCommunicationIds: audits.flatMap((a) => a.changes.communicationId ?? []),
+    touchedAt: byAccountHolder && sentAt && sentAt <= row.receivedAt ? sentAt : row.receivedAt,
+    // Whether this email was already applied can't be told.
+    historyUnreadable: audits.some((a) => a.unreadable),
+    writtenByYou,
+    byAccountHolder,
+    declined:
+      byAccountHolder &&
+      isOutboundDecline({
+        topMessage: own,
+        // The label was given to the whole top message. When that holds a quote,
+        // your own words must say it.
+        classification: own === top || saysSubmittedElsewhere(own) ? row.classification : null,
+      }),
+    counterparty: forwardMetadata.originalSenderEmail?.trim().toLowerCase() ?? '',
+    alreadyApplied: audits.some((a) => a.details.threadSignals === true),
+    alreadyLogged: audits.some((a) => a.type === 'create_contact' || a.details.via === 'own_outbound'),
+    loggedCommunicationId:
+      audits.find((a) => a.details.via === 'own_outbound')?.changes.communicationId ?? null,
+  };
+}
+
+function isBulkResend(
+  db: Db,
+  userId: string,
+  row: typeof inboundEmails.$inferSelect,
+  contactId: string,
+  ownCommunicationIds: string[],
+): boolean {
+  if (!row.isForwarded) return false;
+  return isBulkResendNotReply({
+    forwarded: forwardedMessageRecipients(extractTextBody(row.payload)),
+    senderEmail: row.originalSenderEmail ?? '',
+    ownAddresses: [getUserEmailContext(db, userId).userEmail, row.fromEmail],
+    subject: row.subject,
+    earlierSubjects: db
+      .select({ id: communications.id, subject: communications.subject })
+      .from(communications)
+      .where(and(eq(communications.userId, userId), eq(communications.contactId, contactId)))
+      .all()
+      .filter((c) => !ownCommunicationIds.includes(c.id))
+      .map((c) => c.subject),
+  });
+}
+
+/** The contact's clock moved to this moment's Pacific day, never backwards. */
+function laterDay(contact: { lastContactDate: string | null }, at: string): string {
+  const day = pacificDay(new Date(at));
+  return contact.lastContactDate && contact.lastContactDate.slice(0, 10) >= day
+    ? contact.lastContactDate
+    : day;
+}
+
+/**
+ * A recruiter's own message sent after you closed the thread reopens it, but
+ * only one that needs your reply: "noted, thanks" must not bring the nudge back.
+ */
+function reopenChange(
+  contact: typeof contacts.$inferSelect,
+  row: typeof inboundEmails.$inferSelect,
+  writtenByYou: boolean,
+): { threadClosedAt: null; declineDetectedAt: null; threadKeptOpenAt: string } | null {
+  if (writtenByYou || !contact.threadClosedAt || !row.requiresResponse) return null;
+  if ((row.originalSentAt ?? row.receivedAt) <= contact.threadClosedAt) return null;
+  return { threadClosedAt: null, declineDetectedAt: null, threadKeptOpenAt: row.receivedAt };
+}
+
+/** The user's contact this mail belongs to, or null rather than a guess. */
+function threadContact(
+  db: Db,
+  userId: string,
+  row: typeof inboundEmails.$inferSelect,
+  address: string,
+  // Skips the matching work when no contact with the address could be affected.
+  relevant: (contact: typeof contacts.$inferSelect) => boolean = () => true,
+) {
+  if (!address) return null;
+  const rows = db
+    .select({ contact: contacts, roleTitle: applications.roleTitle })
+    .from(contacts)
+    .innerJoin(applications, eq(applications.id, contacts.applicationId))
+    .where(and(eq(contacts.userId, userId), eq(applications.userId, userId)))
+    .all()
+    .filter((r) => r.contact.email.trim().toLowerCase() === address);
+  if (!rows.some((r) => relevant(r.contact))) return null;
+  const matches = analyzeEmailAutomation(db, userId, row.id)?.matches;
+  // The application you linked by hand wins.
+  if (matches?.linkedApplicationId) {
+    return rows.find((r) => r.contact.applicationId === matches.linkedApplicationId)?.contact ?? null;
+  }
+  const role = row.positionTitle;
+  const candidates = rows.filter(
+    (r) =>
+      !role || isUnknownRole(role) || isUnknownRole(r.roleTitle) || roleMatchScore(role, r.roleTitle) > 0,
+  );
+  if (candidates.length === 1) return candidates[0].contact;
+  if (!matches?.bestMatch || matches.requiresManualSelection) return null;
+  return candidates.find((r) => r.contact.applicationId === matches.bestMatch?.applicationId)?.contact ?? null;
+}
+
+/**
+ * "Ping recruiter" effects of a processed email on an EXISTING contact, whatever
+ * the classification or confidence. Your own forwarded mail is logged outbound,
+ * restarts the clock and, when it declines, suggests closing the thread. A
+ * recruiter's message after a close reopens the thread. Creates no contact or
+ * application, and applies once per email.
+ */
+export function applyThreadSignals(
+  db: Db,
+  userId: string,
+  emailId: string,
+): AutomationActionResult | null {
+  const row = getEmailForUser(db, userId, emailId);
+  if (!row) return null;
+  const signals = threadSignals(db, userId, row);
+  const timestamp = nowIso();
+  if (!signals.writtenByYou) {
+    const sender = (row.originalSenderEmail ?? row.fromEmail).trim().toLowerCase();
+    const contact = threadContact(db, userId, row, sender, (c) => reopenChange(c, row, false) !== null);
+    const reopen = contact && reopenChange(contact, row, false);
+    if (contact && reopen && !isBulkResend(db, userId, row, contact.id, signals.ownCommunicationIds)) {
+      db.update(contacts)
+        .set({ ...reopen, lastContactDate: laterDay(contact, signals.touchedAt), updatedAt: timestamp })
+        .where(and(eq(contacts.id, contact.id), eq(contacts.userId, userId)))
+        .run();
+    }
+    return null;
+  }
+
+  if (!signals.byAccountHolder) return null;
+  // Applying twice would undo "Keep open"; the caller reports this.
+  if (signals.historyUnreadable) throw new Error('unreadable automation audit row');
+  if (signals.alreadyApplied) return null;
+  const contact = threadContact(db, userId, row, signals.counterparty);
+  if (!contact?.applicationId) return null;
+  const applicationId = contact.applicationId;
+
+  return db.transaction((tx): AutomationActionResult => {
+    // An earlier "create contact" already logged this email.
+    const communicationId = signals.alreadyLogged ? null : createId();
+    if (communicationId) {
+      tx.insert(communications)
+        .values({
+          id: communicationId,
+          userId,
+          applicationId,
+          contactId: contact.id,
+          channel: 'email',
+          direction: 'outbound',
+          subject: row.subject,
+          body: extractTextBody(row.payload).slice(0, 5000),
+          occurredAt: signals.touchedAt,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        })
+        .run();
+    }
+    tx.update(contacts)
+      .set({
+        lastContactDate: laterDay(contact, signals.touchedAt),
+        ...(signals.declined && { declineDetectedAt: row.receivedAt }),
+        updatedAt: timestamp,
+      })
+      .where(and(eq(contacts.id, contact.id), eq(contacts.userId, userId)))
+      .run();
+    const changes = {
+      contactId: contact.id,
+      applicationId,
+      ...(communicationId && { communicationId }),
+      declined: signals.declined,
+    };
+    const auditLogId = recordEmailAutomationAudit(tx, {
+      userId,
+      inboundEmailId: emailId,
+      actionType: 'record_communication',
+      confidence: row.classificationConfidence,
+      details: { threadSignals: true, ...(communicationId && { via: 'own_outbound' }) },
+      resultingChanges: changes,
+    });
+    return {
+      success: true,
+      actionType: 'record_communication',
+      confidence: row.classificationConfidence,
+      auditLogId,
+      changes,
+      message: `Logged your message to ${contact.name}`,
+    };
+  });
+}
+
 export function createContactFromEmail(
   db: Db,
   userId: string,
@@ -693,6 +936,13 @@ export function createContactFromEmail(
   });
   const dated = (note: string) => `[${row.receivedAt.slice(0, 10)}] ${note}`;
 
+  // "Ping recruiter" (see pingRecruiterSignals): a decline you sent suggests
+  // closing this thread; a bulk re-send with you in Bcc is not a reply. Signals
+  // apply once per email, so a re-run can't undo "Keep open".
+  const signals = threadSignals(db, userId, row);
+  const declined = signals.declined && !signals.alreadyApplied && !signals.historyUnreadable;
+  const bulkResend = !!existing && isBulkResend(db, userId, row, existing.id, signals.ownCommunicationIds);
+
   if (existing) {
     contactId = existing.id;
     merged = true;
@@ -700,7 +950,14 @@ export function createContactFromEmail(
     db.update(contacts)
       .set({
         name,
-        lastContactDate: row.receivedAt.slice(0, 10),
+        // A bulk re-send is logged below but does not restart the clock, and a
+        // re-run on an older email never moves the date backwards (that would
+        // undo "I followed up" and bring the nudge straight back).
+        lastContactDate: bulkResend
+          ? existing.lastContactDate
+          : laterDay(existing, signals.touchedAt),
+        declineDetectedAt: declined ? row.receivedAt : existing.declineDetectedAt,
+        ...(bulkResend ? {} : reopenChange(existing, row, signals.writtenByYou)),
         messageNotes: [
           existing.messageNotes,
           ...[vendorNote, row.aiSummary].filter((n): n is string => Boolean(n)).map(dated),
@@ -751,7 +1008,8 @@ export function createContactFromEmail(
         title: signature.title,
         company,
         source: row.fromEmail.includes('linkedin') ? 'linkedin' : 'email',
-        lastContactDate: row.receivedAt.slice(0, 10),
+        lastContactDate: pacificDay(new Date(signals.touchedAt)),
+        declineDetectedAt: declined ? row.receivedAt : null,
         messageNotes: [vendorNote, row.aiSummary].filter(Boolean).join('\n'),
         nextAction: resolvedNextAction,
         createdAt: timestamp,
@@ -761,28 +1019,32 @@ export function createContactFromEmail(
   }
 
   const textBody = extractTextBody(row.payload);
-  const commId = createId();
-  db.insert(communications)
-    .values({
-      id: commId,
-      userId,
-      applicationId,
-      contactId,
-      channel: 'email',
-      direction: isWrittenByYou(row) ? 'outbound' : 'inbound',
-      subject: row.subject,
-      body: textBody.slice(0, 5000),
-      occurredAt: row.receivedAt,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    })
-    .run();
+  const commId = signals.loggedCommunicationId ?? createId();
+  // Your own mail may already be logged by automatic processing.
+  if (!signals.loggedCommunicationId) {
+    db.insert(communications)
+      .values({
+        id: commId,
+        userId,
+        applicationId,
+        contactId,
+        channel: 'email',
+        direction: signals.writtenByYou ? 'outbound' : 'inbound',
+        subject: row.subject,
+        body: textBody.slice(0, 5000),
+        occurredAt: signals.touchedAt,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .run();
+  }
 
   const auditLogId = recordAuditLog(db, {
     userId,
     inboundEmailId: emailId,
     actionType: 'create_contact',
     confidence: row.classificationConfidence,
+    details: { threadSignals: true },
     resultingChanges: {
       contactId,
       applicationId,
@@ -1542,9 +1804,9 @@ export function markReplySent(
       })
       .run();
 
-    // Never move the date backwards: inbound emails store a UTC day, which
-    // can be a day ahead of the Pacific day in the evening, and a manually
-    // entered later date stays.
+    // Never move the date backwards: older rows hold a UTC day, which can be a
+    // day ahead of the Pacific day in the evening, and a manually entered later
+    // date stays.
     const today = pacificDay(now);
     if (contact && !(contact.lastContactDate && contact.lastContactDate.slice(0, 10) >= today)) {
       tx.update(contacts)

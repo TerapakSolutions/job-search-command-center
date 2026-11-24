@@ -64,6 +64,12 @@ const CANDIDATE_ALREADY_SUBMITTED =
 const SUBMITTED_ELSEWHERE =
   /(?:another|other|different)\s+(?:vendor|agency|recruiter|staffing)|someone else|elsewhere/;
 
+/** The job seeker's own words say they are already submitted through someone else. */
+export function saysSubmittedElsewhere(text: string): boolean {
+  const body = text.toLowerCase();
+  return CANDIDATE_ALREADY_SUBMITTED.test(body) && SUBMITTED_ELSEWHERE.test(body);
+}
+
 export async function classifyInboundEmailWithLlm(
   input: ClassifyInput,
 ): Promise<EmailClassificationResult | null> {
@@ -100,7 +106,7 @@ export function classifyInboundEmailWithRules(
 
   if (input.writtenByCandidate) {
     const body = input.textBody.toLowerCase();
-    if (CANDIDATE_ALREADY_SUBMITTED.test(body) && SUBMITTED_ELSEWHERE.test(body)) {
+    if (saysSubmittedElsewhere(body)) {
       return buildRuleResult('Already Submitted Elsewhere', 85, input, {
         requiresResponse: false,
         suggestedAction: defaultSuggestedAction('Already Submitted Elsewhere'),
