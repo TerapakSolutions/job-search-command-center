@@ -63,6 +63,9 @@ export const contacts = sqliteTable('contacts', {
   declineDetectedAt: text('decline_detected_at'),
   // When you confirmed closing this recruiter's thread: no more nudges for it.
   threadClosedAt: text('thread_closed_at'),
+  // You chose "Keep open", or the recruiter wrote again after a close: nudges
+  // resume even if the notes call them a secondary vendor.
+  threadKeptOpenAt: text('thread_kept_open_at'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });

@@ -30,24 +30,39 @@ function normalizeVendor(value: string | null | undefined): string {
   return (value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+function belongsToAgency(contact: Contact, agency: string): boolean {
+  const labels = (contact.email.split('@')[1] ?? '').split('.').slice(0, -1);
+  return [contact.company, ...labels].some((v) => vendorKey(v) === agency);
+}
+
+/** A vendor name without its legal suffix, for whole-name comparison. */
+function vendorKey(value: string | null | undefined): string {
+  return normalizeVendor((value ?? '').replace(/[\s,]+(?:inc|llc|ltd|corp|co)\.?\s*$/i, ''));
+}
+
 /**
  * The contacts whose silence the "Ping recruiter" clock waits on:
  *   - a closed thread (you confirmed) and a declined one (Today asks to close it
  *     instead) never count;
- *   - a secondary vendor (you are represented by another one) never counts;
+ *   - a secondary vendor (you are represented by another one) doesn't count,
+ *     unless you kept the thread open;
  *   - when the application names the vendor you are represented by (agency) and
- *     an open contact belongs to it, only that vendor's contacts count.
+ *     has a contact there, only that vendor's dated contacts count. If all of
+ *     theirs are closed, nobody is pinged; if an open one has no date to time
+ *     from, the other open contacts count as before.
  */
 function nudgeContacts(app: Application, appContacts: Contact[]): Contact[] {
-  const open = appContacts.filter(
-    (c) => !c.threadClosedAt && !c.declineDetectedAt && !SECONDARY_VENDOR_NOTE.test(c.messageNotes),
+  const eligible = appContacts.filter(
+    (c) => c.threadKeptOpenAt || !SECONDARY_VENDOR_NOTE.test(c.messageNotes),
   );
-  const agency = normalizeVendor(app.agency);
+  const open = eligible.filter((c) => !c.threadClosedAt && !c.declineDetectedAt);
+  const agency = vendorKey(app.agency);
   if (!agency) return open;
-  const represented = open.filter(
-    (c) => normalizeVendor(c.company) === agency || normalizeVendor(c.email.split('@')[1]).includes(agency),
-  );
-  return represented.length > 0 ? represented : open;
+  const theirs = eligible.filter((c) => belongsToAgency(c, agency));
+  const theirsOpen = theirs.filter((c) => open.includes(c));
+  if (theirs.length > 0 && theirsOpen.length === 0) return [];
+  const dated = theirsOpen.filter((c) => parseDate(c.lastContactDate));
+  return dated.length > 0 ? dated : open;
 }
 
 /** The vendor a declined contact works for: its company, else its email domain, else its name. */

@@ -36,7 +36,7 @@ function companyMatchScore(emailCompany: string, appCompany: string): number {
   return Math.round(tokenOverlap(a, b) * 20);
 }
 
-function roleMatchScore(emailRole: string, appRole: string): number {
+export function roleMatchScore(emailRole: string, appRole: string): number {
   const a = normalize(emailRole);
   const b = normalize(appRole);
   if (!a || !b) return 0;

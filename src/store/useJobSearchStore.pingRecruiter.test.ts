@@ -78,10 +78,12 @@ describe('"Close thread"', () => {
     expect(calls()).toEqual([['/contacts/c-1', 'PUT', { threadClosedAt: '2026-11-24T20:00:00.000Z' }]]);
   });
 
-  it('"Keep open" clears the suggestion only', () => {
+  it('"Keep open" clears the suggestion and records your choice', () => {
     useJobSearchStore.setState({ contacts: [{ ...recruiter, declineDetectedAt: '2026-11-10T23:18:37.000Z' }] });
-    useJobSearchStore.getState().keepContactThreadOpen('c-1');
-    expect(useJobSearchStore.getState().contacts[0]).toMatchObject({ declineDetectedAt: null, threadClosedAt: null });
-    expect(calls()).toEqual([['/contacts/c-1', 'PUT', { declineDetectedAt: null }]]);
+    const now = new Date('2026-11-24T20:00:00.000Z');
+    useJobSearchStore.getState().keepContactThreadOpen('c-1', now);
+    const change = { declineDetectedAt: null, threadKeptOpenAt: now.toISOString() };
+    expect(useJobSearchStore.getState().contacts[0]).toMatchObject({ ...change, threadClosedAt: null });
+    expect(calls()).toEqual([['/contacts/c-1', 'PUT', change]]);
   });
 });

@@ -36,6 +36,11 @@ const FORWARD_MARKERS = [
   /^-{3,}\s*original message\s*-{3,}/im,
 ];
 
+// Reply history quoted under the newest message. A mail client may wrap the
+// "On ... wrote:" line once.
+export const QUOTED_HISTORY =
+  /^(?:_{10,}\s*$|-{2,}\s*original message|on .+(?:\r?\n.*)?wrote:\s*$|from:\s.+$)/im;
+
 const EMAIL_PLAIN = /([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i;
 
 export function parseEmailAddress(value: string): { name: string | null; email: string | null } {
@@ -155,27 +160,38 @@ export function extractHeaderBlock(text: string): {
 }
 
 /**
- * Every address on the To: and Cc: lines of the forwarded message (the first
- * header block in the body), lower-cased. Empty when there is no To: line or
- * any recipient is a bare name, so a caller can tell "not addressed to you"
- * from "could not tell".
+ * The From: address and every To:/Cc: address of the forwarded message (the
+ * first header block in the body), lower-cased. Null whenever any of it can't
+ * be read with confidence: no To: line, a wrapped header line, a bare display
+ * name, or two addresses in one entry.
  */
-export function forwardedMessageRecipients(textBody: string): string[] {
+export function forwardedMessageRecipients(
+  textBody: string,
+): { sender: string; recipients: string[] } | null {
   const body = textBody ?? '';
   const start = findForwardBlockStart(body);
-  const headers = extractHeaderBlock(start >= 0 ? body.slice(start) : body)?.headers;
-  if (!headers?.to) return [];
-  const entries = [headers.to, headers.cc ?? '']
-    .join(';')
-    .replace(/<mailto:[^>]*>/gi, '')
-    .split(/[;,]/)
-    .map((e) => e.trim())
-    .filter(Boolean);
-  const emails = entries.map((e) => e.match(EMAIL_PLAIN)?.[1]?.toLowerCase() ?? null);
-  // Outlook can write a recipient as a bare display name ("To: Jordan Pike").
-  // Then who was addressed can't be told: return nothing.
-  if (emails.some((e) => e === null)) return [];
-  return emails as string[];
+  if (start < 0) return null;
+  const lines = body.slice(start).split(/\r?\n/);
+  const first = lines.findIndex((l) => FROM_LINE.test(l));
+  if (first < 0) return null;
+
+  const headers: Record<string, string> = {};
+  for (let i = first; i < lines.length && lines[i].trim() !== ''; i += 1) {
+    if (!HEADER_LINE.test(lines[i])) return null;
+    const [key] = lines[i].split(':', 1);
+    headers[key.toLowerCase()] = lines[i].slice(key.length + 1);
+  }
+  const sender = parseEmailAddress(headers.from ?? '').email;
+  if (!sender || !headers.to) return null;
+
+  const recipients: string[] = [];
+  for (const raw of `${headers.to};${headers.cc ?? ''}`.replace(/<mailto:[^>]*>/gi, '').split(/[;,]/)) {
+    if (!raw.trim()) continue;
+    const found = raw.match(new RegExp(EMAIL_PLAIN.source, 'gi')) ?? [];
+    if (found.length !== 1) return null;
+    recipients.push(found[0].toLowerCase());
+  }
+  return recipients.length > 0 ? { sender, recipients } : null;
 }
 
 export function parseForwardedEmail(
@@ -331,6 +347,11 @@ function parseOutboundTopMessage(input: {
   )
     .replace(/\n\s*_{10,}\s*$/, '')
     .trim();
+  // Inline quotes ("On ... wrote:", "> ...") are not the forwarder's words.
+  const quoteAt = topText.search(QUOTED_HISTORY);
+  const ownText = (quoteAt >= 0 ? topText.slice(0, quoteAt) : topText)
+    .replace(/^\s*>.*$/gm, '')
+    .trim();
 
   let counterpartyHeader: string | null = null;
   for (const start of quotedStarts) {
@@ -359,7 +380,7 @@ function parseOutboundTopMessage(input: {
     originalRecipient: input.topRecipient,
     originalSentAt: input.topSentAt,
     originalCompany,
-    originalBody: topText || null,
+    originalBody: ownText || null,
     topMessageFromForwarder: true,
   };
 }

@@ -3,6 +3,7 @@ import type { Db } from '../db/index.js';
 import { emailAutomationPendingApprovals, inboundEmails } from '../db/schema.js';
 import {
   analyzeEmailAutomation,
+  applyThreadSignals,
   recordEmailAutomationAudit,
 } from './emailAutomationService.js';
 import {
@@ -310,6 +311,10 @@ export async function processInboundEmail(
       skipCompletedActions: Boolean(options.reanalysis),
       timeline,
     });
+
+    // Your own mail, or a recruiter writing after a close: whatever the label.
+    const threadResult = applyThreadSignals(db, userId, emailId);
+    if (threadResult) automation.results.push(threadResult);
 
     const actionTime = nowIso();
     if (automation.results.length > 0) {

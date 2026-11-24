@@ -36,6 +36,7 @@ const contact = (overrides: Partial<Contact> = {}): Contact => ({
   nextAction: '',
   declineDetectedAt: null,
   threadClosedAt: null,
+  threadKeptOpenAt: null,
   createdAt: '',
   updatedAt: '',
   ...overrides,
@@ -153,6 +154,37 @@ describe('B(3): several vendors on one company', () => {
     const other = contact({ id: 'c-d', name: 'Ann Bell', email: 'ann@vendor-d.example', company: 'Vendor D', lastContactDate: '2026-11-23' });
     const [r] = computeReminders([app({ agency: 'Vendor C' })], [other, represented], at('2026-11-25'));
     expect([r.type, r.contactId, r.description]).toEqual(['recruiter_no_reply', 'c-c', 'No reply in 3 business days (Ravi Shah).']);
+  });
+});
+
+describe('agency preference and Keep open', () => {
+  const agency = { agency: 'Vendor C' };
+  const c = (id: string, company: string, over: Partial<Contact> = {}) =>
+    contact({ id, company, name: id, email: `${id}@mail.example`, ...over });
+  const pinged = (a: Application, cs: Contact[]) =>
+    computeReminders([a], cs, at('2026-11-24')).filter((r) => r.type === 'recruiter_no_reply').map((r) => r.contactId);
+
+  it('"Keep open" resumes nudges despite the secondary-vendor note', () => {
+    const note = { messageNotes: 'Secondary vendor: x' };
+    expect(pinged(app(agency), [c('a', 'Vendor A', note)])).toEqual([]);
+    expect(pinged(app(agency), [c('a', 'Vendor A', { ...note, threadKeptOpenAt: '2026-11-20T00:00:00.000Z' })])).toEqual(['a']);
+  });
+
+  it('an agency contact with no date does not suppress the nudge', () => {
+    expect(pinged(app(agency), [c('rep', 'Vendor C', { lastContactDate: null }), c('d', 'Vendor D')])).toEqual(['d']);
+  });
+
+  it.each([
+    ['closed', { threadClosedAt: '2026-11-20T00:00:00.000Z' }],
+    ['declined', { declineDetectedAt: '2026-11-20T00:00:00.000Z' }],
+  ])('a %s agency thread does not fall back to another vendor', (_l, over) => {
+    expect(pinged(app(agency), [c('rep', 'Vendor C', over), c('d', 'Vendor D')])).toEqual([]);
+  });
+
+  it('matches the whole domain label, not a substring', () => {
+    const sub = c('x', '', { email: 'x@tekstaff.example', lastContactDate: '2026-11-23' });
+    const rep = c('rep', '', { email: 'rep@tek.example' });
+    expect(pinged(app({ agency: 'TEK, Inc.' }), [sub, rep])).toEqual(['rep']);
   });
 });
 

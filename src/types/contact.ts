@@ -15,6 +15,8 @@ export interface Contact {
   declineDetectedAt?: string | null;
   /** You confirmed closing this recruiter's thread; it no longer nudges. */
   threadClosedAt?: string | null;
+  /** You kept the thread open (or they wrote after a close): nudges resume. */
+  threadKeptOpenAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -33,4 +35,6 @@ export interface ContactInput {
   nextAction: string;
   declineDetectedAt?: string | null;
   threadClosedAt?: string | null;
+  /** You kept the thread open (or they wrote after a close): nudges resume. */
+  threadKeptOpenAt?: string | null;
 }

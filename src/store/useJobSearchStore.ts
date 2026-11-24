@@ -42,7 +42,7 @@ interface JobSearchState {
   /** Confirm "Close thread": no more nudges for this recruiter. */
   closeContactThread: (contactId: string, now?: Date) => void;
   /** Decline the "Close thread" suggestion: the thread stays open and nudges as before. */
-  keepContactThreadOpen: (contactId: string) => void;
+  keepContactThreadOpen: (contactId: string, now?: Date) => void;
   getReminders: () => Reminder[];
   getApplicationById: (id: string) => Application | undefined;
   exportData: () => string;
@@ -294,8 +294,8 @@ const storeCreator = (
     get().updateContact(contactId, { threadClosedAt: now.toISOString() });
   },
 
-  keepContactThreadOpen: (contactId) => {
-    get().updateContact(contactId, { declineDetectedAt: null });
+  keepContactThreadOpen: (contactId, now = new Date()) => {
+    get().updateContact(contactId, { declineDetectedAt: null, threadKeptOpenAt: now.toISOString() });
   },
 
   getReminders: () =>
@@ -361,6 +361,7 @@ const storeCreator = (
               nextAction: contact.nextAction,
               declineDetectedAt: contact.declineDetectedAt ?? null,
               threadClosedAt: contact.threadClosedAt ?? null,
+              threadKeptOpenAt: contact.threadKeptOpenAt ?? null,
             };
             await contactsApi.create(input);
           }
