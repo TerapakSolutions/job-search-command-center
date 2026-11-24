@@ -196,28 +196,30 @@ describe('only your own words count', () => {
   });
 });
 
-describe('a closed thread reopens when the recruiter genuinely writes', () => {
+describe('a closed thread reopens when the recruiter writes something that needs a reply', () => {
+  const ask = vendorBRealReply.replace('Yes, fully remote, 12 months with a likely extension.', 'The client would like to schedule an interview with you. Please let me know your availability.');
   const closed = { threadClosedAt: '2026-11-14T00:00:00.000Z', declineDetectedAt: DECLINE_AT, messageNotes: 'Secondary vendor: x' };
   const S = 'FW: RE: Solutions Architect - Initech - Remote';
 
   it('clears the close, restarts the clock, and survives a secondary-vendor note', async () => {
     const ctx = setup(VENDOR_B, closed);
-    await receive(ctx, 'e-1', S, vendorBRealReply, '2026-11-23T17:45:00.000Z');
+    await receive(ctx, 'e-1', S, ask, '2026-11-23T17:45:00.000Z');
     expect(contact(ctx)).toMatchObject({ threadClosedAt: null, declineDetectedAt: null, lastContactDate: '2026-11-23' });
     expect(contact(ctx).threadKeptOpenAt).not.toBeNull();
   });
 
   it('a later close sticks when the same mail is re-analyzed', async () => {
     const ctx = setup(VENDOR_B, closed);
-    await receive(ctx, 'e-1', S, vendorBRealReply, '2026-11-23T17:45:00.000Z');
+    await receive(ctx, 'e-1', S, ask, '2026-11-23T17:45:00.000Z');
     ctx.db.update(contacts).set({ threadClosedAt: '2026-11-24T00:00:00.000Z' }).run();
     await processInboundEmail(ctx.db, 'e-1', { userId: ctx.userId, reanalysis: true, manual: true });
     expect(contact(ctx).threadClosedAt).toBe('2026-11-24T00:00:00.000Z');
   });
 
   it.each([
-    ['a mail sent before the close', vendorBRealReply.replace('Monday, November 23', 'Thursday, November 12')],
+    ['a mail sent before the close', ask.replace('Monday, November 23', 'Thursday, November 12')],
     ['your own mail', vendorBQuestionForward],
+    ['an acknowledgment', vendorBRealReply.replace('Yes, fully remote, 12 months with a likely extension.', "Thanks, noted. I'll keep you in mind for other roles.")],
   ])('stays closed for %s', async (_l, body) => {
     const ctx = setup(VENDOR_B, closed);
     await receive(ctx, 'e-1', S, body, '2026-11-23T17:45:00.000Z');

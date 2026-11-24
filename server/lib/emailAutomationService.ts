@@ -672,13 +672,16 @@ function isBulkResend(
   });
 }
 
-/** A recruiter's own message sent after you closed the thread reopens it. */
+/**
+ * A recruiter's own message sent after you closed the thread reopens it, but
+ * only one that needs your reply: "noted, thanks" must not bring the nudge back.
+ */
 function reopenChange(
   contact: typeof contacts.$inferSelect,
   row: typeof inboundEmails.$inferSelect,
   writtenByYou: boolean,
 ): { threadClosedAt: null; declineDetectedAt: null; threadKeptOpenAt: string } | null {
-  if (writtenByYou || !contact.threadClosedAt || row.classification === 'Not Job Related') return null;
+  if (writtenByYou || !contact.threadClosedAt || !row.requiresResponse) return null;
   if ((row.originalSentAt ?? row.receivedAt) <= contact.threadClosedAt) return null;
   return { threadClosedAt: null, declineDetectedAt: null, threadKeptOpenAt: row.receivedAt };
 }
