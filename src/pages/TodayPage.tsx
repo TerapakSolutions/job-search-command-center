@@ -398,7 +398,11 @@ function FollowUpBadge({ followUp }: { followUp: FollowUp }) {
 
 function ReminderItem({ reminder }: { reminder: Reminder }) {
   const moveApplication = useJobSearchStore((s) => s.moveApplication);
+  const logFollowUp = useJobSearchStore((s) => s.logFollowUp);
+  const closeContactThread = useJobSearchStore((s) => s.closeContactThread);
+  const keepContactThreadOpen = useJobSearchStore((s) => s.keepContactThreadOpen);
   const [dismissed, setDismissed] = useState(false);
+  const contactId = reminder.contactId;
 
   if (dismissed) return null;
 
@@ -426,6 +430,42 @@ function ReminderItem({ reminder }: { reminder: Reminder }) {
             >
               Archive
             </button>
+          )}
+          {reminder.type === 'recruiter_no_reply' && contactId && (
+            <button
+              type="button"
+              onClick={() => {
+                logFollowUp(contactId);
+                setDismissed(true);
+              }}
+              className="px-3 py-1.5 text-sm bg-gray-700 text-white rounded-lg hover:bg-gray-800"
+            >
+              I followed up
+            </button>
+          )}
+          {reminder.type === 'close_thread' && contactId && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  closeContactThread(contactId);
+                  setDismissed(true);
+                }}
+                className="px-3 py-1.5 text-sm bg-gray-700 text-white rounded-lg hover:bg-gray-800"
+              >
+                Close thread
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  keepContactThreadOpen(contactId);
+                  setDismissed(true);
+                }}
+                className="px-3 py-1.5 text-sm text-gray-600 bg-white border rounded-lg hover:bg-gray-50"
+              >
+                Keep open
+              </button>
+            </>
           )}
           <button
             type="button"

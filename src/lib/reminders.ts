@@ -22,6 +22,55 @@ function getContactsForApplication(contacts: Contact[], applicationId: string): 
   return contacts.filter((c) => c.applicationId === applicationId);
 }
 
+// Written into a contact's notes when a second vendor pitches a role you are
+// already submitted to through another one (emailAutomationService).
+const SECONDARY_VENDOR_NOTE = /\bSecondary vendor:/;
+
+function normalizeVendor(value: string | null | undefined): string {
+  return (value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * The contacts whose silence the "Ping recruiter" clock waits on:
+ *   - a closed thread (you confirmed) and a declined one (Today asks to close it
+ *     instead) never count;
+ *   - a secondary vendor (you are represented by another one) never counts;
+ *   - when the application names the vendor you are represented by (agency) and
+ *     an open contact belongs to it, only that vendor's contacts count.
+ */
+function nudgeContacts(app: Application, appContacts: Contact[]): Contact[] {
+  const open = appContacts.filter(
+    (c) => !c.threadClosedAt && !c.declineDetectedAt && !SECONDARY_VENDOR_NOTE.test(c.messageNotes),
+  );
+  const agency = normalizeVendor(app.agency);
+  if (!agency) return open;
+  const represented = open.filter(
+    (c) => normalizeVendor(c.company) === agency || normalizeVendor(c.email.split('@')[1]).includes(agency),
+  );
+  return represented.length > 0 ? represented : open;
+}
+
+/** The vendor a declined contact works for: its company, else its email domain, else its name. */
+function vendorLabel(app: Application, contact: Contact): string {
+  const company = contact.company.trim();
+  if (company && company.toLowerCase() !== app.company.trim().toLowerCase()) return company;
+  return contact.email.split('@')[1]?.trim() || contact.name;
+}
+
+function localDay(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * "I followed up": the contact's new last-contact date, the local calendar day
+ * of the click, or null when the stored date is already that day or later
+ * (never moves it backwards).
+ */
+export function followedUpContactDate(lastContactDate: string | null, now: Date): string | null {
+  const today = localDay(now);
+  return lastContactDate && lastContactDate.slice(0, 10) >= today ? null : today;
+}
+
 function latestContactDate(contacts: Contact[]): Date | null {
   let latest: Date | null = null;
   for (const contact of contacts) {
@@ -76,7 +125,24 @@ export function computeReminders(
   for (const app of applications) {
     if (!ACTIVE_STATUSES.has(app.status)) continue;
 
-    const appContacts = getContactsForApplication(contacts, app.id);
+    const allAppContacts = getContactsForApplication(contacts, app.id);
+
+    // A decline you sent: ask to close that thread (never closed silently).
+    for (const c of allAppContacts) {
+      if (!c.declineDetectedAt || c.threadClosedAt) continue;
+      reminders.push({
+        id: `close_thread-${c.id}`,
+        type: 'close_thread',
+        priority: 'medium',
+        title: `Close thread: ${app.company} via ${vendorLabel(app, c)} (you declined)?`,
+        description: `You declined this role with ${c.name}. Close the thread to stop reminders for it.`,
+        applicationId: app.id,
+        contactId: c.id,
+        dueDate: today.toISOString(),
+      });
+    }
+
+    const appContacts = nudgeContacts(app, allAppContacts);
     const lastContact = latestContactDate(appContacts);
 
     // No reminders for a plain application (applied, waiting): there is

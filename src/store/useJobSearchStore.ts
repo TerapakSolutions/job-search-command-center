@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import {
   applicationsApi,
+  communicationsApi,
   contactsApi,
   clearAllRemote,
   loadAllData,
@@ -9,7 +10,7 @@ import {
 import { getPersistenceMode, isDemoMode } from '../api/persistence';
 import { isUnauthorized } from '../api/http';
 import { createId } from '../lib/id';
-import { computeReminders } from '../lib/reminders';
+import { computeReminders, followedUpContactDate } from '../lib/reminders';
 import type { Application, ApplicationInput } from '../types/application';
 import type { Contact, ContactInput } from '../types/contact';
 import type { Interview } from '../types/interview';
@@ -36,6 +37,12 @@ interface JobSearchState {
   addContact: (input: ContactInput) => Contact;
   updateContact: (id: string, input: Partial<ContactInput>) => void;
   deleteContact: (id: string) => void;
+  /** "I followed up" on a Ping recruiter nudge: log an outbound touch now and restart the clock. */
+  logFollowUp: (contactId: string, now?: Date) => void;
+  /** Confirm "Close thread": no more nudges for this recruiter. */
+  closeContactThread: (contactId: string, now?: Date) => void;
+  /** Decline the "Close thread" suggestion: the thread stays open and nudges as before. */
+  keepContactThreadOpen: (contactId: string) => void;
   getReminders: () => Reminder[];
   getApplicationById: (id: string) => Application | undefined;
   exportData: () => string;
@@ -261,6 +268,36 @@ const storeCreator = (
     }
   },
 
+  logFollowUp: (contactId, now = new Date()) => {
+    const contact = get().contacts.find((c) => c.id === contactId);
+    if (!contact) return;
+    const lastContactDate = followedUpContactDate(contact.lastContactDate, now);
+    if (lastContactDate) get().updateContact(contactId, { lastContactDate });
+    if (!isDemoMode() && contact.applicationId) {
+      communicationsApi
+        .create({
+          applicationId: contact.applicationId,
+          contactId,
+          channel: 'email',
+          direction: 'outbound',
+          subject: 'Followed up (logged from Today)',
+          body: '',
+          occurredAt: now.toISOString(),
+        })
+        .catch(() => {
+          set({ error: 'Failed to log the follow-up.' });
+        });
+    }
+  },
+
+  closeContactThread: (contactId, now = new Date()) => {
+    get().updateContact(contactId, { threadClosedAt: now.toISOString() });
+  },
+
+  keepContactThreadOpen: (contactId) => {
+    get().updateContact(contactId, { declineDetectedAt: null });
+  },
+
   getReminders: () =>
     computeReminders(get().applications, get().contacts, new Date(), get().interviews),
 
@@ -322,6 +359,8 @@ const storeCreator = (
               lastContactDate: contact.lastContactDate,
               messageNotes: contact.messageNotes,
               nextAction: contact.nextAction,
+              declineDetectedAt: contact.declineDetectedAt ?? null,
+              threadClosedAt: contact.threadClosedAt ?? null,
             };
             await contactsApi.create(input);
           }

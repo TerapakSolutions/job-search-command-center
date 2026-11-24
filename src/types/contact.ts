@@ -11,6 +11,10 @@ export interface Contact {
   lastContactDate: string | null;
   messageNotes: string;
   nextAction: string;
+  /** A decline you sent this recruiter was logged; Today asks to close the thread. */
+  declineDetectedAt?: string | null;
+  /** You confirmed closing this recruiter's thread; it no longer nudges. */
+  threadClosedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -27,4 +31,6 @@ export interface ContactInput {
   lastContactDate: string | null;
   messageNotes: string;
   nextAction: string;
+  declineDetectedAt?: string | null;
+  threadClosedAt?: string | null;
 }

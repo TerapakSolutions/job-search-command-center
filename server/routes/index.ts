@@ -129,6 +129,12 @@ export function contactsRouter(db: Db) {
       ...(body.nextAction !== undefined && {
         nextAction: String(body.nextAction),
       }),
+      ...(body.declineDetectedAt !== undefined && {
+        declineDetectedAt: optionalText(body.declineDetectedAt),
+      }),
+      ...(body.threadClosedAt !== undefined && {
+        threadClosedAt: optionalText(body.threadClosedAt),
+      }),
       updatedAt: timestamp,
     }),
   });

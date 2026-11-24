@@ -154,6 +154,20 @@ export function extractHeaderBlock(text: string): {
   return { headers, bodyStart: bodyStart >= 0 ? bodyStart : lines.length };
 }
 
+/**
+ * Every address on the To: and Cc: lines of the forwarded message (the first
+ * header block in the body), lower-cased. Empty when no To: line parses, so a
+ * caller can tell "not addressed to you" from "could not tell".
+ */
+export function forwardedMessageRecipients(textBody: string): string[] {
+  const body = textBody ?? '';
+  const start = findForwardBlockStart(body);
+  const headers = extractHeaderBlock(start >= 0 ? body.slice(start) : body)?.headers;
+  if (!headers?.to) return [];
+  const lines = [headers.to, headers.cc ?? ''].join(';').replace(/<mailto:[^>]*>/gi, '');
+  return Array.from(lines.matchAll(new RegExp(EMAIL_PLAIN.source, 'gi')), (m) => m[1].toLowerCase());
+}
+
 export function parseForwardedEmail(
   subject: string,
   fromEmail: string,

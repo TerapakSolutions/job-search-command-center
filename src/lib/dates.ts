@@ -42,6 +42,13 @@ export function addBusinessDays(from: Date, businessDays: number): Date {
   return result;
 }
 
+/**
+ * Business days after `from` up to and including `to`, Monday to Friday.
+ * Decision: public holidays COUNT as business days (no holiday calendar), the
+ * same rule as nextActionDates and the Settings copy ("holidays are not
+ * skipped"). So "Ping recruiter" after a Wed 2026-11-25 contact fires Mon 11-30:
+ * Thanksgiving (Thu 11-26) and the Friday after it each count as one day.
+ */
 export function businessDaysBetween(from: Date, to: Date): number {
   let count = 0;
   const cursor = new Date(startOfDay(from));

@@ -33,7 +33,8 @@ import {
   matchEmailToApplications,
 } from './emailApplicationMatcher.js';
 import { buildDraftReply, generateNextActions } from './emailNextActions.js';
-import { classificationInputFromEmail } from './emailForwardedParser.js';
+import { classificationInputFromEmail, forwardedMessageRecipients } from './emailForwardedParser.js';
+import { isBulkResendNotReply, isOutboundDecline } from './pingRecruiterSignals.js';
 import {
   buildPipelineUpdateProposal,
   isForwardTransition,
@@ -693,6 +694,35 @@ export function createContactFromEmail(
   });
   const dated = (note: string) => `[${row.receivedAt.slice(0, 10)}] ${note}`;
 
+  // "Ping recruiter" (see pingRecruiterSignals): a decline you sent suggests
+  // closing this thread; a bulk re-send with you in Bcc is not a reply.
+  const textBodyForSignals = extractTextBody(row.payload);
+  const parsedForSignals = classificationInputFromEmail({
+    subject: row.subject,
+    fromEmail: row.fromEmail,
+    fromName: extractFromName(row.payload),
+    textBody: textBodyForSignals,
+  });
+  const writtenByYou = parsedForSignals.forwardMetadata.topMessageFromForwarder;
+  const declined =
+    writtenByYou &&
+    isOutboundDecline({ topMessage: parsedForSignals.textBody, classification: row.classification });
+  const bulkResend =
+    !writtenByYou &&
+    !!existing &&
+    row.isForwarded &&
+    isBulkResendNotReply({
+      recipients: forwardedMessageRecipients(textBodyForSignals),
+      ownAddresses: [...ownAddresses],
+      subject: row.subject,
+      earlierSubjects: db
+        .select({ subject: communications.subject })
+        .from(communications)
+        .where(and(eq(communications.userId, userId), eq(communications.contactId, existing.id)))
+        .all()
+        .map((c) => c.subject),
+    });
+
   if (existing) {
     contactId = existing.id;
     merged = true;
@@ -700,7 +730,9 @@ export function createContactFromEmail(
     db.update(contacts)
       .set({
         name,
-        lastContactDate: row.receivedAt.slice(0, 10),
+        // A bulk re-send is logged below but does not restart the clock.
+        lastContactDate: bulkResend ? existing.lastContactDate : row.receivedAt.slice(0, 10),
+        declineDetectedAt: declined ? row.receivedAt : existing.declineDetectedAt,
         messageNotes: [
           existing.messageNotes,
           ...[vendorNote, row.aiSummary].filter((n): n is string => Boolean(n)).map(dated),
@@ -752,6 +784,7 @@ export function createContactFromEmail(
         company,
         source: row.fromEmail.includes('linkedin') ? 'linkedin' : 'email',
         lastContactDate: row.receivedAt.slice(0, 10),
+        declineDetectedAt: declined ? row.receivedAt : null,
         messageNotes: [vendorNote, row.aiSummary].filter(Boolean).join('\n'),
         nextAction: resolvedNextAction,
         createdAt: timestamp,
@@ -769,7 +802,7 @@ export function createContactFromEmail(
       applicationId,
       contactId,
       channel: 'email',
-      direction: isWrittenByYou(row) ? 'outbound' : 'inbound',
+      direction: writtenByYou ? 'outbound' : 'inbound',
       subject: row.subject,
       body: textBody.slice(0, 5000),
       occurredAt: row.receivedAt,

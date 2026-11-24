@@ -134,6 +134,13 @@
       "when": 1920000000000,
       "tag": "0018_ai_spend_daily",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1930000000000,
+      "tag": "0019_contact_thread_close",
+      "breakpoints": true
     }
   ]
 }
