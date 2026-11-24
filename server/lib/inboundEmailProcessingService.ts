@@ -313,11 +313,29 @@ export async function processInboundEmail(
     });
 
     // Your own mail, or a recruiter writing after a close: whatever the label.
-    const threadResult = applyThreadSignals(db, userId, emailId);
-    if (threadResult) automation.results.push(threadResult);
+    // It only adds a signal, so a throw is reported and never fails the email.
+    let threadSignalsFailed = false;
+    try {
+      const threadResult = applyThreadSignals(db, userId, emailId);
+      if (threadResult) automation.results.push(threadResult);
+    } catch (err) {
+      threadSignalsFailed = true;
+      // The error's name only: its message can quote stored data.
+      console.error('[inbound-processing] thread_signals_failed', {
+        emailId,
+        error: err instanceof Error ? err.name : 'unknown',
+      });
+    }
 
     const actionTime = nowIso();
-    if (automation.results.length > 0) {
+    if (threadSignalsFailed) {
+      timeline.fail(
+        'safe_actions_applied',
+        [...automation.results.map((r) => r.message), 'Follow-up tracking failed'].join('; '),
+        'thread_signals_failed',
+        actionTime,
+      );
+    } else if (automation.results.length > 0) {
       const messages = automation.results.map((r) => r.message).join('; ');
       timeline.complete('safe_actions_applied', messages, actionTime);
     } else {
@@ -364,6 +382,7 @@ export async function processInboundEmail(
         pendingApprovals: automation.pendingApprovals,
         riskyReasons: automation.riskyReasons,
         skipSummary: automation.skipSummary,
+        ...(threadSignalsFailed && { threadSignalsFailed: true }),
         actionMessages: automation.results.map((r) => r.message),
       },
       resultingChanges: {

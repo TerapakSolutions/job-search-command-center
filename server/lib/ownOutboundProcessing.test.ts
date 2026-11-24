@@ -1,9 +1,12 @@
 /** @jest-environment node */
 import { eq } from 'drizzle-orm';
-import { applications, communications, contacts, inboundEmails } from '../db/schema.js';
+import {
+  applications, communications, contacts, emailApplicationLinks, emailAutomationAuditLog, inboundEmails,
+} from '../db/schema.js';
 import { classifyInboundEmailWithLlm } from './emailClassificationEngine.js';
 import { createContactFromEmail } from './emailAutomationService.js';
 import { processInboundEmail } from './inboundEmailProcessingService.js';
+import { ProcessingTimelineBuilder } from './processingTimeline.js';
 import { createTestDb, seedApplication, seedInboundEmail, seedTestUser } from './testDb.js';
 import {
   SEEKER, SEEKER_NAME, TP_RECRUITER, VENDOR_A, VENDOR_B,
@@ -232,5 +235,79 @@ describe('a closed thread reopens when the recruiter writes something that needs
     await receive(ctx, 'e-1', 'FW: Solutions Architect - Initech - Remote', vendorBMassResend.replace('Reply with your updated resume.', 'The client would like to schedule an interview with you. Please let me know your availability.'), '2026-11-23T17:45:00.000Z');
     expect(ctx.db.select().from(inboundEmails).where(eq(inboundEmails.id, 'e-1')).get()!.requiresResponse).toBe(true);
     expect(contact(ctx).threadClosedAt).toBe(closed.threadClosedAt);
+  });
+});
+
+describe('a failing signal step never fails the email', () => {
+  let logged: jest.SpyInstance;
+  beforeEach(() => {
+    logged = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+  afterEach(() => logged.mockRestore());
+
+  const badAudit = (ctx: Ctx) =>
+    ctx.db.insert(emailAutomationAuditLog).values({
+      id: 'bad', userId: ctx.userId, inboundEmailId: 'e-1', actionType: 'create_contact', status: 'completed',
+      detailsJson: '{not json SECRET', resultingChangesJson: '{}', createdAt: 't',
+    }).run();
+  const email = (ctx: Ctx) => ctx.db.select().from(inboundEmails).where(eq(inboundEmails.id, 'e-1')).get()!;
+
+  // The email still finishes, the failure shows, and nothing private is logged.
+  function expectFinishedWithVisibleFailure(ctx: Ctx, result: { processingStatus: string }) {
+    expect(result.processingStatus).toBe('processed');
+    expect(email(ctx)).toMatchObject({ processingStatus: 'processed', processingError: null });
+    const steps = ProcessingTimelineBuilder.parse(email(ctx).processingTimelineJson)!.steps;
+    expect(steps.find((s) => s.step === 'safe_actions_applied')).toMatchObject({
+      status: 'failed', message: expect.stringContaining('Follow-up tracking failed'), error: 'thread_signals_failed',
+    });
+    expect(steps.find((s) => s.step === 'processing_completed')?.status).toBe('completed');
+    const audit = ctx.db.select().from(emailAutomationAuditLog).all().find((a) => a.actionType === 'auto_process');
+    expect(JSON.parse(audit!.detailsJson)).toMatchObject({ threadSignalsFailed: true });
+    const mine = logged.mock.calls.filter((c) => String(c[0]).includes('thread_signals_failed'));
+    expect(mine).toEqual([['[inbound-processing] thread_signals_failed', { emailId: 'e-1', error: expect.any(String) }]]);
+    expect(JSON.stringify(mine)).not.toMatch(/SECRET|@|Maya|Jordan/);
+  }
+
+  it('malformed audit row', async () => {
+    const ctx = setup();
+    seedInboundEmail(ctx.db, {
+      id: 'e-1', fromEmail: SEEKER, toEmail: 'inbox@app.example', subject: 'FW: RE: x', receivedAt: DECLINE_AT,
+      payload: JSON.stringify({ TextBody: vendorADeclineForward, FromName: SEEKER_NAME }),
+    });
+    badAudit(ctx);
+    expectFinishedWithVisibleFailure(ctx, await processInboundEmail(ctx.db, 'e-1', { userId: ctx.userId }));
+    expect(contact(ctx)).toMatchObject({ lastContactDate: '2026-11-01', declineDetectedAt: null });
+  });
+
+  it('malformed audit row, on a label that runs "create contact"', async () => {
+    const ctx = setup();
+    seedInboundEmail(ctx.db, {
+      id: 'e-1', fromEmail: SEEKER, toEmail: 'inbox@app.example', subject: 'FW: RE: x', receivedAt: DECLINE_AT,
+      payload: JSON.stringify({
+        TextBody: withTop("I've already been submitted to this role through another vendor."), FromName: SEEKER_NAME,
+      }),
+    });
+    ctx.db.insert(emailApplicationLinks).values({
+      id: 'l-1', userId: ctx.userId, inboundEmailId: 'e-1', applicationId: 'app-1', createdAt: 't',
+    }).run();
+    badAudit(ctx);
+    expectFinishedWithVisibleFailure(ctx, await processInboundEmail(ctx.db, 'e-1', { userId: ctx.userId }));
+    // "create contact" itself still ran, without guessing the decline flag.
+    expect(comms(ctx).map((c) => c.direction)).toEqual(['outbound']);
+    expect(contact(ctx).declineDetectedAt).toBeNull();
+  });
+
+  it('a throw mid-write leaves no partial row, and a retry applies once', async () => {
+    const ctx = setup();
+    ctx.db.$client.exec(`CREATE TRIGGER fail_signal BEFORE INSERT ON email_automation_audit_log
+      WHEN NEW.action_type = 'record_communication' BEGIN SELECT RAISE(ABORT, 'SECRET'); END;`);
+    expectFinishedWithVisibleFailure(ctx, await decline(ctx));
+    expect(comms(ctx)).toHaveLength(0);
+    expect(contact(ctx)).toMatchObject({ lastContactDate: '2026-11-01', declineDetectedAt: null });
+
+    ctx.db.$client.exec('DROP TRIGGER fail_signal');
+    await processInboundEmail(ctx.db, 'e-1', { userId: ctx.userId, reanalysis: true, manual: true });
+    expect(comms(ctx)).toHaveLength(1);
+    expect(contact(ctx).declineDetectedAt).toBe(DECLINE_AT);
   });
 });

@@ -629,12 +629,21 @@ function threadSignals(db: Db, userId: string, row: typeof inboundEmails.$inferS
     )
     .all()
     .filter((a) => a.actionType === 'create_contact' || a.actionType === 'record_communication')
-    .map((a) => ({
-      type: a.actionType,
-      details: JSON.parse(a.detailsJson) as { threadSignals?: boolean; via?: string },
-      changes: JSON.parse(a.resultingChangesJson) as { communicationId?: string },
-    }));
+    .map((a) => {
+      try {
+        return {
+          type: a.actionType,
+          details: JSON.parse(a.detailsJson) as { threadSignals?: boolean; via?: string },
+          changes: JSON.parse(a.resultingChangesJson) as { communicationId?: string },
+          unreadable: false,
+        };
+      } catch {
+        return { type: a.actionType, details: {}, changes: {}, unreadable: true };
+      }
+    });
   return {
+    // Whether this email was already applied can't be told.
+    historyUnreadable: audits.some((a) => a.unreadable),
     writtenByYou,
     byAccountHolder,
     declined:
@@ -749,7 +758,10 @@ export function applyThreadSignals(
     return null;
   }
 
-  if (!signals.byAccountHolder || signals.alreadyApplied) return null;
+  if (!signals.byAccountHolder) return null;
+  // Applying twice would undo "Keep open"; the caller reports this.
+  if (signals.historyUnreadable) throw new Error('unreadable automation audit row');
+  if (signals.alreadyApplied) return null;
   const contact = threadContact(db, userId, row, signals.counterparty);
   if (!contact?.applicationId) return null;
   const applicationId = contact.applicationId;
@@ -906,7 +918,7 @@ export function createContactFromEmail(
   // closing this thread; a bulk re-send with you in Bcc is not a reply. Signals
   // apply once per email, so a re-run can't undo "Keep open".
   const signals = threadSignals(db, userId, row);
-  const declined = signals.declined && !signals.alreadyApplied;
+  const declined = signals.declined && !signals.alreadyApplied && !signals.historyUnreadable;
   const bulkResend = !!existing && isBulkResend(db, userId, row, existing.id);
 
   if (existing) {
