@@ -229,7 +229,8 @@ describe('a closed thread reopens when the recruiter writes something that needs
   it('stays closed for a bulk re-send', async () => {
     const ctx = setup(VENDOR_B, closed);
     await receive(ctx, 'e-0', S, vendorBQuestionForward, '2026-11-13T16:52:00.000Z');
-    await receive(ctx, 'e-1', 'FW: Solutions Architect - Initech - Remote', vendorBMassResend, '2026-11-23T17:45:00.000Z');
+    await receive(ctx, 'e-1', 'FW: Solutions Architect - Initech - Remote', vendorBMassResend.replace('Reply with your updated resume.', 'The client would like to schedule an interview with you. Please let me know your availability.'), '2026-11-23T17:45:00.000Z');
+    expect(ctx.db.select().from(inboundEmails).where(eq(inboundEmails.id, 'e-1')).get()!.requiresResponse).toBe(true);
     expect(contact(ctx).threadClosedAt).toBe(closed.threadClosedAt);
   });
 });
